@@ -65,9 +65,7 @@ export function LessonQuestions({ questions, onSubmit }) {
       .map((qq) => (finalAnswers[qq.id] ? `${qq.text} ${finalAnswers[qq.id]}` : null))
       .filter(Boolean)
       .join('\n')
-    // Every question skipped is still possible — send what was asked rather
-    // than nothing at all, so the model has at least the topic to react to.
-    onSubmit(text || questions.map((qq) => qq.text).join('\n'))
+    onSubmit(text || 'Continue with what you already know from this conversation.')
   }
 
   const advance = (finalAnswers) => {

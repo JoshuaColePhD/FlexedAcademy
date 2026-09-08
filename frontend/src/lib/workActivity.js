@@ -10,7 +10,7 @@ export const DEFAULT_WORK_STEPS = [
 export const WORK_ACTIVITY_MESSAGES = {
   plan: 'Working through the five-day sequence now.',
   revision: 'Tightening up that lesson-plan update now.',
-  quiz: 'Cooking up the quiz now.',
+  quiz: 'Writing the quiz now.',
   research: 'Digging through the sources now.',
 }
 

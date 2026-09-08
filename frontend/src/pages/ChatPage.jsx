@@ -1921,8 +1921,8 @@ export function ChatPage() {
         settle({
           role: 'assistant',
           isError: true,
-          content: "Didn't get a reply back.",
-          hint: 'Try sending that again.',
+          content: "I couldn't get a reply just then.",
+          hint: 'Tap Try again.',
         })
       } else if (liveId) {
         // A tool call with nothing said first — drop the now-empty
@@ -1935,10 +1935,27 @@ export function ChatPage() {
       finishWorkActivity(null, { status: 'cancelled' })
       const liveId = liveMessageIdRef.current
       liveMessageIdRef.current = null
-      // A dropped stream already retried in useChatStream. Do not toast or
-      // write a red "Chat failed" bubble — leave the teacher's turn in
-      // place and drop the empty thinking placeholder.
-      if (liveId) setMessages((prev) => prev.filter((m) => m.id !== liveId))
+      setMessages((prev) =>
+        liveId && prev.some((m) => m.id === liveId)
+          ? prev.map((m) =>
+              m.id === liveId
+                ? {
+                    ...m,
+                    streaming: false,
+                    isError: true,
+                    content: "I couldn't get a reply just then.",
+                    hint: 'Tap Try again.',
+                  }
+                : m
+            )
+          : [...prev, {
+              id: nextId(),
+              role: 'assistant',
+              isError: true,
+              content: "I couldn't get a reply just then.",
+              hint: 'Tap Try again.',
+            }]
+      )
     },
   })
 
@@ -2239,14 +2256,10 @@ export function ChatPage() {
               id: nextId(),
               role: 'assistant',
               isError: true,
-              content: "Couldn't reach the server to start that.",
-              hint:
-                typeof navigator !== 'undefined' && !navigator.onLine
-                  ? "You're offline — this will retry once you're back on wifi or cell data."
-                  : err?.hint || 'Check your connection and try again.',
+              content: "I couldn't start that conversation just then.",
+              hint: 'Tap Try again.',
             },
           ])
-          toast.apiError("Couldn't send that", err)
           return
         }
       }
@@ -2990,9 +3003,9 @@ export function ChatPage() {
      with no indication anything had happened. */
   const stopGenerating = useCallback(() => {
     stream.stop()
-    finishWorkActivity(null, { status: 'cancelled', summary: 'Stopped. Nothing was saved.' })
-    const content = 'Stopped. Nothing was saved — ask again when you’re ready.'
-    setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content, isError: true }])
+    finishWorkActivity(null, { status: 'cancelled', summary: 'Stopped.' })
+    const content = 'Stopped — send whenever you’re ready.'
+    setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content }])
     if (localFor.current) {
       void persistMessage(localFor.current, { role: 'assistant', content })
     }
@@ -3004,14 +3017,14 @@ export function ChatPage() {
      reply, which is interruptible and just wasn't wired. */
   const stopChatting = useCallback(() => {
     chatStream.stop()
-    finishWorkActivity(null, { status: 'cancelled', summary: 'Stopped. Nothing was saved.' })
+    finishWorkActivity(null, { status: 'cancelled', summary: 'Stopped.' })
     // Aborting never reaches onDone/onError, so the live placeholder (see
     // liveMessageIdRef) would otherwise sit there permanently mid-stream —
     // settle it (or drop it, if nothing had streamed yet) before adding the
     // "Stopped" message below.
     finalizeLiveMessage()
-    const content = 'Stopped. Nothing was saved — ask again when you’re ready.'
-    setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content, isError: true }])
+    const content = 'Stopped — send whenever you’re ready.'
+    setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content }])
     if (localFor.current) {
       void persistMessage(localFor.current, { role: 'assistant', content })
     }
@@ -4283,7 +4296,11 @@ export function ChatPage() {
             /* The example is worth its length on a laptop and clipped on a
                phone — the textarea is one row, so the second line of a wrapped
                placeholder is simply cut off mid-word. */
-            placeholder={currentChat?.title ? `Message ${currentChat.title}` : 'Message FlexEd Academy'}
+            placeholder={
+              chatMode === 'research' ? 'What should I look up?'
+                : chatMode === 'build' || chatMode === 'sub_plan' ? 'What should this week cover?'
+                : 'Ask anything about this week…'
+            }
             sendLabel="Send message"
           />
           </div>

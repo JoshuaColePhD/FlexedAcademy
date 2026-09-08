@@ -314,7 +314,7 @@ function MessageImpl({
                     className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-mark px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-mark-dark sm:w-auto"
                   >
                     <RotateCcw size={16} />
-                    Retry Request
+                    Try again
                   </button>
                 ) : null}
               </div>
@@ -373,7 +373,7 @@ function MessageImpl({
             asked. */}
         {!isUser && message.questions?.length && !isLast ? (
           <div className="mt-3 flex flex-col gap-1 rounded-2xl bg-paper-sunken p-2.5 text-sm text-ink-muted">
-            <p className="eyebrow text-ink-faint">Never answered</p>
+            <p className="eyebrow text-ink-faint">Earlier questions</p>
             <ul className="flex list-none flex-col gap-1">
               {message.questions.map((q) => (
                 <li key={q.id}>{q.text}</li>
@@ -475,7 +475,7 @@ function MessageImpl({
               type="button"
               className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
               onClick={onRetry}
-              aria-label="Build this plan again"
+              aria-label="Try again"
             >
               <RotateCcw size={14} aria-hidden="true" />
             </button>
