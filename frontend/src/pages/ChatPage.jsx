@@ -469,6 +469,17 @@ function normalizeChatMode(mode) {
   return 'brainstorm'
 }
 
+/* Shown in the empty assistant slot while chat_stream is running. This is
+   not the lesson builder — that uses WorkActivityCard ("Building the lesson
+   plan"). Hardcoding "Crafting your lesson" here made a "how are you?"
+   follow-up look like a five-day generation. */
+function chatThinkingLabel(mode, { planning } = {}) {
+  if (planning) return 'Starting your lesson'
+  if (mode === 'research') return 'Looking through sources'
+  if (mode === 'sub_plan') return 'Putting together a sub plan'
+  return 'Thinking'
+}
+
 function planContainsStandard(plan, code) {
   if (!plan || !code) return false
   return JSON.stringify(plan).toLocaleLowerCase().includes(String(code).toLocaleLowerCase())
@@ -2349,7 +2360,7 @@ export function ChatPage() {
         liveMessageIdRef.current = nextId()
         setMessages((prev) => [
           ...prev,
-          { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true },
+          { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: chatThinkingLabel(chatMode, { planning }) },
         ])
         // The same value just pinned onto the chat by createChat above, so
         // this first turn and every later one (see the second
@@ -2427,7 +2438,7 @@ export function ChatPage() {
       liveMessageIdRef.current = nextId()
       setMessages((prev) => [
         ...prev,
-        { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true },
+        { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: chatThinkingLabel(chatMode, { planning }) },
       ])
       const chatResult = await chatStream.start(payloadMessages, {
         chatId: activeChatId,
