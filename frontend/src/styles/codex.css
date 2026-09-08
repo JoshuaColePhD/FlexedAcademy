@@ -1852,6 +1852,11 @@ body:has(.dialog-scrim) .composer-dock-surface {
   background: var(--paper-inset);
 }
 .chat-header-sheet-menu {
+  /* These menus are opened inside a scrollable sheet. Keeping them absolute
+     makes the sheet's overflow clip the lower options instead of accounting
+     for the menu in its own scroll range. Put the open list back in flow so
+     every option remains reachable on short desktop windows and phones. */
+  position: relative !important;
   left: -18px !important;
   width: calc(100% + 36px) !important;
   max-height: min(48dvh, 380px);
