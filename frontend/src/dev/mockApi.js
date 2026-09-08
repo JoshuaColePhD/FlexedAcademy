@@ -583,6 +583,7 @@ export function installMockApi() {
       name: state.me.name,
       email: state.me.email,
       is_admin: state.me.id === 'u1',
+      is_owner: state.me.id === 'u1',
       has_password: Boolean(state.credentials?.password),
       custom_instructions: state.me.custom_instructions,
       output_length: state.me.output_length,

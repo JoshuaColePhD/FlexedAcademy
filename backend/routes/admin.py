@@ -4,8 +4,8 @@ Everything here used to be a query typed straight into the Supabase SQL
 editor. That doesn't scale past "the one person building this app" — it means
 every account question routes through whoever has database access, and every
 "give this teacher unlimited access" is a bespoke UPDATE. One page, gated by
-the is_admin column rather than a hardcoded email list, so revoking access is
-a data change, not a redeploy.
+the one configured owner account rather than a subscriber flag or hardcoded
+email list.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import json
 import secrets
 import string
 from datetime import UTC, datetime, timedelta
+from html import escape
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
@@ -27,6 +28,77 @@ from ..errors import AppError
 from .plans import DOCX_MIME, _docx_for_plan
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+class AdminSupportReplyBody(BaseModel):
+    message: str = Field(min_length=1, max_length=5000)
+
+
+def _support_reply_address(thread_id: str) -> str:
+    """Keep email replies routed back into this same in-app thread."""
+    local, _, domain = settings.support_email.partition("@")
+    return f"{local}+{thread_id}@{domain or 'flexedacademy.com'}"
+
+
+def _send_admin_support_email(*, to: str, subject: str, body: str, reply_to: str) -> bool:
+    """Best-effort delivery; the admin reply is already durable in the DB."""
+    return mail.send(
+        to=to,
+        subject=subject,
+        reply_to=reply_to,
+        html=f"<p>{escape(body).replace(chr(10), '<br>')}</p>",
+    )
+
+
+@router.get("/support/threads")
+def list_admin_support_threads(_admin: str = Depends(get_current_admin)):
+    with db.as_support_admin():
+        return {"threads": db.list_admin_support_threads()}
+
+
+@router.get("/support/threads/{thread_id}")
+def get_admin_support_thread(thread_id: str, _admin: str = Depends(get_current_admin)):
+    with db.as_support_admin():
+        thread = db.get_admin_support_thread(thread_id)
+    if not thread:
+        raise AppError("support_thread_not_found", "That support conversation is no longer available.", status=404)
+    return thread
+
+
+@router.post("/support/threads/{thread_id}/messages")
+def add_admin_support_thread_message(
+    thread_id: str,
+    body: AdminSupportReplyBody,
+    admin_id: str = Depends(get_current_admin),
+):
+    clean_message = body.message.strip()
+    if not clean_message:
+        raise AppError("support_message_empty", "Write a reply before sending it.", status=400)
+
+    with db.as_support_admin():
+        thread = db.get_admin_support_thread(thread_id)
+        if not thread:
+            raise AppError("support_thread_not_found", "That support conversation is no longer available.", status=404)
+        admin = db.get_user_by_id(admin_id) or {}
+        message = db.add_support_message(
+            thread_id=thread_id,
+            author_type="support",
+            author_user_id=admin_id,
+            author_name=admin.get("name") or "FlexEd support",
+            author_email=admin.get("email"),
+            body=clean_message,
+            source="app",
+        )
+        updated_thread = db.get_admin_support_thread(thread_id)
+
+    teacher_email = thread.get("teacher_email")
+    delivered = bool(teacher_email) and _send_admin_support_email(
+        to=teacher_email,
+        subject=f"Re: {thread['subject']}",
+        body=f"FlexEd support replied to your message:\n\n{clean_message}",
+        reply_to=_support_reply_address(thread_id),
+    )
+    return {"thread": updated_thread, "message": message, "email_sent": delivered}
 
 
 # Two capitalized words and four digits — easy to read off a screen or a

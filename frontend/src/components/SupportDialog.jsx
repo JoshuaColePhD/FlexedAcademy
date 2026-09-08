@@ -5,12 +5,10 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { api } from '../lib/api'
 import { useAuth } from '../lib/authContext'
-import { SUPPORT_EMAIL, SUPPORT_SUBJECT } from '../lib/support'
+import { SUPPORT_SUBJECT } from '../lib/support'
 
 /* A small, human support composer. Contact support stays inside FlexEd, with
- * the account's reply address and Josh's destination visible before sending.
- * The backend owns the actual delivery so the teacher never has to leave the
- * app or copy context into another mail client. */
+ * the teacher's profile name and Support destination visible before sending. */
 export function SupportDialog({ open, onClose }) {
   const { mounted, closing } = useExitTransition(open, 200)
 
@@ -94,8 +92,8 @@ function SupportDialogContent({ closing, onClose }) {
                 <Mail size={16} aria-hidden="true" />
               </span>
               <div>
-                <p className="m-0 font-semibold text-ink">Message sent to Josh.</p>
-                <p className="mt-1 text-sm leading-relaxed text-ink-soft">He can reply directly to {user?.email || 'your account email'}.</p>
+                <p className="m-0 font-semibold text-ink">Message sent to Support.</p>
+                <p className="mt-1 text-sm leading-relaxed text-ink-soft">A reply will appear in your FlexEd support thread.</p>
               </div>
             </div>
             <div className="dialog-actions mt-5">
@@ -108,11 +106,11 @@ function SupportDialogContent({ closing, onClose }) {
               <div className="grid gap-2 text-xs">
                 <div className="flex items-baseline gap-3">
                   <span className="w-12 shrink-0 font-semibold uppercase tracking-wider text-ink-muted">From</span>
-                  <span className="min-w-0 truncate text-ink">{user?.email || 'Your account email'}</span>
+                  <span className="min-w-0 truncate text-ink">{user?.name || 'Your profile'}</span>
                 </div>
               </div>
               <p className="mt-3 border-t border-edge pt-3 text-2xs leading-relaxed text-ink-muted">
-                Sent securely to Josh Cole at {SUPPORT_EMAIL}. Josh can reply directly to this email.
+                Your message will stay with any replies in your FlexEd support thread.
               </p>
             </div>
 

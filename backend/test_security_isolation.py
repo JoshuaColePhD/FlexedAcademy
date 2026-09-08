@@ -7,11 +7,13 @@ so CI can verify the most important two-account guarantees on every change.
 """
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from backend import db
 from backend.config import settings
-from backend.deps import get_current_user
+from backend.deps import get_current_admin, get_current_user
+from backend.errors import AppError
 from backend.server import app
 
 
@@ -22,6 +24,26 @@ def _client(monkeypatch, user_id: str) -> TestClient:
 
 def _clear_overrides() -> None:
     app.dependency_overrides.clear()
+
+
+def test_admin_access_is_owner_only(monkeypatch):
+    """A persisted is_admin flag must not let a subscriber become admin."""
+    monkeypatch.setattr(db, "is_owner", lambda user_id: user_id == "owner")
+    monkeypatch.setattr(db, "is_admin", lambda _user_id: True)
+    monkeypatch.setattr(db, "list_accounts_with_stats", lambda: [])
+
+    try:
+        assert get_current_admin("owner") == "owner"
+        with pytest.raises(AppError) as error:
+            get_current_admin("subscriber")
+        assert error.value.status == 403
+
+        subscriber = _client(monkeypatch, "subscriber")
+        assert subscriber.get("/api/admin/accounts").status_code == 403
+        owner = _client(monkeypatch, "owner")
+        assert owner.get("/api/admin/accounts").status_code == 200
+    finally:
+        _clear_overrides()
 
 
 def test_standards_history_requires_login_and_class_ownership(monkeypatch):
@@ -80,7 +102,7 @@ def test_school_calendar_is_limited_to_school_members_or_admin(monkeypatch):
 
     monkeypatch.setattr(db, "get_school", lambda school_id: schools.get(school_id))
     monkeypatch.setattr(db, "get_user_by_id", lambda user_id: users.get(user_id))
-    monkeypatch.setattr(db, "is_admin", lambda user_id: user_id == "admin")
+    monkeypatch.setattr(db, "is_owner", lambda user_id: user_id == "admin")
     monkeypatch.setattr(
         db,
         "get_pending_calendar_submission",

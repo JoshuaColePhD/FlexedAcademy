@@ -38,6 +38,8 @@ export const qk = {
   /** Admin-wide plan history and the one full plan currently open in it. */
   adminPlans: (filters = {}) => ['admin', 'plans', filters],
   adminPlan: (id) => ['admin', 'plan', id],
+  adminSupportThreads: ['admin', 'support', 'threads'],
+  adminSupportThread: (id) => ['admin', 'support', 'thread', id],
 
   /** The year for one class. THE most-shared entry in the app. */
   calendar: (classId) => ['calendar', classId ?? null],

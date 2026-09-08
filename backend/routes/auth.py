@@ -81,7 +81,11 @@ def _public_user(user: dict) -> dict:
         "email": user["email"],
         "name": user["name"],
         "avatar": user.get("avatar"),
-        "is_admin": bool(user.get("is_admin")),
+        # Admin is an owner-only capability. Do not expose the historical row
+        # flag as effective permission; the frontend uses this to hide links,
+        # while every admin API route independently enforces the same check.
+        "is_admin": db.is_owner(user["id"]),
+        "is_owner": db.is_owner(user["id"]),
         # Never the hash itself — just whether one exists, so the settings
         # page can decide between "change password" and "this account signs
         # in with Google" without guessing from anything else client-side.

@@ -1,10 +1,13 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { ChevronUp, GraduationCap, Info, LogOut, Mail, Settings, ShieldCheck } from 'lucide-react'
 import { getAvatar, getInitials } from '../lib/avatars'
+import { api } from '../lib/api'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
+import { qk } from '../lib/queryKeys'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 
@@ -127,9 +130,48 @@ function UsageMeter({ entitlement, onSubscribeClick }) {
   )
 }
 
+function SupportNotification({ count, admin }) {
+  if (!count) return null
+  const label = admin ? `${count} new teacher repl${count === 1 ? 'y' : 'ies'}` : `${count} unread support repl${count === 1 ? 'y' : 'ies'}`
+  return (
+    <span
+      className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-accent px-1.5 py-0.5 text-2xs font-semibold leading-none text-white"
+      aria-label={label}
+      title={label}
+    >
+      {count > 9 ? '9+' : count}
+    </span>
+  )
+}
+
+function ProfileNotificationBadge({ count, admin }) {
+  if (!count) return null
+  const label = admin ? `${count} new teacher repl${count === 1 ? 'y' : 'ies'}` : `${count} unread support repl${count === 1 ? 'y' : 'ies'}`
+  return (
+    <span
+      className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full border-2 border-paper bg-accent px-0.5 text-[0.625rem] font-bold leading-none text-white"
+      aria-label={label}
+      title={label}
+    >
+      {count > 9 ? '9+' : count}
+    </span>
+  )
+}
+
 export function AccountMenu({ classPath, collapsed, spacious }) {
   const { user, logout } = useAuth()
   const { entitlement, openPaywall } = useBilling()
+  const supportQuery = useQuery({
+    queryKey: user?.is_owner ? qk.adminSupportThreads : qk.supportThreads,
+    queryFn: () => (user?.is_owner ? api.adminListSupportThreads() : api.listSupportThreads()),
+    enabled: Boolean(user?.id),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+  const supportThreads = supportQuery.data?.threads || []
+  const supportNotificationCount = user?.is_owner
+    ? supportThreads.filter((thread) => thread.last_author_type === 'teacher').length
+    : supportThreads.filter((thread) => (thread.unread_count || 0) > 0).length
   const [open, setOpen] = useState(false)
   // Sits right above the trigger (bottom-full) — mirrors ClassSwitcher's own
   // dropdown, closing shape and all, just growing up instead of dropping down.
@@ -212,6 +254,15 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
       <span className={spacious ? 'text-xs font-bold tracking-wide' : 'text-2xs font-bold tracking-wide'}>{getInitials(user?.name)}</span>
     </span>
   )
+  const profileAvatarNode = (
+    <span className="relative inline-flex shrink-0">
+      {avatarNode}
+      <ProfileNotificationBadge count={supportNotificationCount} admin={user?.is_owner} />
+    </span>
+  )
+  const profileLabel = supportNotificationCount
+    ? `${name}, ${user?.is_owner ? `${supportNotificationCount} new teacher repl${supportNotificationCount === 1 ? 'y' : 'ies'}` : `${supportNotificationCount} unread support repl${supportNotificationCount === 1 ? 'y' : 'ies'}`}`
+    : name
 
   return (
     <div className={`account-menu-footer relative flex items-center gap-1 py-2${spacious ? ' is-spacious' : ''} ${collapsed ? 'px-1 justify-center' : 'px-2'}`} ref={ref}>
@@ -221,10 +272,10 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
           className="flex justify-center rounded-md p-2 transition-colors hover:bg-paper-inset"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
-          aria-label={`Open account menu for ${name}`}
+          aria-label={`Open account menu for ${profileLabel}`}
           title={name}
         >
-          {avatarNode}
+          {profileAvatarNode}
         </button>
       ) : (
         <div className="rail-reveal flex min-w-0 flex-1 items-center">
@@ -240,10 +291,10 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
             className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left transition-colors hover:bg-paper-inset ${spacious ? 'min-h-[48px] px-2.5 py-2.5' : 'gap-2 px-2 py-1.5'}`}
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
-            aria-label={`Open account menu for ${name}`}
+            aria-label={`Open account menu for ${profileLabel}`}
             title={name}
           >
-            {avatarNode}
+            {profileAvatarNode}
             <span className={`min-w-0 flex-1 truncate font-medium text-ink-soft ${spacious ? 'text-base' : 'text-xs'}`}>{name}</span>
             <ChevronUp size={spacious ? 15 : 13} className="shrink-0 text-ink-faint" aria-hidden="true" />
           </button>
@@ -282,7 +333,7 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
               Placed first (above My classes/Settings), on Josh's own ask —
               the one control gated to admins only is the one that should be
               hardest to scroll past, not the last thing in the list. */}
-          {user?.is_admin ? (
+          {user?.is_owner ? (
             <div className="mt-1 border-t border-hairline pt-1">
               <Link
                 to={`${classPath}/admin`}
@@ -291,18 +342,31 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
               >
                 <ShieldCheck size={14} aria-hidden="true" /> Admin
               </Link>
+              <Link
+                to={`${classPath}/contact`}
+                onClick={() => setOpen(false)}
+                title="Contact support"
+                className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              >
+                <Mail size={14} aria-hidden="true" /> Contact support
+                <SupportNotification count={supportNotificationCount} admin={user?.is_owner} />
+              </Link>
             </div>
-          ) : null}
+          ) : (
+            <div className="mt-1 border-t border-hairline pt-1">
+              <Link
+                to={`${classPath}/contact`}
+                onClick={() => setOpen(false)}
+                title="Contact support"
+                className="flex min-h-touch w-full min-w-0 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
+              >
+                <Mail size={14} aria-hidden="true" /> Contact support
+                <SupportNotification count={supportNotificationCount} admin={false} />
+              </Link>
+            </div>
+          )}
 
           <div className="mt-1 border-t border-hairline pt-1">
-            <Link
-              to={`${classPath}/contact`}
-              onClick={() => setOpen(false)}
-              title="Contact support"
-              className="flex min-h-touch w-full min-w-0 items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
-            >
-              <Mail size={14} aria-hidden="true" /> Contact support
-            </Link>
             <Link
               to="/privacy"
               onClick={() => setOpen(false)}

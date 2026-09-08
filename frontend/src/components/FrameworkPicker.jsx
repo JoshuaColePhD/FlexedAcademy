@@ -61,7 +61,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
     const updatePopover = () => {
       const rootRect = rootRef.current?.getBoundingClientRect()
       if (!rootRect) return
-      const width = Math.min(34 * 16, window.innerWidth - 32)
+      const width = Math.min(44 * 16, window.innerWidth - 32)
       const left = Math.min(rootRect.left, window.innerWidth - width - 16)
       const top = rootRect.bottom + 4
       const available = Math.max(11 * 16, window.innerHeight - top - 16)
@@ -248,7 +248,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
             className={
               isInline
                 ? 'fw-picker-panel neo-panel flex min-h-0 w-full flex-1 overflow-hidden rounded-2xl border border-edge bg-paper-raised'
-                : `fw-picker-panel neo-panel fa-card-drop absolute left-0 z-50 mt-1 flex overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`
+                : `fw-picker-panel fw-picker-popover neo-panel fa-card-drop absolute left-0 z-50 mt-1 flex flex-col overflow-hidden rounded-2xl bg-paper-raised${closing ? ' fa-chip-exit' : ''}`
             }
             style={isInline ? undefined : {
               ...(popoverPosition ? {
@@ -261,8 +261,26 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
                 maxWidth: 'calc(100vw - 2rem)',
               }),
               ...(popoverMaxHeight ? { maxHeight: popoverMaxHeight } : {}),
+              ...(constrainPopover && popoverMaxHeight && flat.length > 8 ? { height: popoverMaxHeight } : {}),
             }}
           >
+          {!isInline ? (
+            <div className="fw-picker-popover-header flex shrink-0 items-center justify-between gap-4 border-b border-edge px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-ink">Browse courses</p>
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  {flat.length === 1 ? '1 course matches' : `${flat.length} courses match`}
+                </p>
+              </div>
+              {selected ? (
+                <div className="fw-picker-current hidden min-w-0 max-w-[48%] items-center gap-2 rounded-full border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs sm:flex">
+                  <span className="shrink-0 text-ink-muted">Selected</span>
+                  <span className="truncate font-medium text-ink" title={selected.label}>{selected.label}</span>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          <div className="flex min-h-0 flex-1 overflow-hidden">
           {/* Category rail — desktop only. A phone-width dropdown has no room
               for a second column, so it falls back to the plain scrolling
               list (still grouped, just without the jump-to-category rail). */}
@@ -276,8 +294,8 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
               groups. Popovers stay compact and retain the old >1 rule. */}
           {(isInline ? groups.length > 0 : groups.length > 1) ? (
             <div
-              className={`fw-picker-rail hidden ${isInline ? 'w-56' : 'w-40'} shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-edge/60 bg-paper-sunken/60 p-2 sm:flex${isInline ? ' h-full' : ''}`}
-              style={isInline ? undefined : { maxHeight: popoverMaxHeight || 'min(28rem, 70vh)' }}
+              className={`fw-picker-rail hidden ${isInline ? 'w-56' : 'w-48'} shrink-0 flex-col gap-1 overflow-y-auto border-r border-edge/60 bg-paper-sunken/60 p-3 sm:flex${isInline ? ' h-full' : ''}`}
+              style={isInline ? undefined : { maxHeight: constrainPopover ? undefined : (popoverMaxHeight || 'min(28rem, 70vh)') }}
             >
               {groups.map((g) => (
                 <button
@@ -301,7 +319,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
             role="listbox"
             aria-label="Standards frameworks"
             className={`min-w-0 flex-1 overflow-y-auto py-1${isInline ? ' h-full' : ''}`}
-            style={isInline ? undefined : { maxHeight: popoverMaxHeight || 'min(28rem, 70vh)' }}
+            style={isInline ? undefined : { maxHeight: constrainPopover ? undefined : (popoverMaxHeight || 'min(28rem, 70vh)') }}
           >
             {flat.length === 0 ? (
               <li className="px-3 py-6 text-center text-sm text-ink-muted">
@@ -316,7 +334,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
                       else groupRefs.current.delete(g.name)
                     }}
                     data-group={g.name}
-                    className="eyebrow sticky top-0 z-10 bg-paper-sunken px-3 py-1.5"
+                    className="fw-picker-group-heading eyebrow sticky top-0 z-10 bg-paper-sunken px-4 py-2"
                   >
                     {g.name}
                   </p>
@@ -335,16 +353,16 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
                             disabled={disabled}
                             tabIndex={-1}
                             data-active={isActive}
-                    className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
-                      isActive ? 'onboarding-course-active bg-paper-sunken text-ink' : 'hover:bg-paper-sunken'
-                    }${isSelected ? ' onboarding-course-selected' : ''}`}
+                            className={`fw-picker-option flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${
+                              isActive ? 'onboarding-course-active bg-paper-sunken text-ink' : 'hover:bg-paper-sunken'
+                            }${isSelected ? ' onboarding-course-selected' : ''}`}
                             onFocus={() => setActive(i)}
                             onKeyDown={onKeyDown}
                             onMouseEnter={() => setActive(i)}
                             onClick={() => commit(fw)}
                           >
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate text-sm text-ink font-medium">{fw.label}</span>
+                              <span className="fw-picker-option-label block truncate text-sm text-ink font-medium">{fw.label}</span>
                               {/* Grade range only — the standards count was a
                                   build-time implementation detail (how many
                                   chunks got ingested), not something a
@@ -353,11 +371,13 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
                                   actually tells a K-2 teacher apart from an
                                   AP one at a glance. */}
                               {gradeRangeLabel(fw) ? (
-                                <span className="block text-[11px] text-ink-muted">{gradeRangeLabel(fw)}</span>
+                                <span className="fw-picker-option-meta block text-[11px] text-ink-muted">{gradeRangeLabel(fw)}</span>
                               ) : null}
                             </span>
                             {isSelected ? (
-                              <Check size={14} aria-hidden="true" className="shrink-0 text-accent-text" />
+                              <span className="fw-picker-option-check flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent-text">
+                                <Check size={14} aria-hidden="true" />
+                              </span>
                             ) : null}
                           </button>
                         </li>
@@ -368,6 +388,7 @@ export function FrameworkPicker({ frameworks, value, onChange, disabled, id, var
               ))
             )}
           </ul>
+          </div>
           </div>
         </PickerPortal>
       ) : null}

@@ -39,6 +39,7 @@ from .errors import AppError
 
 current_user_id = contextvars.ContextVar("current_user_id", default=None)
 support_webhook_context = contextvars.ContextVar("support_webhook_context", default=False)
+support_admin_context = contextvars.ContextVar("support_admin_context", default=False)
 
 
 @contextmanager
@@ -64,6 +65,16 @@ def as_support_webhook():
         yield
     finally:
         support_webhook_context.reset(token)
+
+
+@contextmanager
+def as_support_admin():
+    """Allow one already-authorized admin request through support RLS."""
+    token = support_admin_context.set(True)
+    try:
+        yield
+    finally:
+        support_admin_context.reset(token)
 
 log = logging.getLogger("flexedacademy.db")
 
@@ -408,9 +419,9 @@ MIGRATIONS: list[str] = [
     """,
     # ── 16: admin ────────────────────────────────────────────────────────────
     # Managing accounts by hand-written SQL against production doesn't scale
-    # past "the one person building this app". is_admin gates a real in-app
-    # page instead. Seeded onto the two accounts that exist today; every
-    # account after this migration starts as a normal (non-admin) teacher.
+    # past "the one person building this app". The historical is_admin flag
+    # supports reporting and legacy data, but effective admin authorization is
+    # now restricted to the one configured owner account.
     """
     ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
     UPDATE users SET is_admin = true
@@ -3814,6 +3825,54 @@ MIGRATIONS: list[str] = [
         OR id = current_setting('app.user_id', true)
       );
     """,
+    # ── 86: allow the already-authorized admin support inbox ─────────────────
+    # Admin support reads and writes are gated by get_current_admin before this
+    # context is entered. Keep the elevated flag transaction-local so a normal
+    # teacher request can never opt into the cross-account support view.
+    """
+    DROP POLICY IF EXISTS "Users can access their own support threads" ON support_threads;
+    CREATE POLICY "Users can access their own support threads"
+      ON support_threads
+      USING (
+        current_setting('app.support_webhook', true) = '1'
+        OR current_setting('app.support_admin', true) = '1'
+        OR user_id = current_setting('app.user_id', true)
+      )
+      WITH CHECK (
+        current_setting('app.support_webhook', true) = '1'
+        OR current_setting('app.support_admin', true) = '1'
+        OR user_id = current_setting('app.user_id', true)
+      );
+    DROP POLICY IF EXISTS "Users can access their own support messages" ON support_messages;
+    CREATE POLICY "Users can access their own support messages"
+      ON support_messages
+      USING (
+        current_setting('app.support_webhook', true) = '1'
+        OR current_setting('app.support_admin', true) = '1'
+        OR EXISTS (
+          SELECT 1 FROM support_threads t
+          WHERE t.id = support_messages.thread_id
+            AND t.user_id = current_setting('app.user_id', true)
+        )
+      )
+      WITH CHECK (
+        current_setting('app.support_webhook', true) = '1'
+        OR current_setting('app.support_admin', true) = '1'
+        OR EXISTS (
+          SELECT 1 FROM support_threads t
+          WHERE t.id = support_messages.thread_id
+            AND t.user_id = current_setting('app.user_id', true)
+        )
+      );
+    DROP POLICY IF EXISTS "Users can access their own account" ON users;
+    CREATE POLICY "Users can access their own account"
+      ON users
+      USING (
+        current_setting('app.support_webhook', true) = '1'
+        OR current_setting('app.support_admin', true) = '1'
+        OR id = current_setting('app.user_id', true)
+      );
+    """,
 ]
 
 
@@ -3963,6 +4022,9 @@ def borrow():
         if support_webhook_context.get():
             with conn.cursor() as cur:
                 cur.execute("SET LOCAL app.support_webhook = '1'")
+        if support_admin_context.get():
+            with conn.cursor() as cur:
+                cur.execute("SET LOCAL app.support_admin = '1'")
         # ONCE per physical connection, not once per query. register_vector
         # issues its own round trip to look up the vector type's OID, and doing
         # that on every borrow made concurrent reads SLOWER than sequential
@@ -6935,6 +6997,55 @@ def list_support_threads(user_id: str) -> list[dict]:
     )
 
 
+def list_admin_support_threads() -> list[dict]:
+    """Return every support thread for the admin mailbox.
+
+    The caller must establish ``as_support_admin`` first. Keeping that
+    elevation outside this query makes it difficult to accidentally expose
+    this cross-account view through a teacher-scoped route.
+    """
+    return _rows(
+        """SELECT t.id, t.user_id, t.subject, t.status, t.unread_count,
+                         t.created_at, t.updated_at,
+                         u.name AS teacher_name, u.email AS teacher_email,
+                         latest.body AS last_message,
+                         latest.author_type AS last_author_type,
+                         latest.created_at AS last_message_at
+                    FROM support_threads t
+                    JOIN users u ON u.id = t.user_id
+                    LEFT JOIN LATERAL (
+                      SELECT m.body, m.author_type, m.created_at
+                        FROM support_messages m
+                       WHERE m.thread_id = t.id
+                       ORDER BY m.created_at DESC, m.id DESC
+                       LIMIT 1
+                    ) latest ON TRUE
+                   ORDER BY t.updated_at DESC, t.id DESC""",
+    )
+
+
+def get_admin_support_thread(thread_id: str) -> dict | None:
+    """Return one support thread and all messages for the admin mailbox."""
+    thread = _row(
+        """SELECT t.*, u.name AS teacher_name, u.email AS teacher_email
+             FROM support_threads t
+             JOIN users u ON u.id = t.user_id
+            WHERE t.id = ?""",
+        (thread_id,),
+    )
+    if not thread:
+        return None
+    thread["messages"] = _rows(
+        """SELECT id, thread_id, author_type, author_user_id, author_name,
+                         author_email, body, source, external_id, created_at, read_at
+                    FROM support_messages
+                   WHERE thread_id = ?
+                   ORDER BY created_at ASC, id ASC""",
+        (thread_id,),
+    )
+    return thread
+
+
 def get_support_thread(user_id: str, thread_id: str) -> dict | None:
     thread = _row(
         "SELECT * FROM support_threads WHERE id = ? AND user_id = ?",
@@ -7419,6 +7530,16 @@ def clear_drive_tokens(user_id: str) -> None:
 def is_admin(user_id: str) -> bool:
     row = _row("SELECT is_admin FROM users WHERE id = ?", (user_id,))
     return bool(row and row["is_admin"])
+
+
+def is_owner(user_id: str) -> bool:
+    """Return whether this is the one configured owner account.
+
+    `is_admin` remains stored for historical account data and reporting, but
+    it is not an authorization boundary: subscribers and any old admin flags
+    must never be able to turn themselves into the owner.
+    """
+    return bool(user_id and user_id == settings.owner_user_id)
 
 
 def list_accounts_with_stats() -> list[dict]:

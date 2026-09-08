@@ -126,7 +126,7 @@ export function CommandPalette() {
                 </Command.Item>
               </>
             ) : null}
-            {classPath && user?.is_admin ? (
+            {classPath && user?.is_owner ? (
               <Command.Item
                 onSelect={() => runCommand(() => navigate(`${classPath}/admin`))}
                 className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-ink cursor-pointer aria-selected:bg-paper-sunken aria-selected:text-ink"

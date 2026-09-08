@@ -51,6 +51,13 @@ class Settings(BaseSettings):
     llm_cache_cleanup_batch: int = Field(default=10_000, ge=100, le=100_000)
     common_standards_api_key: str = ""
 
+    # There is exactly one administrator: the account owner. Keep this as an
+    # immutable account id rather than treating a subscriber's `is_admin` row
+    # flag as permission. The default account seeded by the first migration is
+    # the owner's account; deployments with a different owner id must set
+    # OWNER_USER_ID explicitly.
+    owner_user_id: str = "default_user"
+
     # ── voice replies ────────────────────────────────────────────────────────
     # gpt-4o-mini-tts, not tts-1: OpenAI's own guidance names this the model for
     # realtime use, and it supports streaming the audio out over chunked

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertTriangle,
   Activity,
@@ -15,11 +15,14 @@ import {
   CircleDollarSign,
   Download,
   FileText,
+  Inbox,
   Loader2,
+  Mail,
   MoreHorizontal,
   Plus,
   RotateCcw,
   Search,
+  Send,
   ShieldCheck,
   Trash2,
   UserRound,
@@ -42,9 +45,9 @@ import { useActiveClass } from '../hooks/useAppData'
  * teachers still own those records — but it does provide an admin-only,
  * read-only plan history for support and product review.
  *
- * is_admin gates the route itself (see App.jsx) and every request the page
- * makes (see deps.get_current_admin) — a non-admin hitting /admin by URL sees
- * the same "Not authorized" the API would have given them anyway.
+ * The owner-only identity gates every request the page makes (see
+ * deps.get_current_admin) — a subscriber hitting /admin by URL sees the same
+ * "Not authorized" the API would have given them anyway.
  *
  * Widened twice on Josh's own ask ("needs to give me a lot more control").
  * First pass (still here): an estimated $ cost per account, an at-a-glance
@@ -729,6 +732,191 @@ function AdminPlanDetail({ planId, onClose }) {
             </div>
           </section>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function supportDate(iso) {
+  if (!iso) return ''
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function AdminSupportInbox() {
+  const qc = useQueryClient()
+  const toast = useToast()
+  const [selectedId, setSelectedId] = useState(null)
+  const [reply, setReply] = useState('')
+
+  const threadsQuery = useQuery({
+    queryKey: qk.adminSupportThreads,
+    queryFn: () => api.adminListSupportThreads(),
+  })
+  const threads = useMemo(() => threadsQuery.data?.threads || [], [threadsQuery.data])
+
+  useEffect(() => {
+    if (selectedId && threads.some((thread) => thread.id === selectedId)) return
+    setSelectedId(threads[0]?.id || null)
+  }, [selectedId, threads])
+
+  const threadQuery = useQuery({
+    queryKey: qk.adminSupportThread(selectedId),
+    queryFn: () => api.adminGetSupportThread(selectedId),
+    enabled: Boolean(selectedId),
+  })
+  const thread = threadQuery.data
+
+  const replyMutation = useMutation({
+    mutationFn: ({ id, message }) => api.adminAddSupportMessage(id, message),
+    onSuccess: async () => {
+      setReply('')
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: qk.adminSupportThreads }),
+        qc.invalidateQueries({ queryKey: qk.adminSupportThread(selectedId) }),
+      ])
+      toast.success(
+        'Reply saved',
+        'The teacher will see it in their support inbox.',
+      )
+    },
+    onError: (error) => toast.apiError("Couldn't send that reply", error),
+  })
+
+  const sendReply = (event) => {
+    event.preventDefault()
+    const message = reply.trim()
+    if (!selectedId || !message || replyMutation.isPending) return
+    replyMutation.mutate({ id: selectedId, message })
+  }
+
+  return (
+    <div className="neo-world neo-panel overflow-hidden rounded-xl border border-edge bg-paper-raised">
+      <div className="grid min-h-[560px] lg:grid-cols-[minmax(18rem,0.72fr)_minmax(0,1.28fr)]">
+        <aside className="flex min-h-0 flex-col border-b border-edge lg:border-b-0 lg:border-r" aria-label="Support conversations">
+          <div className="flex items-center justify-between gap-3 border-b border-edge px-4 py-3">
+            <div>
+              <h3 className="font-semibold text-ink">Support inbox</h3>
+              <p className="mt-0.5 text-2xs text-ink-muted">
+                {threads.length} conversation{threads.length === 1 ? '' : 's'}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="grid h-8 w-8 place-items-center rounded-md text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+              onClick={() => threadsQuery.refetch()}
+              disabled={threadsQuery.isFetching}
+              aria-label="Refresh support inbox"
+              title="Refresh"
+            >
+              <RotateCcw size={15} className={threadsQuery.isFetching ? 'animate-spin' : ''} aria-hidden="true" />
+            </button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {threadsQuery.isLoading ? (
+              <p className="px-4 py-6 text-sm text-ink-muted">Loading support conversations…</p>
+            ) : threadsQuery.isError ? (
+              <p className="px-4 py-6 text-sm text-mark">Could not load support conversations.</p>
+            ) : threads.length === 0 ? (
+              <div className="flex min-h-[300px] flex-col items-center justify-center px-6 text-center">
+                <Inbox size={25} className="text-ink-faint" aria-hidden="true" />
+                <p className="mt-3 text-sm font-medium text-ink">Your support inbox is clear.</p>
+                <p className="mt-1 text-xs text-ink-muted">New teacher conversations will appear here.</p>
+              </div>
+            ) : (
+              <ul>
+                {threads.map((item) => {
+                  const needsReply = item.last_author_type === 'teacher'
+                  return (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(item.id)}
+                        className={`w-full border-b border-edge px-4 py-3 text-left transition-colors hover:bg-paper-inset ${selectedId === item.id ? 'bg-paper-inset' : ''}`}
+                        aria-pressed={selectedId === item.id}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <span className={`truncate text-sm ${needsReply ? 'font-semibold text-ink' : 'font-medium text-ink-soft'}`}>
+                            {item.teacher_name || item.teacher_email || 'Teacher'}
+                          </span>
+                          <span className="shrink-0 text-2xs text-ink-muted">{supportDate(item.last_message_at || item.updated_at)}</span>
+                        </div>
+                        <p className="mt-1 truncate text-xs font-medium text-ink-soft">{item.subject}</p>
+                        <p className="mt-0.5 truncate text-xs text-ink-muted">{item.last_message || 'No messages yet.'}</p>
+                        <div className="mt-2 flex items-center gap-2 text-2xs">
+                          <span className="truncate text-ink-faint">Support thread</span>
+                          {needsReply ? <span className="shrink-0 rounded-full bg-accent-tint px-1.5 py-0.5 font-medium text-accent-text">Needs reply</span> : null}
+                        </div>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </aside>
+
+        <section className="flex min-h-0 flex-col" aria-label="Support conversation">
+          {!selectedId ? (
+            <div className="flex min-h-[560px] flex-1 flex-col items-center justify-center px-6 text-center">
+              <Mail size={26} className="text-ink-faint" aria-hidden="true" />
+              <p className="mt-3 text-sm font-medium text-ink">Select a conversation to read it here.</p>
+              <p className="mt-1 max-w-sm text-xs text-ink-muted">Teacher messages and your replies will stay together in one thread.</p>
+            </div>
+          ) : threadQuery.isLoading ? (
+            <div className="flex min-h-[560px] items-center justify-center text-sm text-ink-muted">Loading conversation…</div>
+          ) : threadQuery.isError || !thread ? (
+            <div className="flex min-h-[560px] items-center justify-center px-6 text-sm text-mark">Could not load that conversation.</div>
+          ) : (
+            <>
+              <header className="border-b border-edge px-5 py-4">
+                <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Support conversation</p>
+                <h3 className="mt-1 text-lg font-semibold text-ink">{thread.subject}</h3>
+                <p className="mt-1 text-xs text-ink-muted">{thread.teacher_name || 'Teacher'} · Support thread</p>
+              </header>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
+                {thread.messages?.map((message) => {
+                  const isSupport = message.author_type === 'support'
+                  return (
+                    <article key={message.id} className={`flex ${isSupport ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[min(42rem,88%)] rounded-xl border px-4 py-3 ${isSupport ? 'border-accent/30 bg-accent-tint' : 'border-edge bg-paper'}`}>
+                        <div className="flex items-center justify-between gap-4 text-2xs">
+                          <span className="font-medium text-ink-soft">{message.author_name || (isSupport ? 'FlexEd support' : 'Teacher')}</span>
+                          <time className="shrink-0 text-ink-muted">{supportDate(message.created_at)}</time>
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink">{message.body}</p>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+              <form className="border-t border-edge bg-paper px-5 py-4" onSubmit={sendReply}>
+                <label htmlFor="admin-support-reply" className="sr-only">Reply to {thread.teacher_name || 'teacher'}</label>
+                <textarea
+                  id="admin-support-reply"
+                  value={reply}
+                  onChange={(event) => setReply(event.target.value)}
+                  rows={4}
+                  maxLength={5000}
+                  placeholder="Write a reply…"
+                  className="w-full resize-y rounded-lg border border-edge bg-paper-raised px-3 py-2.5 text-sm leading-6 text-ink outline-none placeholder:text-ink-faint focus:border-accent"
+                />
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <p className="text-2xs text-ink-muted">Saved to the thread even if email delivery is unavailable.</p>
+                  <button type="submit" className="btn inline-flex items-center gap-2 text-xs" disabled={!reply.trim() || replyMutation.isPending}>
+                    <Send size={14} aria-hidden="true" />
+                    {replyMutation.isPending ? 'Sending…' : 'Send reply'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
+        </section>
       </div>
     </div>
   )
@@ -2261,6 +2449,14 @@ export function AdminPage() {
     queryFn: () => api.adminListAccounts(),
   })
   const accounts = data?.accounts ?? []
+  const adminSupportQuery = useQuery({
+    queryKey: qk.adminSupportThreads,
+    queryFn: () => api.adminListSupportThreads(),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+  const supportNotificationCount = (adminSupportQuery.data?.threads || [])
+    .filter((thread) => thread.last_author_type === 'teacher').length
 
   const onSort = (key) => {
     setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }))
@@ -2425,13 +2621,14 @@ export function AdminPage() {
   const TABS = React.useMemo(() => [
     { id: 'overview', label: 'Overview' },
     { id: 'users', label: 'Customers', count: accounts.length || undefined },
+    { id: 'support', label: 'Support', count: supportNotificationCount || undefined },
     { id: 'plans', label: 'Lesson Plans' },
     { id: 'standards', label: 'Standards Check' },
     { id: 'schools', label: 'Schools' },
     { id: 'onboarding', label: 'Onboarding' },
     { id: 'billing', label: 'Billing' },
     { id: 'settings', label: 'Settings' },
-  ], [accounts.length])
+  ], [accounts.length, supportNotificationCount])
 
   return (
     <SplitLayout
@@ -2747,6 +2944,12 @@ export function AdminPage() {
                 </>
               )}
             </div>}
+
+            {/* Lesson Plans Section */}
+            <div id="section-support" className={activeTab === 'support' ? '' : 'hidden'}>
+              <div className="mb-6"><p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Customer care</p><h2 className="mt-1 text-2xl font-bold tracking-tight text-ink">Support</h2><p className="mt-1 text-sm text-ink-muted">Read teacher conversations and reply from the admin panel.</p></div>
+              <AdminSupportInbox />
+            </div>
 
             {/* Lesson Plans Section */}
             <div id="section-plans" className={activeTab === 'plans' ? '' : 'hidden'}>

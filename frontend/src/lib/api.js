@@ -528,9 +528,9 @@ export const api = {
   publicPrice: ({ signal } = {}) => request('/api/billing/price', { signal }),
 
   /* ── admin ────────────────────────────────────────────────────────────────
-     Gated server-side by is_admin (see deps.get_current_admin) — a non-admin
-     account gets the normal 403 envelope, not a hidden feature that merely
-     isn't linked to. */
+     Gated server-side by the configured owner identity (see
+     deps.get_current_admin) — a subscriber gets the normal 403 envelope, not
+     a hidden feature that merely isn't linked to. */
   adminListAccounts: ({ signal } = {}) => request('/api/admin/accounts', { signal }),
   adminListPlans: ({ limit = 50, offset = 0, q, userId, signal } = {}) => {
     const qs = new URLSearchParams(
@@ -545,6 +545,14 @@ export const api = {
   adminUsageCosts: ({ days = 30, signal } = {}) =>
     request(`/api/admin/usage-costs?days=${days}`, { signal }),
   adminStandardsCheck: ({ signal } = {}) => request('/api/admin/qa/standards-check', { signal }),
+  adminListSupportThreads: ({ signal } = {}) => request('/api/admin/support/threads', { signal }),
+  adminGetSupportThread: (id, { signal } = {}) =>
+    request(`/api/admin/support/threads/${encodeURIComponent(id)}`, { signal }),
+  adminAddSupportMessage: (id, message) =>
+    request(`/api/admin/support/threads/${encodeURIComponent(id)}/messages`, {
+      method: 'POST',
+      body: { message },
+    }),
   adminSetComped: (accountId, comped) =>
     request(`/api/admin/accounts/${accountId}/comp`, { method: 'POST', body: { comped } }),
   adminSetBlocked: (accountId, blocked) =>

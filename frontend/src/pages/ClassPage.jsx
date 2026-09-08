@@ -214,6 +214,7 @@ function ClassSetup({ defaultState = '', activeStates, onCreated, onCancel }) {
                 value={subject}
                 onChange={setSubject}
                 id="new-class-framework"
+                constrainPopover
               />
             ) : (
               <input

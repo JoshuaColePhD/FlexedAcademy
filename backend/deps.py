@@ -82,10 +82,12 @@ def get_current_user_optional(aplang_session: str | None = Cookie(default=None, 
 
 
 def get_current_admin(user_id: str = Depends(get_current_user)) -> str:
-    """Same session cookie, plus the is_admin column. A normal teacher's
-    session token grants them nothing extra here — admin is a row in the
-    database, not a scope encoded in the token, so revoking it takes effect
-    on the very next request rather than waiting out a session's lifetime."""
-    if not db.is_admin(user_id):
+    """Require the one configured owner account for every admin route.
+
+    The historical `users.is_admin` column is not enough to grant access: a
+    subscriber, or an account left with an old admin flag, must not be able to
+    open the admin panel or call its API directly.
+    """
+    if not db.is_owner(user_id):
         raise AppError("forbidden", "Not authorized.", status=403)
     return user_id

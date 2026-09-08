@@ -52,7 +52,7 @@ def _require_school_access(user_id: str, school_id: str) -> dict:
     if not school:
         raise AppError("not_found", "School not found.", status=404)
     user = db.get_user_by_id(user_id)
-    if not user or (not db.is_admin(user_id) and user.get("school") != school_id):
+    if not user or (not db.is_owner(user_id) and user.get("school") != school_id):
         raise AppError("not_found", "School not found.", status=404)
     return school
 
@@ -81,7 +81,7 @@ def upload_calendar(
         # administrative change. A normal teacher may submit a correction for
         # their own registered school, but cannot create a new school resource
         # that other accounts will later inherit.
-        if not db.is_admin(user_id):
+        if not db.is_owner(user_id):
             raise AppError(
                 "school_admin_required",
                 "A school calendar can only be added by an administrator.",
