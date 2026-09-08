@@ -25,6 +25,18 @@ import { useEffect, useState } from 'react'
 // place it just duplicates the row this component always renders anyway —
 // so it's filtered out rather than shown twice. Anything more specific than
 // the bare word ("Other — a different era") is a real option and stays.
+export function summarizeClarifyingAnswers(questions, finalAnswers) {
+  const bits = (questions || [])
+    .map((qq) => String(finalAnswers?.[qq.id] || '').trim())
+    .filter(Boolean)
+    .map((answer) => answer.split(/[.!\n]/)[0].trim())
+    .filter(Boolean)
+  if (!bits.length) return null
+  if (bits.length === 1) return bits[0]
+  if (bits.length === 2) return `${bits[0]} and ${bits[1]}`
+  return `${bits.slice(0, -1).join(', ')}, and ${bits[bits.length - 1]}`
+}
+
 const isBareOther = (opt) => opt.trim().toLowerCase() === 'other'
 function realOptions(q) {
   return (q.options || []).filter((opt) => !isBareOther(opt))
@@ -61,11 +73,17 @@ export function LessonQuestions({ questions, onSubmit }) {
 
   const finish = (finalAnswers) => {
     setSubmitted(true)
-    const text = questions
+    const answered = questions
       .map((qq) => (finalAnswers[qq.id] ? `${qq.text} ${finalAnswers[qq.id]}` : null))
       .filter(Boolean)
-      .join('\n')
-    onSubmit(text || 'Continue with what you already know from this conversation.')
+    const summary = summarizeClarifyingAnswers(questions, finalAnswers)
+    // Skip with nothing chosen must not dump the question list back as the
+    // teacher's "answer" — the model already has the questions.
+    if (!answered.length) {
+      onSubmit('Continue with what you already know from this conversation.')
+      return
+    }
+    onSubmit(answered.join('\n'), { youSaid: summary })
   }
 
   const advance = (finalAnswers) => {

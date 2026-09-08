@@ -270,7 +270,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
               label: nextStatus.label,
               requestId: nextStatus.requestId,
               attempt: nextStatus.attempt,
-              step: phase === 'retrieving' ? 'retrieval' : phase === 'writing' ? 'building' : phase === 'thinking' ? 'planning' : phase === 'context_ready' ? 'planning' : phase === 'accepted' || phase === 'queued' ? 'context' : undefined,
+              step: phase === 'retrieving' ? 'standards' : phase === 'writing' ? 'days' : phase === 'thinking' ? 'standards' : phase === 'context_ready' ? 'standards' : phase === 'accepted' || phase === 'queued' ? 'context' : undefined,
             })
           }
           if (Array.isArray(event.template_days) && event.template_days.length) {

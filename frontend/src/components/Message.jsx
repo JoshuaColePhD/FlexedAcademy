@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUpRight, Check, Copy, Pencil, RotateCcw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { scanGrounding } from '../lib/grounding'
-import { dayTitle, orderedDays } from '../lib/planShape'
+import { dayTitle, orderedDays, DAYS } from '../lib/planShape'
 import { Cite } from './Citation'
 import { WeekStrip } from './WeekStrip'
 import { ThinkingIndicator } from './ThinkingIndicator'
@@ -47,6 +47,16 @@ function useCopy() {
   return { copied, copy }
 }
 
+function focusDuring(plan) {
+  const days = orderedDays(plan)
+  const day = days.find((item) => item.name === 'Wednesday' && !item.no_school)
+    || days.find((item) => !item.no_school)
+  if (!day) return null
+  const dayIndex = DAYS.indexOf(day.name)
+  if (dayIndex < 0) return null
+  return { dayIndex, name: day.name, field: 'during' }
+}
+
 /* One exchange on the page.
  *
  * Both turns sit in the same neo-raised, rounded box now — the teacher's own
@@ -64,13 +74,11 @@ function MessageImpl({
   onEdit,
   isLast,
   hideWeekStrip = false,
-  // False for every bubble but the last in a same-role run (ChatPage's own
-  // grouping) — a tightly-stacked run only needs one timestamp, on the
-  // bubble it actually ended at, not one per line fighting the same-role
-  // spacing that's supposed to read as "one thought, several lines."
   showTimestamp = true,
   bubbleGroup = 'single',
   onApplyAdvice,
+  onOpenDay,
+  onUndo,
 }) {
   const { copied, copy } = useCopy()
   const [editing, setEditing] = useState(false)
@@ -282,7 +290,7 @@ function MessageImpl({
                 style={isUser ? { backgroundColor: 'rgb(var(--msg-user-bg-rgb) / 0.15)', color: 'var(--ink)' } : undefined}
               >
                 {isUser ? (
-                  <p className="m-0 whitespace-pre-wrap">{message.content}</p>
+                  <p className="m-0 whitespace-pre-wrap">{message.youSaid ? `You said: ${message.youSaid}` : message.content}</p>
                 ) : (
                   <div className="msg-markdown">
                     {/* Partial markdown is expensive and unstable while the
@@ -362,24 +370,10 @@ function MessageImpl({
           </button>
         ) : null}
 
-        {/* The guided alternative to typing — see LessonQuestions, which now
-            renders in a dock above the composer (ChatPage's pendingQuestions)
-            instead of inline, so it reads as "answer below" rather than a
-            card stuck mid-transcript that scrolls out of reach. isLast means
-            this IS the pending round — the dock owns it, so there's nothing
-            to show here. An older message that still carries unanswered
-            questions (superseded by whatever was said since) gets a plain,
-            non-interactive summary instead of silently dropping what was
-            asked. */}
+        {/* Answered clarifying rounds collapse onto the teacher's bubble as
+            "You said:". Nothing extra is left on this assistant turn. */}
         {!isUser && message.questions?.length && !isLast ? (
-          <div className="mt-3 flex flex-col gap-1 rounded-2xl bg-paper-sunken p-2.5 text-sm text-ink-muted">
-            <p className="eyebrow text-ink-faint">Earlier questions</p>
-            <ul className="flex list-none flex-col gap-1">
-              {message.questions.map((q) => (
-                <li key={q.id}>{q.text}</li>
-              ))}
-            </ul>
-          </div>
+          <p className="mt-3 text-sm text-ink-muted">A few questions from earlier — answered below.</p>
         ) : null}
 
         {/* THE VERIFICATION.
@@ -393,7 +387,21 @@ function MessageImpl({
             panel it replaces. */}
         {!isUser && message.plan?.days?.length ? (
           <div className="mt-3 flex w-full flex-col gap-3.5">
-            {hideWeekStrip ? null : <WeekStrip days={message.plan.days} loose />}
+            {hideWeekStrip ? null : (
+              <WeekStrip days={message.plan.days} loose onSelectDay={onOpenDay} />
+            )}
+            {(() => {
+              const focus = onOpenDay ? focusDuring(message.plan) : null
+              return focus ? (
+                <button
+                  type="button"
+                  className="self-start text-sm font-medium text-accent-text hover:underline"
+                  onClick={() => onOpenDay(focus.dayIndex, focus.field)}
+                >
+                  {focus.name}’s during
+                </button>
+              ) : null
+            })()}
             {grounded.length ? (
               <div className="grounding-line">
                 <span>Grounded:</span>
@@ -468,6 +476,15 @@ function MessageImpl({
               aria-label="Edit and send again"
             >
               <Pencil size={14} aria-hidden="true" />
+            </button>
+          ) : null}
+          {!isUser && isLast && onUndo ? (
+            <button
+              type="button"
+              className="fa-press rounded-md px-1.5 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink"
+              onClick={onUndo}
+            >
+              Undo last change
             </button>
           ) : null}
           {!isUser && isLast && onRetry ? (

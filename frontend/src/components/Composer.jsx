@@ -1109,7 +1109,7 @@ export function Composer({
                 isRecording
                   ? 'fa-listening bg-mark text-white hover:bg-mark/90'
                   : isStreaming && onStop
-                    ? 'bg-mark-tint text-mark hover:shadow-sm'
+                    ? 'bg-paper-raised text-ink-soft hover:shadow-sm'
                     : isStreaming
                       ? 'bg-transparent text-ink-muted'
                       : showSendAction
@@ -1138,7 +1138,7 @@ export function Composer({
               }
               aria-label={
                 isStreaming && onStop
-                  ? 'Stop generating'
+                  ? 'Pause reply'
                   : isTranscribing
                     ? 'Transcribing'
                     : isRecording
@@ -1173,10 +1173,17 @@ export function Composer({
                 }`}
                 aria-hidden="true"
               />
+              <Pause
+                size={16}
+                className={`absolute transition-all duration-300 md:size-[15px] ${
+                  isStreaming && onStop ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
+                }`}
+                aria-hidden="true"
+              />
               <Square
                 size={15}
                 className={`absolute transition-all duration-300 md:size-3.5 ${
-                  isRecording || (isStreaming && onStop) ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
+                  isRecording && !(isStreaming && onStop) ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
                 }`}
                 fill="currentColor"
                 aria-hidden="true"

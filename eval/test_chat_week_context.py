@@ -98,8 +98,8 @@ def main() -> int:
         check("names the pacing guide's own unit for that week", "Unit 2 — Voice and Tone" in prompt)
         check("tells the model to treat week AND unit as settled", "week and unit" in prompt)
         check(
-            "the ask-rather-than-build rule acknowledges it may already be answered",
-            "don't ask about it again unless the teacher's own message clearly points at a different" in prompt,
+            "the ask-rather-than-build rule never re-asks the named week",
+            "never ask which week" in prompt.lower(),
         )
 
         print("\n2. A resolved week with no matching row in the teacher's own pacing guide")

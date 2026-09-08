@@ -769,6 +769,7 @@ export function ChatPage() {
   // receipt. Keep a short in-session trail for the history
   // popover; the server remains the source of truth when Undo is applied.
   const [lastChange, setLastChange] = useState(null)
+  const [keyboardInset, setKeyboardInset] = useState(0)
   const [revisionHistory, setRevisionHistory] = useState([])
   const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false)
   const [planSaveState, setPlanSaveState] = useState('idle')
@@ -1106,6 +1107,26 @@ export function ChatPage() {
   // The ref points at a different DOM tree when responsive mode switches
   // between in-flow phone layout and the desktop portal.
   }, [isPhone])
+
+  useEffect(() => {
+    const sync = () => {
+      const vv = window.visualViewport
+      if (!vv) {
+        setKeyboardInset(0)
+        return
+      }
+      setKeyboardInset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop))
+    }
+    sync()
+    window.visualViewport?.addEventListener('resize', sync)
+    window.visualViewport?.addEventListener('scroll', sync)
+    window.addEventListener('resize', sync)
+    return () => {
+      window.visualViewport?.removeEventListener('resize', sync)
+      window.visualViewport?.removeEventListener('scroll', sync)
+      window.removeEventListener('resize', sync)
+    }
+  }, [])
 
   const scrollRef = useRef(null)
   const endRef = useRef(null)
@@ -1770,7 +1791,7 @@ export function ChatPage() {
       label: stream.status.label,
       previewDays: stream.preview?.days || [],
       dayNames: stream.dayNames || undefined,
-      step: stream.status.phase === 'writing' ? 'building' : stream.status.phase === 'retrieving' ? 'retrieval' : stream.status.phase === 'thinking' ? 'planning' : undefined,
+      step: stream.status.phase === 'writing' ? 'days' : stream.status.phase === 'retrieving' ? 'standards' : stream.status.phase === 'thinking' ? 'standards' : undefined,
       code: stream.status.phase,
     })
   }, [stream.dayNames, stream.isStreaming, stream.preview, stream.status, updateActiveWorkActivity])
@@ -1784,12 +1805,18 @@ export function ChatPage() {
     },
     onStatus: (event) => {
       if (event.code === 'tool_call') {
+        if (event.tool === 'ask_clarifying_questions') {
+          updateActiveWorkActivity(event)
+          return
+        }
         const kind = event.tool === 'generate_quiz'
           ? 'quiz'
           : event.tool === 'update_lesson_day'
             ? 'revision'
-            : 'plan'
-        startWorkActivity(event.requestId, kind)
+            : event.tool === 'generate_lesson_plan'
+              ? 'plan'
+              : null
+        if (kind) startWorkActivity(event.requestId, kind)
       }
       updateActiveWorkActivity(event)
     },
@@ -2162,8 +2189,19 @@ export function ChatPage() {
       // payload; leaving the chip pinned implied they were still in context
       // for every later message, which was never true even before this fix.
       setAttachments([])
-      const newUserMessage = retryMessage || { id: nextId(), role: 'user', content: promptText || `Sent ${atts.length} file(s)` }
-      const nextMessages = retryMessage ? [...historyMessages, retryMessage] : [...messages, newUserMessage]
+      const displayContent = options.youSaid
+        ? `You said: ${options.youSaid}`
+        : (promptText || `Sent ${atts.length} file(s)`)
+      const newUserMessage = retryMessage || {
+        id: nextId(),
+        role: 'user',
+        content: displayContent,
+        ...(options.youSaid ? { youSaid: options.youSaid } : {}),
+      }
+      const withoutOpenQuestions = (list) => list.map((m) => (m.questions ? { ...m, questions: null } : m))
+      const nextMessages = retryMessage
+        ? withoutOpenQuestions([...historyMessages, retryMessage])
+        : [...withoutOpenQuestions(messages), newUserMessage]
       // The scroll effect reads this once and follows the latest transcript
       // content instead of leaving the new turn above the visible area.
       // and clears it, so the reply that's about to arrive doesn't drag the
@@ -2264,7 +2302,6 @@ export function ChatPage() {
         }
       }
 
-      const shown = promptText || `Sent ${atts.length} file(s)`
       if (activeChatId) {
         // Persistence is deliberately decoupled from model startup. The
         // message is already visible optimistically and the stream has all
@@ -2281,7 +2318,7 @@ export function ChatPage() {
           const clientId = nextId()
           void persistMessage(activeChatId, {
             role: 'user',
-            content: shown,
+            content: displayContent,
             client_id: clientId,
             ...(options.voiceTurn ? { source: 'voice' } : {}),
           }).then((saved) => {
@@ -2357,10 +2394,12 @@ export function ChatPage() {
         setPreparing(false)
         if (chatMode === 'research') pendingActivityKindRef.current = 'research'
         liveMessageIdRef.current = nextId()
+        const firstThinking = chatThinkingLabel(chatMode, { planning })
         setMessages((prev) => [
           ...prev,
-          { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: chatThinkingLabel(chatMode, { planning }) },
+          { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: firstThinking },
         ])
+        if (voiceOpen) voice.speak(`${firstThinking}.`)
         // The same value just pinned onto the chat by createChat above, so
         // this first turn and every later one (see the second
         // chatStream.start below) name the identical week.
@@ -2435,10 +2474,12 @@ export function ChatPage() {
          spoken) with no idea which week it was on. The chat's pinned week
          doesn't drift, so it's safe to keep sending. */
       liveMessageIdRef.current = nextId()
+      const laterThinking = chatThinkingLabel(chatMode, { planning })
       setMessages((prev) => [
         ...prev,
-        { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: chatThinkingLabel(chatMode, { planning }) },
+        { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: laterThinking },
       ])
+      if (voiceOpen) voice.speak(`${laterThinking}.`)
       const chatResult = await chatStream.start(payloadMessages, {
         chatId: activeChatId,
         classId,
@@ -3003,8 +3044,8 @@ export function ChatPage() {
      with no indication anything had happened. */
   const stopGenerating = useCallback(() => {
     stream.stop()
-    finishWorkActivity(null, { status: 'cancelled', summary: 'Stopped.' })
-    const content = 'Stopped — send whenever you’re ready.'
+    finishWorkActivity(null, { status: 'cancelled', summary: 'Paused — send whenever you’re ready.' })
+    const content = 'Paused — send whenever you’re ready.'
     setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content }])
     if (localFor.current) {
       void persistMessage(localFor.current, { role: 'assistant', content })
@@ -3017,18 +3058,19 @@ export function ChatPage() {
      reply, which is interruptible and just wasn't wired. */
   const stopChatting = useCallback(() => {
     chatStream.stop()
-    finishWorkActivity(null, { status: 'cancelled', summary: 'Stopped.' })
+    voice.cancelSpeech()
+    finishWorkActivity(null, { status: 'cancelled', summary: 'Paused — send whenever you’re ready.' })
     // Aborting never reaches onDone/onError, so the live placeholder (see
     // liveMessageIdRef) would otherwise sit there permanently mid-stream —
     // settle it (or drop it, if nothing had streamed yet) before adding the
     // "Stopped" message below.
     finalizeLiveMessage()
-    const content = 'Stopped — send whenever you’re ready.'
+    const content = 'Paused — send whenever you’re ready.'
     setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content }])
     if (localFor.current) {
       void persistMessage(localFor.current, { role: 'assistant', content })
     }
-  }, [chatStream, persistMessage, finalizeLiveMessage, finishWorkActivity])
+  }, [chatStream, persistMessage, finalizeLiveMessage, finishWorkActivity, voice])
 
   /* Rebuild the last turn from the same prompt. Keep the original user row and
      remove only the terminal error row; retrying must not duplicate the prompt
@@ -3089,7 +3131,7 @@ export function ChatPage() {
      text straight back into the normal submit path — the model sees it as
      just another user turn, no different from having typed it. */
   const onAnswerQuestions = useCallback(
-    (message, text) => {
+    (message, text, meta = {}) => {
       setMessages((prev) => prev.map((m) => (m.id === message.id ? { ...m, questions: null } : m)))
       // The clarifying-questions form lives in its own dock ABOVE the
       // composer (questionsPanel, below) — answering it collapses that dock,
@@ -3100,7 +3142,7 @@ export function ChatPage() {
       // back to the bottom rather than trusting a scroll position measured
       // against a dock that's mid-close.
       setAtBottom(true)
-      submit(text)
+      submit(text, { youSaid: meta.youSaid })
     },
     [submit]
   )
@@ -3424,6 +3466,9 @@ export function ChatPage() {
     setOpenTweak(tweak)
     setExpanded(true)
   }, [])
+  const handleOpenPlanDay = useCallback((dayIndex, field = 'during') => {
+    openDocument({ dayIndex, field })
+  }, [openDocument])
 
   /* The rail's other rows open the same embossed panel the plan does (see
      ArtifactDetailPanel) instead of each inventing its own. `viewKind`
@@ -3846,6 +3891,8 @@ export function ChatPage() {
                          transcript. Phone has no rail to carry it, so it stays
                          here for isPhone. */
                       hideWeekStrip={!isPhone}
+                      onOpenDay={m.plan?.days?.length ? handleOpenPlanDay : undefined}
+                      onUndo={i === messages.length - 1 && m.role === 'assistant' && m.plan?.days?.length && lastChange ? undoLastChange : undefined}
                       voiceOpen={voiceOpen}
                       showTimestamp={groupEnd}
                       showTail={groupEnd}
@@ -3858,7 +3905,7 @@ export function ChatPage() {
                       return (
                         <WorkActivityCard
                           activity={activity}
-                          compact={isLive}
+                          compact={isLive && activity.kind !== 'plan'}
                           onStop={activity.status === 'active' ? (stream.isStreaming ? stopGenerating : chatStream.isStreaming ? stopChatting : undefined) : undefined}
                           onRetry={activity.status === 'error' && !busy ? () => retryLast(activity.requestId) : undefined}
                           onViewPlan={activity.status === 'complete' && artifact?.planId ? () => openDocument() : undefined}
@@ -3985,7 +4032,10 @@ export function ChatPage() {
       {/* The dock. Composer stays in the SAME slot of the same parent across
           empty/non-empty transitions, preserving focus, the recorder, and the
           fixed-shape input shell. Only the wrapper's className may change. */}
-      <div className={`composer-dock-surface shrink-0 bg-transparent pb-5 pt-3${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-open' : ''}`}>
+      <div
+        className={`composer-dock-surface shrink-0 bg-transparent pb-5 pt-3${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-open' : ''}`}
+        style={isPhone && keyboardInset > 8 ? { paddingBottom: `${keyboardInset + 8}px` } : undefined}
+      >
         <div className="relative mx-auto w-full max-w-4xl px-gutter">
           {artifact?.planId && (
             planSaveState === 'pending' ||
@@ -4087,7 +4137,8 @@ export function ChatPage() {
                 type="button"
                 className={`fa-rise fa-press flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
                 onClick={() => {
-                  endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+                  const scroller = scrollRef.current
+                  if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
                 }}
               >
                 <ArrowDown size={13} aria-hidden="true" /> Latest
@@ -4220,7 +4271,7 @@ export function ChatPage() {
                   <div className={`questions-dock-body${questionsExit.closing ? ' is-closing' : ''}`}>
                     <LessonQuestions
                       questions={lastQuestions.questions}
-                      onSubmit={(text) => onAnswerQuestions(lastQuestions.message, text)}
+                      onSubmit={(text, meta) => onAnswerQuestions(lastQuestions.message, text, meta)}
                     />
                   </div>
                 </div>
@@ -4286,7 +4337,7 @@ export function ChatPage() {
                         // stop() here ended voice mode outright the first time a
                         // teacher tapped an option on a clarification card.
                         voice.cancelSpeech()
-                        onAnswerQuestions(pendingQuestions.message, text)
+                        onAnswerQuestions(pendingQuestions.message, text, { youSaid: text })
                       }}
                     />
                   </div>
@@ -4298,8 +4349,9 @@ export function ChatPage() {
                placeholder is simply cut off mid-word. */
             placeholder={
               chatMode === 'research' ? 'What should I look up?'
-                : chatMode === 'build' || chatMode === 'sub_plan' ? 'What should this week cover?'
-                : 'Ask anything about this week…'
+                : chatMode === 'build' || chatMode === 'sub_plan'
+                  ? (displayWeek ? `What should Week ${displayWeek.week} cover?` : 'What should this week cover?')
+                : (displayWeek ? `Ask anything about Week ${displayWeek.week}…` : 'Ask anything about this week…')
             }
             sendLabel="Send message"
           />
