@@ -280,17 +280,19 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
           {profileAvatarNode}
         </button>
       ) : (
-        <div className="rail-reveal flex min-w-0 flex-1 items-center gap-1">
+        <div className="rail-reveal flex min-w-0 w-full flex-1 items-center gap-1">
           {/* One control, not two — this used to be a Link straight to
               Settings sitting beside a separate chevron button that opened
               this same popover, and the popover already has its own
               Settings row (below). Both pieces did the same job of "find
               your account," just at different distances, so they're merged
               into the single toggle the collapsed state above already
-              uses. */}
+              uses. On spacious (phone home) this profile control is meant
+              to span most of the footer; the theme toggle stays a compact
+              control pinned to the trailing edge. */}
           <button
             type="button"
-            className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left transition-colors hover:bg-paper-inset ${spacious ? 'min-h-[48px] px-2.5 py-2.5' : 'gap-2 px-2 py-1.5'}`}
+            className={`account-menu-profile flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left transition-colors hover:bg-paper-inset ${spacious ? 'min-h-[48px] px-2.5 py-2.5' : 'gap-2 px-2 py-1.5'}`}
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
             aria-label={`Open account menu for ${profileLabel}`}
