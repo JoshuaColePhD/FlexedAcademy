@@ -818,7 +818,14 @@ export function ChatPage() {
         : Object.keys(previous).find((id) => previous[id]?.anchorId === anchorId && previous[id]?.status === 'active')
       const inherited = previousId ? previous[previousId] : null
       const next = inherited
-        ? { ...inherited, requestId, kind, title: activityTitle(kind) }
+        ? {
+            ...inherited,
+            requestId,
+            kind,
+            title: activityTitle(kind),
+            status: 'active',
+            error: undefined,
+          }
         : createWorkActivity({ requestId, anchorId, kind, title: activityTitle(kind) })
       const result = { ...previous, [requestId]: next }
       if (previousId && previousId !== requestId) delete result[previousId]
@@ -847,6 +854,8 @@ export function ChatPage() {
         [id]: updateWorkActivity({ ...current, ...patch }, {
           status: patch.status || 'complete',
           done: patch.status !== 'error' && patch.status !== 'cancelled',
+          finish: patch.status !== 'error' && patch.status !== 'cancelled',
+          error: patch.error,
           label: patch.summary,
           step: patch.status === 'error' ? current.activeStep : 'saving',
         }),
@@ -1726,10 +1735,19 @@ export function ChatPage() {
       refreshAuth()
     },
     onError: (err) => {
-      finishWorkActivity(null, { status: 'error', error: err.message })
+      finishWorkActivity(null, {
+        status: 'error',
+        error: err.message || "I couldn't finish the week just then.",
+      })
       setMessages((prev) => [
         ...prev,
-        { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
+        {
+          id: nextId(),
+          role: 'assistant',
+          isError: true,
+          content: "I couldn't finish the week just then.",
+          hint: err.hint || 'Tap Try again.',
+        },
       ])
       // The server is the authority; if it refused on entitlement, show the
       // offer rather than only a toast the teacher can't act on.
@@ -1806,6 +1824,12 @@ export function ChatPage() {
               : null
         if (kind) startWorkActivity(event.requestId, kind)
       }
+      // The chat stream's "complete" means the model finished talking, not
+      // that a week was saved. Forwarding it used to flash "Plan ready"
+      // while generate_lesson_plan was still about to run — or while the
+      // reply bubble was still landing. Real completion is finishWorkActivity
+      // from the lesson/quiz/revision callbacks.
+      if (event.code === 'complete' || event.status === 'complete' || event.done) return
       updateActiveWorkActivity(event)
     },
     onRetry: () => {
@@ -1947,7 +1971,10 @@ export function ChatPage() {
       }
     },
     onError: () => {
-      finishWorkActivity(null, { status: 'cancelled' })
+      finishWorkActivity(null, {
+        status: 'error',
+        error: "I couldn't get a reply just then.",
+      })
       const liveId = liveMessageIdRef.current
       liveMessageIdRef.current = null
       setMessages((prev) =>
@@ -3927,7 +3954,7 @@ export function ChatPage() {
                 "not yet decided" through every question after it, which
                 read as the app losing the answer, not as it waiting on a
                 bundle. */}
-            {!hasArtifact && !busy && !pendingQuestions && [...coreChecklist, ...extraDecisions].some((item) => item.key !== 'week' && item.value != null) ? (
+            {!hasArtifact && !busy && !pendingQuestions && !Object.values(workActivities).some((item) => item.status === 'error') && [...coreChecklist, ...extraDecisions].some((item) => item.key !== 'week' && item.value != null) ? (
               // fa-rise: this used to pop in/out with the conditional itself,
               // no different from any other layout change — but it's tied to
               // a few booleans that flip turn to turn (hasArtifact, busy),
