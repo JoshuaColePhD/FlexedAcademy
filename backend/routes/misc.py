@@ -1,8 +1,8 @@
 """Settings, chats, health, and file intake."""
 from __future__ import annotations
 
-import logging
 import hmac
+import logging
 import re
 import subprocess
 import tempfile

@@ -1525,9 +1525,41 @@ function TeachingContextStep({
       : { onNext: onFinish, onBack: onBackToCourse, onSkip: onFinish, skipLabel: 'Skip — the dates look right' }
 
   useOnboardingActions(actionConfig)
+
+  /* mode="wait" keeps the outgoing pane (and its #onboarding-title) mounted
+     for the 200ms exit. A fixed timeout often focused that departing heading
+     on a slower phone layout, then the incoming calendar/course question
+     mounted unfocused. Wait until the live heading actually belongs to this
+     phase — that node cannot exist until the new pane has mounted. */
   useEffect(() => {
-    const timer = setTimeout(() => document.getElementById('onboarding-title')?.focus({ preventScroll: true }), 240)
-    return () => clearTimeout(timer)
+    const schoolTitle = 'Where do you teach?'
+    const calendarTitle = 'Is this your school year?'
+    let cancelled = false
+    let raf = 0
+    const titleMatchesPhase = (title) => {
+      const text = title?.textContent?.trim() || ''
+      if (phase === 'school') return text === schoolTitle
+      if (phase === 'calendar') return text === calendarTitle
+      return Boolean(text) && text !== schoolTitle && text !== calendarTitle
+    }
+    const tryFocus = () => {
+      if (cancelled) return true
+      const title = document.getElementById('onboarding-title')
+      if (!titleMatchesPhase(title)) return false
+      title.focus({ preventScroll: true })
+      return true
+    }
+    const tick = () => {
+      if (tryFocus()) return
+      raf = requestAnimationFrame(tick)
+    }
+    tick()
+    const stop = window.setTimeout(() => cancelAnimationFrame(raf), 2500)
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+      window.clearTimeout(stop)
+    }
   }, [phase])
 
   return (

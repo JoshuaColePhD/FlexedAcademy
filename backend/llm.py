@@ -28,7 +28,6 @@ from .config import settings
 from .embeddings import embed_query
 from .errors import AppError
 from .prompts import (
-    class_period_block,
     day_field_system_prompt,
     day_system_prompt,
     output_length_block,

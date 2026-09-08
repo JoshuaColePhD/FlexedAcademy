@@ -1193,10 +1193,22 @@
   @media (max-width: 767.98px) {
     .onboarding-ground {
       padding: 0;
+      /* Pin to the visible window. 100dvh can sit 1px above window.innerHeight
+         in headless Chromium, and .glass-panel's 1px border on an edge-to-edge
+         card added a second pixel of overflow — the fixed Continue footer then
+         painted past the phone viewport. */
+      position: fixed;
+      inset: 0;
+      height: auto;
+      overflow: hidden;
     }
     .onboarding-card {
       max-width: none;
+      max-height: 100%;
+      min-height: 0;
+      height: 100%;
       border-radius: 0;
+      border: 0 !important;
     }
     .onboarding-column {
       min-height: 0;
@@ -11982,6 +11994,25 @@
 @keyframes onboarding-encourage-in {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 767.98px) {
+  /* Unlayered so it can beat .glass-panel's later unlayered 1px !important
+     border. The matching rules inside @layer components lose that fight, and
+     the Continue footer then sits 1px past a 375×812 phone viewport. */
+  .onboarding-ground {
+    position: fixed;
+    inset: 0;
+    height: auto;
+    overflow: hidden;
+  }
+  .onboarding-card.glass-panel {
+    box-sizing: border-box;
+    height: 100%;
+    max-height: 100%;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
 }
 @media (max-width: 767px) {
   .onboarding-encouragement { display: none; }
