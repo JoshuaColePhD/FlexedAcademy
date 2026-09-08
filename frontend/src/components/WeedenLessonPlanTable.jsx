@@ -1,3 +1,7 @@
+import { useState } from 'react'
+import { orderedDays } from '../lib/planShape'
+import { cellKit } from './cellTweakKit'
+
 const DAYS = [
   ['Monday', 'M'], ['Tuesday', 'T'], ['Wednesday', 'W'], ['Thursday', 'R'], ['Friday', 'F'],
 ]
@@ -16,9 +20,49 @@ const ROWS = [
 const cellStyle = { border: '1px solid #111827', padding: '0.55rem', verticalAlign: 'top', whiteSpace: 'pre-wrap' }
 
 /** Browser representation of Weeden's actual landscape document form. */
-export function WeedenLessonPlanTable({ plan }) {
-  const byDay = Object.fromEntries((plan.days || []).map((day) => [day.name, day]))
+export function WeedenLessonPlanTable({
+  plan,
+  missingDays = 'no_school',
+  onReviseDay,
+  onEditDay,
+  busy,
+  flashCells,
+  openTweak,
+  setOpenTweak,
+}) {
+  const [draft, setDraft] = useState('')
+  const ordered = orderedDays(plan, missingDays)
+  const canTweak = Boolean(onEditDay || onReviseDay)
+  const byDay = Object.fromEntries(ordered.map((day) => [day.name, day]))
+  const dayIndexByName = Object.fromEntries(ordered.map((day, i) => [day.name, i]))
   const standards = [...new Set(DAYS.map(([name]) => byDay[name]?.standards).filter(Boolean))].join('\n\n')
+
+  const openCell = (dayIndex, field) => {
+    if (!canTweak) return
+    const current = ordered[dayIndex]?.[field]
+    setDraft(Array.isArray(current) ? current.join('\n') : String(current || ''))
+    setOpenTweak?.({ dayIndex, field })
+  }
+
+  const applyEdit = (nextContent = draft) => {
+    const content = String(nextContent || '').trim()
+    if (!content || !openTweak) return
+    const { dayIndex, field } = openTweak
+    if (onEditDay) onEditDay(dayIndex, ordered[dayIndex], field, content)
+    else onReviseDay?.(dayIndex, ordered[dayIndex], content, field)
+    setDraft('')
+    setOpenTweak?.(null)
+  }
+
+  const kit = cellKit({
+    flashCells,
+    canTweak: canTweak && !busy,
+    openTweak,
+    openCell,
+    applyTweak: applyEdit,
+    draft,
+  })
+
   return (
     <div className="plan-table-scroll" tabIndex={0} role="region" aria-label="Weeden Elementary School weekly lesson plan">
       <table className="plan-table" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
@@ -37,13 +81,25 @@ export function WeedenLessonPlanTable({ plan }) {
             <th style={{ ...cellStyle, background: '#e06666', color: 'white', textAlign: 'center', verticalAlign: 'middle' }}>Standard / DOK</th>
             <td style={cellStyle} colSpan="5">{standards}</td>
           </tr>
-          {ROWS.map(([label, field, color]) => (
-            <tr key={field + label}>
+          {ROWS.map(([label, field, color], rowIndex) => (
+            <tr key={`${field}-${label}-${rowIndex}`}>
               <th style={{ ...cellStyle, background: color, color: ['#e69138', '#f1c232', '#00ff00'].includes(color) ? '#111827' : 'white', textAlign: 'center', verticalAlign: 'middle' }}>{label}</th>
               {DAYS.map(([name]) => {
                 const day = byDay[name]
+                const dayIndex = dayIndexByName[name]
+                const isEditing = kit.isOpen(dayIndex, field)
                 const value = day?.no_school ? (day.title || 'No School') : (day?.[field] || '')
-                return <td key={name} style={cellStyle}>{value}</td>
+                const extra = day?.no_school ? {} : kit.editableProps(dayIndex, field)
+                return (
+                  <td
+                    key={name}
+                    style={cellStyle}
+                    {...(isEditing || day?.no_school ? {} : extra)}
+                    className={extra.className}
+                  >
+                    {isEditing ? kit.tweakBody(dayIndex, field, name) : value}
+                  </td>
+                )
               })}
             </tr>
           ))}

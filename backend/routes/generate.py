@@ -134,12 +134,91 @@ def _chat_class(user_id: str, chat_id: str | None) -> dict | None:
         return None
     return db.get_class(user_id, chat["class_id"])
 
+# Persisted on clarifying-question turns so the round cap does not depend
+# on the model repeating a particular English phrase. ChatPage also sends
+# kind="clarifying_questions" on the live in-memory cards.
+CLARIFY_MARKER = "<!--flexed:clarifying_questions-->"
+
+
+def count_prior_clarify_rounds(messages: list[ChatMessage]) -> int:
+    """Count consecutive clarifying rounds since the last built/updated artifact.
+
+    A round is a structured `kind="clarifying_questions"` message, or one
+    carrying CLARIFY_MARKER in its persisted content. Plain conversational
+    nudges between rounds do not reset the count. A build/revision
+    confirmation (`kind="commitment"` or ChatPage's saved "is built" /
+    "Done —" lines) ends the unbuilt stretch.
+    """
+    rounds = 0
+    for m in reversed(messages):
+        if m.role != "assistant":
+            continue
+        text = (m.content or "").strip()
+        lowered = text.lower()
+        kind = (m.kind or "").strip().lower()
+        if kind == "clarifying_questions" or text.startswith(CLARIFY_MARKER):
+            rounds += 1
+            continue
+        if (
+            kind == "commitment"
+            or " is built" in lowered
+            or " is updated" in lowered
+            or lowered.startswith(("done —", "done -"))
+        ):
+            break
+    return rounds
+
+
+def quiz_tool_policy(*, has_plan: bool, has_quiz: bool) -> str:
+    """When chat may call generate_quiz, including class-scoped standalone quizzes."""
+    types_and_count = (
+        "If the teacher explicitly asks for a quiz, test, or assessment as a "
+        "downloadable file: when their request ALREADY names which question type(s) they want "
+        "(multiple choice, true/false, short answer, matching) AND roughly how many questions, "
+        "call `generate_quiz` with those values directly. Otherwise call `ask_clarifying_questions` "
+        "INSTEAD — two short questions, each with a few tappable options, e.g. 'What kind of "
+        "questions?' (Multiple choice / True or false / Short answer / Matching / A mix) and "
+        "'About how many?' (5 / 10 / 15 / 20). Only ask about whichever of the two the teacher didn't "
+        "already specify — if they said '10 multiple choice questions' that's already both answered, "
+        "build immediately. Never call `generate_quiz` unasked, and never alongside "
+        "`generate_lesson_plan` in the same turn.\n\n"
+    )
+    revise = (
+        "A quiz already exists for this conversation. If the teacher's message is asking "
+        "to change, fix, or improve the quiz you already built ('make it harder', 'add "
+        "two more questions', 'fix question 3', 'make these easier') — call "
+        "`generate_quiz` again with `revises_current: true` so it updates the existing "
+        "quiz instead of building a separate one. Only set it false (or call without it) "
+        "when the teacher explicitly asks for an ADDITIONAL, distinct quiz — a different "
+        "question type, or a second quiz alongside the first.\n\n"
+        if has_quiz
+        else ""
+    )
+    if has_plan:
+        return "A plan already exists for this conversation. " + types_and_count + revise
+    return (
+        "No lesson plan exists yet for this conversation. You MAY still call `generate_quiz` "
+        "when the teacher clearly asked for a quiz/test with types and count (and optionally a "
+        "pasted passage) — that builds a class-scoped quiz without a week. Do not tell them to "
+        "build the week first. If they asked to plan a week in the same turn, call "
+        "`generate_lesson_plan` only and do not also volunteer a quiz.\n\n"
+        + types_and_count
+        + revise
+    )
+
+
 class ChatMessage(BaseModel):
     role: str
     content: str
+    kind: str | None = None
+
 
 class ChatStreamRequest(BaseModel):
     messages: list[ChatMessage]
+    # True when this conversation already has a quiz the teacher is looking
+    # at (plan-backed or standalone). Used so revises_current can fire even
+    # when there is no week yet.
+    has_quiz: bool = False
     # Uploaded text is sent out-of-band from the teacher's message and added
     # to the system context with an explicit reference-only boundary below.
     reference_context: str = Field(default="", max_length=settings.max_generation_context_chars)
@@ -508,12 +587,17 @@ def _build_chat_system_prompt(
 ) -> str:
     cls = _request_class(user_id, class_id, chat_id)
     if cls:
-        subject = cls["subject"]
-        grade = cls["grade"]
+        subject = (cls.get("subject") or "").strip() or None
+        grade = cls.get("grade") or "11"
     else:
         s = db.get_settings_row(user_id)
-        subject = s.get("subject", "AP Language & Composition")
+        subject = (s.get("subject") or "").strip() or None
         grade = s.get("grade", "11")
+
+    if not subject:
+        course_label = "this class (no subject set yet)"
+    else:
+        course_label = f"{subject} (Grade {grade})"
 
     school_id = db.class_school(cls, user_id)
     response_length = llm.output_length_for(user_id)
@@ -526,42 +610,41 @@ def _build_chat_system_prompt(
             "rather than a paragraph of them."
         ),
         "long": (
-            "Give a thorough but focused conversational reply when useful — enough context "
-            "to make the recommendation actionable, without writing the full week day-by-day "
-            "before generate_lesson_plan is called. If you need more from the teacher, ask "
-            "ONE focused question rather than a paragraph of them."
+            "Give a thorough, expert conversational reply when useful — trade-offs, timing, "
+            "misconceptions, and 2–3 options with a recommendation — without writing the full week "
+            "day-by-day before generate_lesson_plan is called. If you need more from the teacher, "
+            "ask ONE focused question rather than a paragraph of them."
         ),
     }.get(
         response_length,
-        "Keep conversational replies concise but complete — usually a few focused sentences "
-        "with enough context to be actionable. The day-by-day content belongs in the generated "
+        "Keep conversational replies concise but complete: usually one to three short paragraphs "
+        "of expert coaching, enough to be actionable. The day-by-day content belongs in the generated "
         "plan itself (generate_lesson_plan), not typed out in chat first. If you need more from "
         "the teacher, ask ONE focused question rather than a paragraph of them.",
     )
     system_prompt = (
-        f"You are a master educator and expert curriculum brainstorming assistant for {subject} (Grade {grade}). "
-        "You have decades of classroom experience. When giving advice, draw upon pedagogical best practices, "
-        "cognitive science, and proven classroom management strategies. Speak with the empathy, wisdom, and practicality "
-        "of a veteran teacher coaching a peer. Focus on active learning, student engagement, and realistic, actionable solutions.\n\n"
-        # Nothing below constrained length, so a message proposing a plan
-        # would write the whole week out in prose — a paragraph plus a full
-        # Monday-through-Friday breakdown — before generate_lesson_plan had
-        # even been called. That's not a preview, it's a rough draft the
-        # teacher reads once here and then reads again for real once the
-        # plan actually builds. Chat is for the pitch, not the plan.
+        f"You are FlexEd's instructional coach for {course_label}. "
+        "You think as well as a strong general assistant, with a specialty in K–12 lesson design, "
+        "assessment, and classroom-realistic pedagogy. Draw on pedagogical research, cognitive science, "
+        "and what actually works in a period: timing, student misconceptions, differentiation, and "
+        "assessment that teachers can actually give. Speak like a veteran colleague coaching a peer.\n\n"
+        "Recover from messy or incomplete asks: infer a reasonable interpretation, state the assumption "
+        "in one clause, and still be useful. Do not fail, stall, or dump tool JSON as chat text.\n\n"
+        # Chat is the pitch and the coaching, never a second copy of the week.
         + response_length_guidance + " "
-        # Any length setting should still sound like a colleague rather than a
-        # system log: keep the answer warm, practical, and interested in what
-        # the teacher is trying to accomplish. The tone rule below is
-        # deliberately the LAST thing in the persona block so it stays salient:
-        # friendly and conversational, and short — the most common complaint is
-        # replies reading as wordy or stiff, not as too terse.
         + "Above all, keep it friendly and conversational — like a colleague chatting, not an "
-        "assistant filing a report. Be warm and natural, talk in the first person, and stay brief: a "
-        "sentence or two of genuine, specific reaction lands better than a polished paragraph. Don't "
+        "assistant filing a report. Be warm and natural, talk in the first person. Don't "
         "pad a reply to seem thorough, don't open with filler like 'Great question!', and don't "
-        "lecture — say the useful thing plainly and keep the conversation moving.\n\n"
+        "lecture. A sentence or two is enough when the teacher just needs a reaction; when they "
+        "need coaching, give the useful thinking (options, a recommendation, why) without writing "
+        "Monday–Friday cells in chat.\n\n"
     )
+    if not subject:
+        system_prompt += (
+            "This class has no subject set. Do not assume AP Language or any other course. "
+            "You may still discuss pedagogy in general, but do not call generate_lesson_plan until "
+            "the teacher sets the class subject. Ask them to pick a subject in class settings.\n\n"
+        )
 
     if cls:
         period_block = prompts.class_period_block(cls.get("period_minutes"))
@@ -963,7 +1046,9 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
             }, request_id, step="context", step_state="active", artifact_type="conversation", attempt=req.attempt)
             plans_for_chat = db.list_plans(user_id, chat_id=req.chat_id, limit=1)["items"] if req.chat_id else []
             has_plan = bool(plans_for_chat)
-            has_quiz = has_plan and bool(db.list_quizzes_for_plan(user_id, plans_for_chat[0]["id"]))
+            has_quiz = bool(req.has_quiz) or (
+                has_plan and bool(db.list_quizzes_for_plan(user_id, plans_for_chat[0]["id"]))
+            )
 
             last_user = next(
                 (m.content for m in reversed(req.messages) if m.role == "user"), ""
@@ -1019,44 +1104,10 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
             # How many ask_clarifying_questions rounds have happened since the
             # last real commitment (a build/revision confirmation) — not a
             # lifetime total, so an earlier plan build followed by a later
-            # quiz-config round doesn't get conflated with this. Real chat
-            # data showed this needed a hard backstop: 7 of 36 chats hit a
-            # second round or later before a plan was ever built, one hit 5
-            # rounds straight — the model has the full prior history to
-            # notice that itself (nothing here truncates `req.messages`),
-            # it's just never told to weigh it.
-            #
-            # A plain conversational nudge between two formal rounds (e.g.
-            # "could you answer with a specific text/topic?") must NOT reset
-            # this count — live-testing this exact fix found the model doing
-            # exactly that (round, nudge, round, round — 3 formal rounds with
-            # only a plain-text reply between two of them), and a naive
-            # "stop at the first non-matching assistant message" walk undercounts
-            # it: that in-between nudge isn't a round, but it also isn't a
-            # commitment, so scanning has to skip over it rather than
-            # stopping there. Only a real build/revision confirmation ends
-            # the count — everything else between rounds still counts
-            # against the same unbuilt stretch.
-            #
-            # Detected by the literal lead-in text the prompt below asks the
-            # model to use ("A couple of quick questions..." — every one of
-            # the real rounds in the data used exactly this phrasing) and the
-            # literal build/revision confirmations from ChatPage.jsx ("...is
-            # built...", "Done — ..."); no tool-call marker exists in the
-            # persisted message row to check instead, so a reworded intro or
-            # confirmation would silently drift this count.
-            prior_clarify_rounds = 0
-            for m in reversed(req.messages):
-                if m.role != "assistant":
-                    continue
-                text = m.content.strip().lower()
-                if text.startswith("a couple of quick questions"):
-                    prior_clarify_rounds += 1
-                    continue
-                if " is built" in text or " is updated" in text or text.startswith(("done —", "done -")):
-                    break  # a real commitment — the unbuilt stretch ends here
-                # Anything else (a plain nudge, a brainstorm reply) is still
-                # part of the same unbuilt stretch — keep scanning past it.
+            # quiz-config round doesn't get conflated with this. Counted from
+            # a structured kind/marker on the message, not a particular
+            # English intro, so rewording the model cannot silently break the cap.
+            prior_clarify_rounds = count_prior_clarify_rounds(req.messages)
             if prior_clarify_rounds >= 2 and req.mode != "plan":
                 system_prompt += (
                     f"\n\nThis conversation has already had {prior_clarify_rounds} rounds of "
@@ -1097,6 +1148,9 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     "specific and present, not effusive: skip empty enthusiasm and exclamation points ('Great question!', "
                     "'Love it!') that read as performative rather than actually engaged.\n\n"
                     "When you have enough information and the user is ready to build or revise the plan, call the `generate_lesson_plan` tool. "
+                    "Recover from messy asks: if they named a text, skill, or quiz type, infer the rest, "
+                    "state the assumption, and either coach or call the right tool. Prefer 2–3 concrete "
+                    "options and a recommendation over a questionnaire. "
                     "If their most recent message is genuinely too vague to act on — a new request like \"I want to "
                     "make a lesson\" with no text, topic, or skill named, a brainstorming reply that doesn't narrow "
                     "anything down, or a revision ask like \"can you change Thursday?\" with no hint of how — call "
@@ -1134,34 +1188,7 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     "\"Sure, building now.\" That line is what the teacher sees while the document is being "
                     "written, and a generic one reads as though the specific conversation you just had didn't "
                     "register.\n\n"
-                    + (
-                        "A plan already exists for this conversation. If the teacher explicitly asks for a "
-                        "quiz, test, or assessment as a downloadable file: when their request ALREADY names "
-                        "which question type(s) they want (multiple choice, true/false, short answer, "
-                        "matching) AND roughly how many questions, call `generate_quiz` with those values "
-                        "directly. Otherwise call `ask_clarifying_questions` INSTEAD — two short questions, "
-                        "each with a few tappable options, e.g. 'What kind of questions?' (Multiple choice / "
-                        "True or false / Short answer / Matching / A mix) and 'About how many?' (5 / 10 / 15 "
-                        "/ 20). Only ask about whichever of the two the teacher didn't already specify — if "
-                        "they said '10 multiple choice questions' that's already both answered, build "
-                        "immediately. Never call `generate_quiz` unasked, and never alongside "
-                        "`generate_lesson_plan` in the same turn.\n\n"
-                        + (
-                            "A quiz already exists for this conversation. If the teacher's message is asking "
-                            "to change, fix, or improve the quiz you already built ('make it harder', 'add "
-                            "two more questions', 'fix question 3', 'make these easier') — call "
-                            "`generate_quiz` again with `revises_current: true` so it updates the existing "
-                            "quiz instead of building a separate one. Only set it false (or call without it) "
-                            "when the teacher explicitly asks for an ADDITIONAL, distinct quiz — a different "
-                            "question type, or a second quiz alongside the first."
-                            if has_quiz
-                            else ""
-                        )
-                        if has_plan
-                        else "No plan exists yet for this conversation, so `generate_quiz` cannot be called — "
-                        "if the teacher asks for a quiz before there is a week to test, tell them to build "
-                        "the week first."
-                    )
+                    + quiz_tool_policy(has_plan=has_plan, has_quiz=has_quiz)
                 )
 
             # Voice mode's own turn-taking, not just a shorter version of the

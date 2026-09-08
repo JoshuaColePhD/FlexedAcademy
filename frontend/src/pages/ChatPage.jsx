@@ -19,6 +19,7 @@ import { firstUnplanned } from '../lib/queue'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
+import { CLARIFY_MARKER, isClarifyingMessage, stripClarifyMarker } from '../lib/chatToolRecovery'
 import { splitDecisions } from '../lib/decisionChecklist'
 import { dayLabel, isSameDay } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
@@ -76,6 +77,15 @@ import { WorkspaceRailContext } from '../lib/workspaceRailContext'
 
 let idSeq = 0
 const nextId = () => `m${++idSeq}`
+
+function standaloneQuizBody(requested, topicFallback) {
+  const types = requested?.questionTypes?.length ? requested.questionTypes : ['multiple_choice']
+  return {
+    ...requested,
+    questionTypes: types,
+    topic: String(requested?.passageText || topicFallback || '').slice(0, 500),
+  }
+}
 
 // The composer is a command surface, not a child of whichever side rail is
 // currently open. Its portal follows the live middle column so the input can
@@ -459,6 +469,15 @@ const waitBeforeRetry = (ms) => new Promise((resolve) => setTimeout(resolve, ms)
  */
 function speakableQuestions(intro, questions) {
   return [intro, ...questions.map((q) => q.text)].filter(Boolean).join(' ')
+}
+
+function chatPayloadFromMessage(m) {
+  const content = m.content || m.planLabel || m.weekLabel || ''
+  return {
+    role: m.role,
+    content,
+    ...(isClarifyingMessage(m) ? { kind: 'clarifying_questions' } : {}),
+  }
 }
 
 function normalizeChatMode(mode) {
@@ -1394,7 +1413,8 @@ export function ChatPage() {
         const loaded = (row.messages || []).map((m) => ({
           id: nextId(),
           role: m.role,
-          content: m.content,
+          content: stripClarifyMarker(m.content),
+          kind: String(m.content || '').includes(CLARIFY_MARKER) ? 'clarifying_questions' : undefined,
           researchSources: (() => {
             if (Array.isArray(m.research_sources_json)) return m.research_sources_json
             try { return m.research_sources_json ? JSON.parse(m.research_sources_json) : null } catch { return null }
@@ -1860,7 +1880,7 @@ export function ChatPage() {
         const saveTo = localFor.current
         if (saveTo) {
           const asText = result.questions.map((q) => `• ${q.text}`).join('\n')
-          void persistMessage(saveTo, { role: 'assistant', content: `${intro}\n\n${asText}` })
+          void persistMessage(saveTo, { role: 'assistant', content: `${CLARIFY_MARKER}\n${intro}\n\n${asText}` })
         }
         qc.invalidateQueries({ queryKey: ['chats'] })
         return
@@ -2322,7 +2342,7 @@ export function ChatPage() {
         }
 
         const firstPayload = [
-          ...historyMessages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
+          ...historyMessages.map(chatPayloadFromMessage),
           { role: 'user', content: selectedStandard ? modelQuery : chatUserContent },
         ]
 
@@ -2361,6 +2381,7 @@ export function ChatPage() {
           mode: planning ? 'plan' : chatMode,
           weekNumber: effectiveWeek,
           referenceContext,
+          hasQuiz: Boolean(viewingQuiz?.id),
           requestId: options.requestId,
         })
 
@@ -2369,6 +2390,72 @@ export function ChatPage() {
         // until the teacher answers, which re-enters submit() as a normal
         // message and lands right back in this same branch.
         if (firstResult?.questions?.length) return
+
+        if (firstResult?.quizRequested) {
+          startWorkActivity(firstResult.requestId, 'quiz')
+          const requested = firstResult.quizRequested
+          const revisingQuizId = requested.revisesCurrent && viewingQuiz?.id ? viewingQuiz.id : null
+          if (!classId && !revisingQuizId) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: 'assistant',
+                content: 'Pick a class first — then I can build a quiz without a week.',
+              },
+            ])
+            finishWorkActivity(firstResult.requestId, { status: 'error', error: 'No class selected.' })
+            return
+          }
+          setQuizBuilding(true)
+          if (!firstResult.text?.trim()) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: 'assistant',
+                content: revisingQuizId
+                  ? 'Updating the quiz now.'
+                  : `Building your quiz now — ${requested.numQuestions} ${questionTypesProse(requested.questionTypes)} questions.`,
+              },
+            ])
+          }
+          setViewKind('quiz')
+          setViewingQuiz(null)
+          if (!expanded && !isPhone) setExpanded(true)
+          if (isPhone) setRailOpen(false)
+          try {
+            const quiz = revisingQuizId
+              ? await api.reviseStandaloneQuiz(revisingQuizId, content)
+              : await api.createStandaloneQuiz(classId, standaloneQuizBody(
+                requested,
+                content || promptText || activeClass?.subject || activeClass?.name || '',
+              ))
+            showReadyNotice(revisingQuizId ? 'Quiz updated' : 'Quiz ready')
+            qc.invalidateQueries({ queryKey: qk.standaloneQuizzes(classId) })
+            setViewingQuiz(quiz)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: 'assistant',
+                content: revisingQuizId
+                  ? `Updated "${quiz.title}." Download the Word document or QTI package from the panel.`
+                  : `Built "${quiz.title}." Download the Word document or QTI package from the panel.`,
+              },
+            ])
+            finishWorkActivity(firstResult.requestId, {
+              status: 'complete',
+              summary: revisingQuizId ? 'Quiz updated and saved.' : 'Quiz built and saved.',
+            })
+          } catch (err) {
+            finishWorkActivity(firstResult.requestId, { status: 'error', error: err.message })
+            toast.apiError(revisingQuizId ? 'Could not update the quiz' : 'Could not build the quiz', err)
+          } finally {
+            setQuizBuilding(false)
+          }
+          return
+        }
 
         if (!firstResult || !firstResult.toolCalled) {
           // The model just replied (a clarifying remark, not a question
@@ -2407,7 +2494,7 @@ export function ChatPage() {
       // the model to route, since a bare follow-up ("why Thursday?") shouldn't
       // silently rebuild the week.
       const payloadMessages = [
-        ...historyMessages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
+        ...historyMessages.map(chatPayloadFromMessage),
         { role: 'user', content: chatUserContent },
       ]
       // Same handoff as above: chatStream.start() sets chatStream.isStreaming
@@ -2436,6 +2523,7 @@ export function ChatPage() {
         mode: planning ? 'plan' : chatMode,
         weekNumber: conversationWeek,
         referenceContext,
+        hasQuiz: Boolean(viewingQuiz?.id),
         requestId: options.requestId,
       })
 
@@ -2445,47 +2533,22 @@ export function ChatPage() {
       // than falling into the revise-the-plan branch below.
       if (chatResult?.quizRequested) {
         startWorkActivity(chatResult.requestId, 'quiz')
-        if (!artifact?.planId) {
-          // The system prompt already tells the model not to call this
-          // tool with no plan built yet (see routes/generate.py's
-          // has_plan) — reaching here means that held anyway, from a race
-          // rather than the model ignoring the instruction, so this is a
-          // plain apology rather than a real error.
+        const requested = chatResult.quizRequested
+        const revisingQuizId = requested.revisesCurrent && viewingQuiz?.id ? viewingQuiz.id : null
+        const canStandalone = Boolean(classId)
+        if (!artifact?.planId && !revisingQuizId && !canStandalone) {
           setMessages((prev) => [
             ...prev,
             {
               id: nextId(),
               role: 'assistant',
-              content: "I need to build this week's plan before I can make a quiz for it.",
+              content: 'Pick a class first — then I can build a quiz without a week.',
             },
           ])
-          finishWorkActivity(chatResult.requestId, { status: 'error', error: "I need to build this week's plan first." })
+          finishWorkActivity(chatResult.requestId, { status: 'error', error: 'No class selected.' })
           return
         }
         setQuizBuilding(true)
-        // A fallback, not a second announcement: onDone already showed the
-        // model's own text above when it wrote any (a natural "Sure, I'll
-        // build that now" it just isn't required to write — see
-        // routes/generate.py's system prompt). Only fires when it said
-        // NOTHING, which is common: a real build takes several real
-        // seconds, and answer-two-taps-then-silence-until-a-finished-quiz-
-        // appears-out-of-nowhere reads as broken, not as "working on it."
-        // quizBuilding's own spinner in the rail already solves this for a
-        // teacher watching the rail, not one watching the chat — which is
-        // most of them, most of the time.
-        // Captured before setViewingQuiz(null) below clears it — this is
-        // "the quiz already open in this conversation," the same role
-        // artifact.planId already plays for plans. Iterating on a quiz used
-        // to always call createQuiz, which only ever inserts a new row
-        // (routes/plans.py), so every "make it harder" piled up a separate
-        // quiz next to the one just built instead of changing it. The model
-        // decides revise-vs-new (generate_quiz's revises_current, routed
-        // through llm.py's system prompt) since it has the conversational
-        // context to tell "make it harder" from "also make a matching
-        // quiz" — this only needs an existing quiz to revise.
-        const revisingQuizId =
-          chatResult.quizRequested.revisesCurrent && viewingQuiz?.id ? viewingQuiz.id : null
-
         if (!chatResult.text?.trim()) {
           setMessages((prev) => [
             ...prev,
@@ -2494,23 +2557,33 @@ export function ChatPage() {
               role: 'assistant',
               content: revisingQuizId
                 ? 'Updating the quiz now.'
-                : `Building your quiz now — ${chatResult.quizRequested.numQuestions} ${questionTypesProse(chatResult.quizRequested.questionTypes)} questions.`,
+                : `Building your quiz now — ${requested.numQuestions} ${questionTypesProse(requested.questionTypes)} questions.`,
             },
           ])
         }
 
-        // Show skeleton
         setViewKind('quiz')
         setViewingQuiz(null)
         if (!expanded && !isPhone) setExpanded(true)
         if (isPhone) setRailOpen(false)
 
         try {
-          const quiz = revisingQuizId
-            ? await api.reviseQuiz(artifact.planId, revisingQuizId, content)
-            : await api.createQuiz(artifact.planId, chatResult.quizRequested)
+          let quiz
+          if (revisingQuizId && artifact?.planId) {
+            quiz = await api.reviseQuiz(artifact.planId, revisingQuizId, content)
+          } else if (revisingQuizId) {
+            quiz = await api.reviseStandaloneQuiz(revisingQuizId, content)
+          } else if (artifact?.planId) {
+            quiz = await api.createQuiz(artifact.planId, requested)
+          } else {
+            quiz = await api.createStandaloneQuiz(classId, standaloneQuizBody(
+              requested,
+              content || activeClass?.subject || activeClass?.name || '',
+            ))
+          }
           showReadyNotice(revisingQuizId ? 'Quiz updated' : 'Quiz ready')
-          qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
+          if (artifact?.planId) qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
+          else qc.invalidateQueries({ queryKey: qk.standaloneQuizzes(classId) })
           setViewingQuiz(quiz)
           setMessages((prev) => [
             ...prev,
@@ -2518,8 +2591,8 @@ export function ChatPage() {
               id: nextId(),
               role: 'assistant',
               content: revisingQuizId
-                ? `Updated "${quiz.title}." Download the Word document or QTI package from the plan panel.`
-                : `Built "${quiz.title}." Download the Word document or QTI package from the plan panel.`,
+                ? `Updated "${quiz.title}." Download the Word document or QTI package from the panel.`
+                : `Built "${quiz.title}." Download the Word document or QTI package from the panel.`,
             },
           ])
           finishWorkActivity(chatResult.requestId, {
@@ -2645,7 +2718,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while

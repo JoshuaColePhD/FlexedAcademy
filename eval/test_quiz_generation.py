@@ -73,11 +73,23 @@ SAMPLE_PLAN = {
 
 SAMPLE_QUIZ = {
     "title": "Week 04 Quiz — Irony",
+    "passages": [],
     "questions": [
         {
             "type": "multiple_choice",
             "prompt": "Which term describes Montresor's friendliness while planning Fortunato's death?",
             "standard_code": "RHS-2.C",
+            "passage_id": "",
+            "alignment": {
+                "bloom": "analyze",
+                "dok": 3,
+                "cras": {
+                    "content_target": "irony",
+                    "cognitive_operation": "classify",
+                    "evidence_basis": "textual detail",
+                    "rationale": "dramatic vs verbal irony",
+                },
+            },
             "choices": ["Verbal irony", "Dramatic irony", "Situational irony", "Litotes"],
             "correct_index": 1,
             "correct_bool": False,
@@ -88,6 +100,17 @@ SAMPLE_QUIZ = {
             "type": "true_false",
             "prompt": "Dramatic irony requires the reader to know something a character does not.",
             "standard_code": "RHS-2.C",
+            "passage_id": "",
+            "alignment": {
+                "bloom": "understand",
+                "dok": 2,
+                "cras": {
+                    "content_target": "dramatic irony",
+                    "cognitive_operation": "define",
+                    "evidence_basis": "definition",
+                    "rationale": "definition check",
+                },
+            },
             "choices": [],
             "correct_index": -1,
             "correct_bool": True,
@@ -98,6 +121,17 @@ SAMPLE_QUIZ = {
             "type": "short_answer",
             "prompt": "Name the narrator of 'The Cask of Amontillado.'",
             "standard_code": "",
+            "passage_id": "",
+            "alignment": {
+                "bloom": "remember",
+                "dok": 1,
+                "cras": {
+                    "content_target": "narrator",
+                    "cognitive_operation": "recall",
+                    "evidence_basis": "text",
+                    "rationale": "name the speaker",
+                },
+            },
             "choices": [],
             "correct_index": -1,
             "correct_bool": False,
@@ -108,6 +142,17 @@ SAMPLE_QUIZ = {
             "type": "matching",
             "prompt": "Match each irony type to its definition.",
             "standard_code": "RHS-2.C",
+            "passage_id": "",
+            "alignment": {
+                "bloom": "understand",
+                "dok": 2,
+                "cras": {
+                    "content_target": "irony types",
+                    "cognitive_operation": "match",
+                    "evidence_basis": "definitions",
+                    "rationale": "pair term to definition",
+                },
+            },
             "choices": [],
             "correct_index": -1,
             "correct_bool": False,
@@ -131,11 +176,13 @@ def _fake_response(content: str):
 def main() -> int:
     real_client = llm.client
     real_get_cache, real_set_cache = llm.db.get_llm_cache, llm.db.set_llm_cache
+    real_get_user = llm.db.get_user_by_id
     # Deterministic and side-effect-free: a cache hit would skip the stubbed
     # client entirely on a second run, and a real write would leave a row in
     # whatever database this environment happens to be pointed at.
     llm.db.get_llm_cache = lambda _hash: None
     llm.db.set_llm_cache = lambda _hash, _resp: None
+    llm.db.get_user_by_id = lambda _uid: None
 
     captured = {}
 
@@ -159,7 +206,7 @@ def main() -> int:
         check("requested types are named", "multiple choice" in system_prompt and "true/false" in system_prompt)
         check("an UNREQUESTED type is not named", "short answer" not in system_prompt and "matching" not in system_prompt)
         check("no fresh retrieval language leaks in", "retriev" not in system_prompt.lower())
-        check("returned quiz matches the schema's own top-level shape", set(quiz.keys()) == {"title", "questions"})
+        check("returned quiz matches the schema's own top-level shape", set(quiz.keys()) == {"title", "passages", "questions"})
 
         print("\n2. validate_quiz accepts a structurally sound quiz covering all four types")
         warnings = schema.validate_quiz(SAMPLE_QUIZ)
@@ -187,6 +234,25 @@ def main() -> int:
         except schema.QuizSchemaError:
             raised = True
         check("zero questions raises QuizSchemaError", raised)
+
+        print("\n3b. all/none of the above is fatal, and invented codes are stripped")
+        above = json.loads(json.dumps(SAMPLE_QUIZ))
+        above["questions"][0]["choices"][3] = "None of the above"
+        above_raised = False
+        try:
+            schema.validate_quiz(above)
+        except schema.QuizSchemaError:
+            above_raised = True
+        check("all/none of the above raises QuizSchemaError", above_raised)
+
+        invented = json.loads(json.dumps(SAMPLE_QUIZ))
+        invented["questions"][0]["standard_code"] = "NOT-A-REAL-CODE"
+        audit_warnings = schema.audit_quiz_standards(invented, SAMPLE_PLAN)
+        check("invented code is stripped", invented["questions"][0]["standard_code"] == "")
+        check("audit warns about the dropped citation", any("NOT-A-REAL-CODE" in w for w in audit_warnings))
+        kept = json.loads(json.dumps(SAMPLE_QUIZ))
+        schema.audit_quiz_standards(invented if False else kept, SAMPLE_PLAN)
+        check("plan's own code is kept", kept["questions"][0]["standard_code"] == "RHS-2.C")
 
         print("\n4. build_qti_zip produces a real, well-formed Canvas-importable package")
         with tempfile.TemporaryDirectory() as tmp:
@@ -231,6 +297,7 @@ def main() -> int:
     finally:
         llm.client = real_client
         llm.db.get_llm_cache, llm.db.set_llm_cache = real_get_cache, real_set_cache
+        llm.db.get_user_by_id = real_get_user
 
     print()
     if FAILURES:

@@ -42,6 +42,14 @@ class StandaloneQuizRequest(BaseModel):
     topic: str | None = Field(default=None, max_length=500)
 
 
+class StandaloneQuizReviseBody(BaseModel):
+    feedback: str = Field(min_length=1, max_length=4000)
+
+
+class StandaloneQuizUpdateRequest(BaseModel):
+    quiz_json: dict
+
+
 def _synthetic_plan(cls: dict) -> dict:
     """A minimal {course, week_of} stand-in so the shared artifact builders —
     which read only those two fields to name the QTI/DOCX files — can work for a
@@ -74,54 +82,44 @@ def create_standalone_quiz(
         raise AppError("class_not_found", "That class doesn't exist.", status=404)
     require_entitlement(user_id)
 
-    unknown = set(body.question_types) - set(schema.QUESTION_TYPES)
-    if unknown:
-        raise AppError(
-            "unknown_question_type",
-            f"Unknown question type(s): {', '.join(sorted(unknown))}.",
-            status=400,
-            hint=f"Valid types: {', '.join(schema.QUESTION_TYPES)}.",
-        )
+    body.question_types = [
+        t for t in (body.question_types or []) if t in schema.QUESTION_TYPES
+    ] or ["multiple_choice"]
     if body.passage_mode not in PASSAGE_MODES:
         raise AppError("bad_passage_mode", f"Unknown passage_mode {body.passage_mode!r}.", status=400)
     if body.passage_mode == "teacher_provided" and not (body.passage_text or "").strip():
-        raise AppError(
-            "passage_text_required",
-            "A passage is required when passage_mode is 'teacher_provided'.",
-            status=400,
-        )
+        # Chat often sets teacher_provided without copying the passage; treat as topic quiz.
+        body.passage_mode = "none"
     if body.passage_mode != "teacher_provided" and not (body.topic or "").strip():
-        raise AppError(
-            "topic_required",
-            "A topic is required unless you provide a passage.",
-            status=400,
-        )
+        body.topic = (cls.get("subject") or cls.get("name") or "this week's content")[:500]
 
     with generation_queue.slot(user_id):
         # A request may have waited behind another generation long enough for
         # the weekly allowance to change; re-check at the actual model start.
         require_entitlement(user_id)
-        quiz_raw = llm.generate_passage_quiz(
-            user_id,
-            subject=cls.get("subject") or "",
-            grade=cls.get("grade") or "",
-            question_types=body.question_types,
-            num_questions=body.num_questions,
-            class_id=class_id,
-            passage_mode=body.passage_mode,
-            passage_text=body.passage_text,
-            passage_title=body.passage_title,
-            topic=body.topic,
-        )
-    try:
-        warnings = schema.validate_quiz(quiz_raw)
-    except schema.QuizSchemaError as e:
-        raise AppError(
-            "quiz_schema_error",
-            f"The generated quiz wasn't usable: {e}",
-            status=502,
-            hint="Try asking for the quiz again — this is a one-sample formatting slip, not a structural problem.",
-        ) from e
+        try:
+            quiz_raw, warnings = schema.quiz_from_generator(
+                lambda skip: llm.generate_passage_quiz(
+                    user_id,
+                    subject=cls.get("subject") or "",
+                    grade=cls.get("grade") or "",
+                    question_types=body.question_types,
+                    num_questions=body.num_questions,
+                    class_id=class_id,
+                    passage_mode=body.passage_mode,
+                    passage_text=body.passage_text,
+                    passage_title=body.passage_title,
+                    topic=body.topic,
+                    skip_cache=skip,
+                )
+            )
+        except schema.QuizSchemaError as e:
+            raise AppError(
+                "quiz_schema_error",
+                f"The generated quiz wasn't usable: {e}",
+                status=502,
+                hint="Try asking for the quiz again — this is a one-sample formatting slip, not a structural problem.",
+            ) from e
 
     quiz_id = db.new_id()
     qti_path, docx_path, artifact_warnings = _build_quiz_artifacts(quiz_raw, _synthetic_plan(cls), quiz_id)
@@ -146,6 +144,77 @@ def list_standalone_quizzes(class_id: str, user_id: str = Depends(get_current_us
     if not db.get_class(user_id, class_id):
         raise AppError("class_not_found", "That class doesn't exist.", status=404)
     return db.list_standalone_quizzes_for_class(user_id, class_id)
+
+
+@router.post("/quizzes/{quiz_id}/revise")
+def revise_standalone_quiz(
+    quiz_id: str, body: StandaloneQuizReviseBody, user_id: str = Depends(get_current_user)
+) -> dict:
+    """In-place revise for a quiz that has no week — ChatPage's revises_current path."""
+    row = _require_standalone_quiz(user_id, quiz_id)
+    require_entitlement(user_id)
+    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    plan = None
+    if row.get("plan_id"):
+        plan_row = db.get_plan(user_id, row["plan_id"])
+        plan = (plan_row or {}).get("plan_json")
+    with generation_queue.slot(user_id):
+        require_entitlement(user_id)
+        try:
+            quiz_raw, warnings = schema.quiz_from_generator(
+                lambda skip: llm.revise_quiz(
+                    user_id, plan, row["quiz_json"], body.feedback,
+                    class_id=row.get("class_id"), skip_cache=skip,
+                )
+            )
+        except schema.QuizSchemaError as e:
+            raise AppError(
+                "quiz_schema_error",
+                f"The revised quiz wasn't usable: {e}",
+                status=502,
+                hint="Try asking for the revision again — this is a one-sample formatting slip, not a structural problem.",
+            ) from e
+    if plan:
+        warnings = [*warnings, *schema.audit_quiz_standards(quiz_raw, plan)]
+    artifact_plan = plan or _synthetic_plan(cls or {})
+    qti_path, docx_path, artifact_warnings = _build_quiz_artifacts(quiz_raw, artifact_plan, quiz_id)
+    warnings = [*warnings, *artifact_warnings]
+    return db.update_quiz(
+        user_id=user_id,
+        quiz_id=quiz_id,
+        quiz_json=quiz_raw,
+        qti_path=qti_path,
+        docx_path=docx_path,
+        warnings=warnings,
+    )
+
+
+@router.put("/quizzes/{quiz_id}")
+def update_standalone_quiz(
+    quiz_id: str, body: StandaloneQuizUpdateRequest, user_id: str = Depends(get_current_user)
+) -> dict:
+    row = _require_standalone_quiz(user_id, quiz_id)
+    try:
+        warnings = schema.validate_quiz(body.quiz_json)
+    except schema.QuizSchemaError as exc:
+        raise AppError("quiz_schema_error", f"The edited quiz wasn't usable: {exc}", status=400) from exc
+    cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    plan = None
+    if row.get("plan_id"):
+        plan_row = db.get_plan(user_id, row["plan_id"])
+        plan = (plan_row or {}).get("plan_json")
+        warnings = [*warnings, *schema.audit_quiz_standards(body.quiz_json, plan or {})]
+    artifact_plan = plan or _synthetic_plan(cls or {})
+    qti_path, docx_path, artifact_warnings = _build_quiz_artifacts(body.quiz_json, artifact_plan, quiz_id)
+    warnings = [*warnings, *artifact_warnings]
+    return db.update_quiz(
+        user_id=user_id,
+        quiz_id=quiz_id,
+        quiz_json=body.quiz_json,
+        qti_path=qti_path,
+        docx_path=docx_path,
+        warnings=warnings,
+    )
 
 
 @router.get("/quizzes/{quiz_id}/download")

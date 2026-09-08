@@ -56,7 +56,7 @@ class PlanFeedback(BaseModel):
 
 
 class QuizRequest(BaseModel):
-    question_types: list[str] = Field(min_length=1, max_length=len(schema.QUESTION_TYPES))
+    question_types: list[str] = Field(default_factory=lambda: ["multiple_choice"], max_length=len(schema.QUESTION_TYPES))
     num_questions: int = Field(default=10, ge=1, le=40)
     passage_mode: Literal["none", "ai_generated", "teacher_provided"] = "none"
     passage_text: str | None = Field(default=None, max_length=20000)
@@ -420,7 +420,7 @@ def patch_plan(plan_id: str, body: PatchPlan, bg_tasks: BackgroundTasks, user_id
             period=identity["period"],
             subject=service.subject_label(cls["subject"]) if cls else None,
         )
-        subject_code, _ = service._resolve_subject_grade(user_id, cls)
+        subject_code, _ = service.require_subject_grade(user_id, cls)
         warnings += retrieval.audit_grounding(
             plan,
             set(row.get("retrieved_ids") or []),
@@ -485,7 +485,14 @@ def revise_whole_plan(
     # another state or course. This matters especially for DC/Common Core,
     # where identical code shapes occur in multiple jurisdictions.
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code = (cls or {}).get("subject") or row.get("course") or "AP_Lang"
+    subject_code = (cls or {}).get("subject") or row.get("course") or ""
+    if not str(subject_code).strip():
+        raise AppError(
+            "subject_required",
+            "Set this class's subject before I can revise this plan.",
+            status=400,
+            hint="Open class settings and pick a subject. I won't assume AP Language.",
+        )
     state = (cls or {}).get("state") or "AL"
     wanted = {retrieval._norm_code(c) for c in retrieved_ids}
     chunks = [
@@ -751,14 +758,9 @@ def create_quiz(
     row = _require_plan(user_id, plan_id)
     require_entitlement(user_id)
 
-    unknown = set(body.question_types) - set(schema.QUESTION_TYPES)
-    if unknown:
-        raise AppError(
-            "unknown_question_type",
-            f"Unknown question type(s): {', '.join(sorted(unknown))}.",
-            status=400,
-            hint=f"Valid types: {', '.join(schema.QUESTION_TYPES)}.",
-        )
+    body.question_types = [
+        t for t in (body.question_types or []) if t in schema.QUESTION_TYPES
+    ] or ["multiple_choice"]
 
     if body.passage_mode == "teacher_provided" and not (body.passage_text or "").strip():
         raise AppError(
@@ -771,25 +773,28 @@ def create_quiz(
         # A request may have waited behind another generation long enough for
         # the weekly allowance to change. Re-check at the actual model start.
         require_entitlement(user_id)
-        quiz_raw = llm.generate_quiz(
-            user_id,
-            row["plan_json"],
-            body.question_types,
-            body.num_questions,
-            class_id=row.get("class_id"),
-            passage_mode=body.passage_mode,
-            passage_text=body.passage_text,
-            passage_title=body.passage_title,
-        )
-    try:
-        warnings = schema.validate_quiz(quiz_raw)
-    except schema.QuizSchemaError as e:
-        raise AppError(
-            "quiz_schema_error",
-            f"The generated quiz wasn't usable: {e}",
-            status=502,
-            hint="Try asking for the quiz again — this is a one-sample formatting slip, not a structural problem.",
-        ) from e
+        try:
+            quiz_raw, warnings = schema.quiz_from_generator(
+                lambda skip: llm.generate_quiz(
+                    user_id,
+                    row["plan_json"],
+                    body.question_types,
+                    body.num_questions,
+                    class_id=row.get("class_id"),
+                    passage_mode=body.passage_mode,
+                    passage_text=body.passage_text,
+                    passage_title=body.passage_title,
+                    skip_cache=skip,
+                )
+            )
+        except schema.QuizSchemaError as e:
+            raise AppError(
+                "quiz_schema_error",
+                f"The generated quiz wasn't usable: {e}",
+                status=502,
+                hint="Try asking for the quiz again — this is a one-sample formatting slip, not a structural problem.",
+            ) from e
+    warnings = [*warnings, *schema.audit_quiz_standards(quiz_raw, row["plan_json"])]
 
     quiz_id = db.new_id()
     qti_path, docx_path, artifact_warnings = _build_quiz_artifacts(quiz_raw, row["plan_json"], quiz_id)
@@ -824,18 +829,21 @@ def revise_quiz_route(
 
     with generation_queue.slot(user_id):
         require_entitlement(user_id)
-        quiz_raw = llm.revise_quiz(
-            user_id, row["plan_json"], quiz_row["quiz_json"], body.feedback, class_id=row.get("class_id")
-        )
-    try:
-        warnings = schema.validate_quiz(quiz_raw)
-    except schema.QuizSchemaError as e:
-        raise AppError(
-            "quiz_schema_error",
-            f"The revised quiz wasn't usable: {e}",
-            status=502,
-            hint="Try asking for the revision again — this is a one-sample formatting slip, not a structural problem.",
-        ) from e
+        try:
+            quiz_raw, warnings = schema.quiz_from_generator(
+                lambda skip: llm.revise_quiz(
+                    user_id, row["plan_json"], quiz_row["quiz_json"], body.feedback,
+                    class_id=row.get("class_id"), skip_cache=skip,
+                )
+            )
+        except schema.QuizSchemaError as e:
+            raise AppError(
+                "quiz_schema_error",
+                f"The revised quiz wasn't usable: {e}",
+                status=502,
+                hint="Try asking for the revision again — this is a one-sample formatting slip, not a structural problem.",
+            ) from e
+    warnings = [*warnings, *schema.audit_quiz_standards(quiz_raw, row["plan_json"])]
 
     qti_path, docx_path, artifact_warnings = _build_quiz_artifacts(quiz_raw, row["plan_json"], quiz_id)
     warnings = [*warnings, *artifact_warnings]
@@ -861,6 +869,7 @@ def update_quiz(
         warnings = schema.validate_quiz(body.quiz_json)
     except schema.QuizSchemaError as exc:
         raise AppError("quiz_schema_error", f"The edited quiz wasn't usable: {exc}", status=400) from exc
+    warnings = [*warnings, *schema.audit_quiz_standards(body.quiz_json, row["plan_json"])]
 
     qti_path, docx_path, artifact_warnings = _build_quiz_artifacts(body.quiz_json, row["plan_json"], quiz_id)
     warnings = [*warnings, *artifact_warnings]

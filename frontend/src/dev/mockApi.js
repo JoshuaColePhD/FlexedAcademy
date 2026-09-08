@@ -1256,6 +1256,38 @@ export function installMockApi() {
       return json(item)
     }
 
+    const standaloneQuizCreate = path.match(/^\/api\/classes\/([^/]+)\/quizzes$/)
+    if (standaloneQuizCreate && method === 'POST') {
+      await wait(800)
+      const classId = standaloneQuizCreate[1]
+      const types = body.question_types || ['multiple_choice']
+      const quiz = {
+        id: uid('quiz'),
+        plan_id: null,
+        class_id: classId,
+        title: 'Class quiz',
+        question_types: types,
+        has_qti: true,
+        has_docx: true,
+        warnings: [],
+        quiz_json: { title: 'Class quiz', passages: [], questions: [] },
+      }
+      state.standaloneQuizzes = state.standaloneQuizzes || {}
+      state.standaloneQuizzes[classId] = [quiz, ...(state.standaloneQuizzes[classId] || [])]
+      return json(quiz)
+    }
+
+    const standaloneQuizRevise = path.match(/^\/api\/quizzes\/([^/]+)\/revise$/)
+    if (standaloneQuizRevise && method === 'POST') {
+      await wait(600)
+      const quizId = standaloneQuizRevise[1]
+      const all = Object.values(state.standaloneQuizzes || {}).flat()
+      const quiz = all.find((item) => item.id === quizId)
+      if (!quiz) return new Response('{}', { status: 404 })
+      quiz.title = quiz.title || 'Class quiz'
+      return json(quiz)
+    }
+
     const quizCreateMatch = path.match(/^\/api\/plans\/([^/]+)\/quiz$/)
     if (quizCreateMatch && method === 'POST') {
       // Slower than most mock writes on purpose — this is a real model call
@@ -1274,6 +1306,7 @@ export function installMockApi() {
       }]
       const quiz = {
         id: uid('quiz'),
+        plan_id: planId,
         title: `${(state.plans[planId] || {}).week_of || 'Week'} Quiz`,
         question_types: types,
         has_qti: true,
@@ -1443,7 +1476,7 @@ export function installMockApi() {
           : wantsQuiz
           ? [
               [{ chunk: 'Sure — building a multiple choice quiz over this week now.' }, 120],
-              [{ tool_call: 'generate_quiz', question_types: ['multiple_choice', 'true_false'], num_questions: 6, passage_mode: passageMode }, 120],
+              [{ tool_call: 'generate_quiz', question_types: ['multiple_choice', 'true_false'], num_questions: 6, passage_mode: passageMode, revises_current: /\b(harder|easier|fix question|add two more)\b/i.test(last) }, 120],
               [{ done: true }, 60],
             ]
           : isVague

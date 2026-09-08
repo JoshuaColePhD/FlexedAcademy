@@ -63,30 +63,62 @@ def test_missing_class_is_404(monkeypatch):
     assert _code(ei.value) == "class_not_found"
 
 
-def test_unknown_question_type_rejected(monkeypatch):
+def test_unknown_question_type_defaults_to_multiple_choice(monkeypatch, tmp_path):
     monkeypatch.setattr(quizzes.db, "get_class", lambda u, c: CLASS)
     monkeypatch.setattr(quizzes, "require_entitlement", lambda u: None)
-    with pytest.raises(Exception) as ei:
-        quizzes.create_standalone_quiz("c1", _body(question_types=["essay"]), user_id="u1")
-    assert _code(ei.value) == "unknown_question_type"
+    monkeypatch.setattr(quizzes.generation_queue, "slot", lambda u: contextlib.nullcontext())
+    seen = {}
+
+    def fake_gen(*a, **k):
+        seen["types"] = k.get("question_types")
+        return FIXTURE_QUIZ
+
+    monkeypatch.setattr(quizzes.llm, "generate_passage_quiz", fake_gen)
+    monkeypatch.setattr(plans_mod.settings, "plans_dir", tmp_path)
+    monkeypatch.setattr(plans_mod.storage, "mirror_file", lambda path: True)
+    monkeypatch.setattr(quizzes.db, "create_quiz", lambda **kw: {"id": kw["quiz_id"], **kw})
+    quizzes.create_standalone_quiz("c1", _body(question_types=["essay"], topic="irony"), user_id="u1")
+    assert seen["types"] == ["multiple_choice"]
 
 
-def test_topic_required_without_passage(monkeypatch):
+def test_empty_topic_falls_back_to_class_subject(monkeypatch, tmp_path):
     monkeypatch.setattr(quizzes.db, "get_class", lambda u, c: CLASS)
     monkeypatch.setattr(quizzes, "require_entitlement", lambda u: None)
-    with pytest.raises(Exception) as ei:
-        quizzes.create_standalone_quiz("c1", _body(passage_mode="none", topic=""), user_id="u1")
-    assert _code(ei.value) == "topic_required"
+    monkeypatch.setattr(quizzes.generation_queue, "slot", lambda u: contextlib.nullcontext())
+    seen = {}
+
+    def fake_gen(*a, **k):
+        seen["topic"] = k.get("topic")
+        return FIXTURE_QUIZ
+
+    monkeypatch.setattr(quizzes.llm, "generate_passage_quiz", fake_gen)
+    monkeypatch.setattr(plans_mod.settings, "plans_dir", tmp_path)
+    monkeypatch.setattr(plans_mod.storage, "mirror_file", lambda path: True)
+    monkeypatch.setattr(quizzes.db, "create_quiz", lambda **kw: {"id": kw["quiz_id"], **kw})
+    quizzes.create_standalone_quiz("c1", _body(passage_mode="none", topic=""), user_id="u1")
+    assert seen["topic"]
 
 
-def test_passage_required_when_teacher_provided(monkeypatch):
+def test_teacher_provided_without_passage_becomes_topic_quiz(monkeypatch, tmp_path):
     monkeypatch.setattr(quizzes.db, "get_class", lambda u, c: CLASS)
     monkeypatch.setattr(quizzes, "require_entitlement", lambda u: None)
-    with pytest.raises(Exception) as ei:
-        quizzes.create_standalone_quiz(
-            "c1", _body(passage_mode="teacher_provided", passage_text="   "), user_id="u1"
-        )
-    assert _code(ei.value) == "passage_text_required"
+    monkeypatch.setattr(quizzes.generation_queue, "slot", lambda u: contextlib.nullcontext())
+    seen = {}
+
+    def fake_gen(*a, **k):
+        seen["mode"] = k.get("passage_mode")
+        seen["topic"] = k.get("topic")
+        return FIXTURE_QUIZ
+
+    monkeypatch.setattr(quizzes.llm, "generate_passage_quiz", fake_gen)
+    monkeypatch.setattr(plans_mod.settings, "plans_dir", tmp_path)
+    monkeypatch.setattr(plans_mod.storage, "mirror_file", lambda path: True)
+    monkeypatch.setattr(quizzes.db, "create_quiz", lambda **kw: {"id": kw["quiz_id"], **kw})
+    quizzes.create_standalone_quiz(
+        "c1", _body(passage_mode="teacher_provided", passage_text="   "), user_id="u1"
+    )
+    assert seen["mode"] == "none"
+    assert seen["topic"]
 
 
 def test_create_builds_planfree_quiz_end_to_end(monkeypatch, tmp_path):
