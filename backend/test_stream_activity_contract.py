@@ -1,6 +1,12 @@
 import json
+import time
 
-from backend.routes.generate import ChatStreamRequest, GenerateRequest, _activity_sse, _with_keepalives
+from backend.routes.generate import (
+    ChatStreamRequest,
+    GenerateRequest,
+    _activity_sse,
+    _with_keepalives,
+)
 
 
 def _event(raw: str) -> dict:
@@ -36,8 +42,6 @@ def test_stream_requests_preserve_logical_request_and_attempt():
 
 
 def test_keepalive_iter_emits_none_while_producer_is_silent():
-    import time
-
     def slow():
         time.sleep(0.05)
         yield "ok"
