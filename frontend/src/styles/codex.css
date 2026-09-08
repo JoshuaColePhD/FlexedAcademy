@@ -2219,6 +2219,21 @@ body:has(.dialog-scrim) .composer-dock-surface {
     overflow-y: auto;
   }
 
+  /* The mobile plan sheet normally clips its rounded shell. The composer
+     actions are an overlay that opens upward from the same shell, though, so
+     that clip hid the menu behind an open plan. Let the menu escape the sheet
+     and lift the composer surface above the reader while it is open. */
+  .mobile-composer-plan-sheet.has-plan {
+    overflow: visible;
+  }
+  .mobile-composer-plan-sheet.has-plan .composer-shell {
+    position: relative;
+    z-index: 4;
+  }
+  .mobile-composer-plan-sheet.has-plan .composer-tools-menu {
+    z-index: 5;
+  }
+
   /* Keep reader controls reachable when the plan is opened from a narrow
      phone, including devices with a bottom home indicator. */
   .mobile-plan-reader .doc-head {
