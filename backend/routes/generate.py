@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 
 import openai
@@ -363,6 +364,18 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     def event_stream():
         lease = None
         try:
+            yield ": keepalive\n\n"
+            yield _activity_sse(
+                {
+                    "status": "connecting",
+                    "status_code": "connecting",
+                    "label": "Starting…",
+                },
+                request_id,
+                step="context",
+                step_state="active",
+                attempt=req.attempt,
+            )
             lease = generation_queue.enqueue(user_id)
             yield _activity_sse(
                 {
@@ -594,8 +607,9 @@ def _build_chat_system_prompt(
         system_prompt += (
             ". Treat the week"
             + (" and unit" if unit_row else "")
-            + " as already settled — don't ask which one this is unless the "
-            "teacher's own message clearly means a different week."
+            + " as already settled — never ask which week this is. The app header "
+            "already named it. Only ask if the teacher's own message clearly "
+            "means a different week."
         )
 
     map_context = llm.map_context_for(user_id, subject, last_user, class_id=cls["id"] if cls else None) if last_user else ""
@@ -892,6 +906,22 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
         request_id = req.request_id or str(uuid.uuid4())
         lease = None
         try:
+            # Headers (and this first frame) must leave the process before
+            # enqueue can block. Safari treats a POST with no response as a
+            # dropped connection — "Chat failed / before the reply started."
+            yield ": keepalive\n\n"
+            yield _activity_sse(
+                {
+                    "status": "connecting",
+                    "status_code": "connecting",
+                    "label": "Starting…",
+                },
+                request_id,
+                step="context",
+                step_state="active",
+                artifact_type="conversation",
+                attempt=req.attempt,
+            )
             lease = generation_queue.enqueue(user_id)
             yield _activity_sse(
                 {
@@ -1044,20 +1074,28 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                 if m.role != "assistant":
                     continue
                 text = m.content.strip().lower()
-                if text.startswith("a couple of quick questions"):
+                if text.startswith(("a couple of quick questions", "a few quick")):
                     prior_clarify_rounds += 1
                     continue
                 if " is built" in text or " is updated" in text or text.startswith(("done —", "done -")):
                     break  # a real commitment — the unbuilt stretch ends here
                 # Anything else (a plain nudge, a brainstorm reply) is still
                 # part of the same unbuilt stretch — keep scanning past it.
-            if prior_clarify_rounds >= 2 and req.mode != "plan":
+            asks_for_more_questions = bool(
+                re.search(
+                    r"\b(more questions|ask (me )?more|keep asking|another round|ask again)\b",
+                    last_user or "",
+                    re.IGNORECASE,
+                )
+            )
+            if prior_clarify_rounds >= 1 and not asks_for_more_questions:
                 system_prompt += (
-                    f"\n\nThis conversation has already had {prior_clarify_rounds} rounds of "
-                    "clarifying questions in a row with nothing built yet. Do NOT call "
-                    "ask_clarifying_questions again this turn — call generate_lesson_plan (or "
-                    "generate_quiz, whichever applies) now, making a reasonable choice for anything "
-                    "still unspecified and saying what you assumed, rather than asking a third time.\n\n"
+                    "\n\nThis conversation has already had a clarifying-question round "
+                    "with nothing built yet. Do NOT call ask_clarifying_questions again "
+                    "this turn unless the teacher explicitly asked for more questions. "
+                    "Call generate_lesson_plan (or generate_quiz, whichever applies) now, "
+                    "making a reasonable choice for anything still unspecified and saying "
+                    "what you assumed.\n\n"
                 )
 
             # Mutually exclusive, not stacked — see prompts.voice_prompt's own
@@ -1101,16 +1139,14 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     "Do NOT restate, list, or preview the questions or their options in that text: they render "
                     "immediately below as their own tappable card, one question at a time, and a written "
                     "recap of all of them at once just duplicates that and pushes it off screen.\n\n"
-                    "This isn't limited to the first message of a request: reach for it again later in the same "
-                    "conversation if a later turn is just as vague, but never re-ask about something the teacher "
-                    "already told you or already picked from a previous round — build on what they gave you.\n\n"
+                    "Ask at most one clarifying round unless the teacher explicitly asks for more questions. "
+                    "Never re-ask something they already told you or already picked — build on what they gave you.\n\n"
                     "Hold the line on having an actual plan before you build one: `generate_lesson_plan` needs "
-                    "WHICH WEEK OR UNIT and WHAT THE WEEK IS ABOUT (an anchor text, a skill, or a specific "
-                    "focus). If the week/unit was already named for you above, treat that half as settled — "
-                    "the plan itself is always the complete structure from the selected school "
+                    "WHAT THE WEEK IS ABOUT (an anchor text, a skill, or a specific "
+                    "focus). WHICH WEEK OR UNIT is already settled when named above — never ask which week. "
+                    "The plan itself is always the complete structure from the selected school "
                     "template, so never ask how many days it should run. "
-                    "don't ask about it again unless the teacher's own message clearly points at a different "
-                    "week. WHAT THE WEEK IS ABOUT is a separate question that is almost never answered for "
+                    "WHAT THE WEEK IS ABOUT is a separate question that is almost never answered for "
                     "you; missing that, ask rather than build — a week generated from a one-line request "
                     "costs the teacher more time correcting it than answering one question would have.\n\n"
                     "Having both of those facts means you COULD build, which is not always the same as SHOULD "

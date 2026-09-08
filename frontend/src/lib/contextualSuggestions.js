@@ -65,7 +65,7 @@ const hasRecentChat = (activeChat, messages) => {
 const planningLanguage = /\b(?:lesson|plan|planning|teach|teaching|week|unit|chapter|novel|text|standard|students?|assessment|class|rhetoric|essay|reading|activity)\b/i
 
 function lastTeacherPrompt(messages) {
-  return [...(messages || [])].reverse().find((message) => message?.role === 'user' && String(message.content || '').trim())
+  return [...(messages || [])].reverse().find((message) => message?.role === 'user' && String(message.youSaid || message.content || '').trim())
 }
 
 function topicFromPrompt(content) {
@@ -110,23 +110,31 @@ function topicFromPrompt(content) {
 
 function followUpSuggestion(messages, artifact, targetWeek, activeClass, classCount) {
   const previous = lastTeacherPrompt(messages)
-  const content = previous?.content || ''
-  if (!previous || !planningLanguage.test(content)) return null
-  const topic = topicFromPrompt(content)
+  const content = previous?.youSaid || previous?.content || ''
+  const fromYouSaid = Boolean(previous?.youSaid) || /^you said:/i.test(String(previous?.content || ''))
+  if (!previous || !(planningLanguage.test(content) || fromYouSaid)) return null
+  const topic = topicFromPrompt(content.replace(/^you said:\s*/i, ''))
   const week = targetWeek ? weekLabel(targetWeek) : 'this week'
+  if (topic) {
+    return makeSuggestion({
+      id: `follow-up:${previous.id || content}`,
+      label: `Still on ${topic}`,
+      prompt: `Still on ${topic} from last turn — change that?`,
+      reason: `Remembers the last thing you settled for ${week}.`,
+      priority: 1,
+      context: 'conversation-follow-up',
+      action: 'send-prompt',
+      contextLabel: weekContextLabel(targetWeek, activeClass, classCount),
+    })
+  }
   // Preserve a topic's own determiner/possessive ("Week 6's plan", "the
   // Cask") instead of forcing an extra "the" in front of it.
-  const focus = topic
-    ? /^(?:the|this|my|your|week\s+\d+['’]s)\b/i.test(topic) ? topic : `the ${topic}`
-    : 'this lesson plan'
-  // Keep accepted completions idempotent when the extracted topic already
-  // ends in "plan".
-  const revisionFocus = topic ? (/\bplan$/i.test(focus) ? focus : `${focus} plan`) : focus
+  const focus = 'this lesson plan'
   return makeSuggestion({
     id: `follow-up:${previous.id || content}`,
     label: artifact ? 'Revise this direction' : 'Keep building this plan',
     prompt: artifact
-      ? `Let's revise ${revisionFocus}.`
+      ? `Let's revise ${focus}.`
       : `Let's keep building ${focus}.`,
     reason: `Continues from your last message about ${week}.`,
     priority: 1,

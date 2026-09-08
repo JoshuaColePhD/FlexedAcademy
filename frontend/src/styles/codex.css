@@ -737,6 +737,11 @@
 .composer-control-row.is-expanded > .composer-action-cluster {
   align-self: flex-end;
 }
+.composer-action-cluster,
+.composer-input,
+.composer-dock-surface {
+  overflow-anchor: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .composer-shell,
   .composer-input { transition-duration: 0.01ms !important; }
@@ -2585,6 +2590,10 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .composer-control-row {
     padding-right: 8px;
     padding-left: 8px;
+  }
+
+  .composer-action-cluster {
+    overflow-anchor: none;
   }
 
   .composer-tools-menu {
