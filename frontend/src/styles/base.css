@@ -12024,4 +12024,12 @@
 @media (prefers-reduced-motion: reduce) {
   .onboarding-confetti { display: none; }
   .onboarding-celebration *, .onboarding-encouragement, .onboarding-welcome button[aria-pressed='true'], .onboarding-rail-step[data-state='done'] .onboarding-rail-dot { animation: none !important; }
+  /* .fa-rise-panel uses fill-mode: both. The global reduced-motion block
+     only shortens that animation to 0.01ms, so the from-keyframe
+     translateY(--motion-reveal) (2px in the workspace skin) can still be
+     the used transform when layout is measured. On a 375×812 phone that
+     drops Continue 1px past window.innerHeight (811 + 2 = 813). */
+  .onboarding-card.fa-rise-panel {
+    animation: none !important;
+  }
 }
