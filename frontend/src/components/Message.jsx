@@ -382,15 +382,6 @@ function MessageImpl({
           </div>
         ) : null}
 
-        {message.unsaved ? (
-          <span
-            className="mt-1 inline-block rounded-sm bg-flag-tint px-1.5 py-0.5 text-[10px] font-semibold tracking-caps text-flag"
-            title="This message was not saved to the conversation"
-          >
-            not saved
-          </span>
-        ) : null}
-
         {/* THE VERIFICATION.
             With the document closed by default, this is where the grounded
             source codes live — and, on phone (hideWeekStrip), the five days

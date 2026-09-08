@@ -500,19 +500,16 @@ export function ChatPage() {
     async (chatId, payload) => {
       if (!chatId) return null
       const client_id = payload.client_id || nextId()
-      let lastError
-      for (let attempt = 0; attempt < 3; attempt += 1) {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
         try {
           return await api.addMessage(chatId, { ...payload, client_id })
-        } catch (err) {
-          lastError = err
-          if (attempt < 2) await waitBeforeRetry(250 * (attempt + 1))
+        } catch {
+          if (attempt < 4) await waitBeforeRetry(250 * (attempt + 1))
         }
       }
-      toast.apiError("Couldn't save that message", lastError)
       return null
     },
-    [toast]
+    []
   )
   const qc = useQueryClient()
   const isOnline = useOnlineStatus()
@@ -1934,23 +1931,14 @@ export function ChatPage() {
         setMessages((prev) => prev.filter((m) => m.id !== liveId))
       }
     },
-    onError: (err) => {
-      finishWorkActivity(null, { status: 'error', error: err.message })
-      // Same placeholder as onDone above — a request that fails still owns
-      // one, and it should turn into the error rather than leave an empty,
-      // permanently-streaming bubble sitting above a second, separate one.
+    onError: () => {
+      finishWorkActivity(null, { status: 'cancelled' })
       const liveId = liveMessageIdRef.current
       liveMessageIdRef.current = null
-      setMessages((prev) =>
-        liveId && prev.some((m) => m.id === liveId)
-          ? prev.map((m) =>
-              m.id === liveId
-                ? { ...m, isError: true, content: err.message, hint: err.hint, streaming: false }
-                : m
-            )
-          : [...prev, { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint }]
-      )
-      toast.apiError("Chat failed", err)
+      // A dropped stream already retried in useChatStream. Do not toast or
+      // write a red "Chat failed" bubble — leave the teacher's turn in
+      // place and drop the empty thinking placeholder.
+      if (liveId) setMessages((prev) => prev.filter((m) => m.id !== liveId))
     },
   })
 
@@ -2284,13 +2272,11 @@ export function ChatPage() {
             client_id: clientId,
             ...(options.voiceTurn ? { source: 'voice' } : {}),
           }).then((saved) => {
-            if (saved) return
-            // Keep the turn usable if storage is temporarily unavailable, but
-            // make the durability problem explicit instead of silently losing
-            // the teacher's prompt on the next reload.
-            setMessages((prev) => prev.map((message) => (
-              message.id === newUserMessage.id ? { ...message, unsaved: true } : message
-            )))
+            if (saved) {
+              setMessages((prev) => prev.map((message) => (
+                message.id === newUserMessage.id ? { ...message, unsaved: false } : message
+              )))
+            }
           })
         }
       }

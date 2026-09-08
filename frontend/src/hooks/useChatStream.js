@@ -26,8 +26,8 @@ const RETRYABLE_CODES = new Set([
   'malformed_tool_call',
   'empty_reply',
 ])
-const MAX_AUTO_RETRIES = 1
-const RETRY_DELAY_MS = 600
+const MAX_AUTO_RETRIES = 2
+const RETRY_DELAY_MS = 700
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -246,7 +246,6 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       // it safely.
       throw new ApiError('The connection dropped before the reply started.', {
         code: 'stream_connection_error',
-        hint: 'Trying once more…',
         extra: { retryable: true },
       })
     }
@@ -337,7 +336,6 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         // request id while replacing the incomplete stream.
         throw new ApiError('The connection dropped while the reply was loading.', {
           code: 'stream_connection_error',
-          hint: 'Trying once more…',
           extra: { retryable: true },
         })
       }
