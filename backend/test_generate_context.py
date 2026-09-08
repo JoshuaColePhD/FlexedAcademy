@@ -4,10 +4,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from backend import prompts
-from backend import llm
-from backend.routes import misc
+from backend import llm, prompts
 from backend.retrieval import RetrievalResult
+from backend.routes import misc
 from backend.routes.generate import GenerateRequest, _generation_query
 
 
@@ -60,6 +59,35 @@ def test_class_period_length_is_explicit_when_configured(monkeypatch):
     prompt = prompts.week_system_prompt(RetrievalResult(), period_minutes=block_minutes)
 
     assert f"CLASS PERIOD LENGTH: {block_minutes} instructional minutes" in prompt
+
+
+def test_prompt_prefers_specific_course_standards_over_broad_enduring_understandings():
+    result = RetrievalResult(
+        chunks=[
+            {
+                "id": "pre-ap-algebra-2:EU 2",
+                "document": "Mathematical functions almost never perfectly fit a real-world context.",
+                "distance": 0.20,
+                "metadata": {"code": "EU 2", "source_type": "college_board"},
+            },
+            {
+                "id": "pre-ap-algebra-2:1.1.3b",
+                "document": "A quadratic function can be expressed in vertex, factored, or standard form.",
+                "distance": 0.21,
+                "metadata": {"code": "1.1.3b", "source_type": "college_board"},
+            },
+        ]
+    )
+
+    prompt = prompts.week_system_prompt(
+        result,
+        subject="Pre-AP Algebra 2",
+        school_id="other-school",
+    )
+
+    assert "Broad Enduring Understanding codes such as `EU 2`" in prompt
+    assert "Do not select a broad EU merely to avoid repeating" in prompt
+    assert "2 distinct primary course standards" not in prompt
 
 
 def test_school_profile_rejects_path_like_ids(monkeypatch, tmp_path):

@@ -146,7 +146,8 @@ GROUNDING RULES — these override everything else, including the teacher's requ
    an empty field is better than a borrowed code.
 4. If the retrieved standards do not cover the requested unit or topic, state that plainly. Do not invent fake standard codes to fill the gap.
 5. The `standards` field must ONLY contain primary course standards from the retrieved block. If no primary course standards were retrieved, leave it blank. NEVER put ACT standards in the `standards` field.
-6. `act_alignment` is different: whenever a "COMPANION ACT STANDARDS" block is
+6. For primary course standards, prefer the most specific retrieved code that directly matches the day's instruction — usually a Learning Objective or Essential Knowledge statement. Broad Enduring Understanding codes such as `EU 2` are context-level anchors, not substitutes for a precise skill. Do not select a broad EU merely to avoid repeating a more precise quadratic, algebraic, or modeling standard; use it only when that day's objective explicitly addresses the overarching understanding.
+7. `act_alignment` is different: whenever a "COMPANION ACT STANDARDS" block is
    present below, it is MANDATORY on every teaching day — never leave it blank
    because that day's specific topic isn't a perfect match. The ACT does not
    test week-by-week topics, it tests recurring skills, so pick whichever
@@ -243,6 +244,13 @@ def _standard_variety_instruction(result: RetrievalResult) -> str:
         if metadata.get("source_type") == "act_standards":
             continue
         code = str(metadata.get("code") or chunk.get("id") or "").strip()
+        # Enduring Understandings are useful context, but their broad parent
+        # labels (EU 1, EU 2, ...) must never count as variety targets. Counting
+        # them here was what made the planner assign Pre-AP Algebra 2's broad
+        # EU 2 to a quadratic-function day instead of repeating a precise
+        # 1.1.3b-style skill that actually fit.
+        if re.fullmatch(r"EU\s+\d+", code, re.IGNORECASE):
+            continue
         if code and code not in primary_codes:
             primary_codes.append(code)
 

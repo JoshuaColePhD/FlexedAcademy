@@ -766,6 +766,18 @@ export function ChatPage() {
   const [planSaveState, setPlanSaveState] = useState('idle')
   const [lastSavedLabel, setLastSavedLabel] = useState('Lesson plan saved')
   const [pendingPlan, setPendingPlan] = useState(null)
+  const [saveReceiptVisible, setSaveReceiptVisible] = useState(false)
+  const saveReceiptTimerRef = useRef(null)
+  const armSaveReceipt = useCallback(() => {
+    if (saveReceiptTimerRef.current) clearTimeout(saveReceiptTimerRef.current)
+    setSaveReceiptVisible(true)
+    saveReceiptTimerRef.current = setTimeout(() => {
+      saveReceiptTimerRef.current = null
+      setSaveReceiptVisible(false)
+    }, 5000)
+  }, [])
+  useEffect(() => () => clearTimeout(saveReceiptTimerRef.current), [])
+  const saveReceiptExit = useExitTransition(saveReceiptVisible, 150)
   const { autoSave } = useInterfacePreferences()
   // A quiz build is its own busy state, not folded into `revising` — the
   // two can genuinely overlap (asking for a quiz while a revision request
@@ -1562,7 +1574,8 @@ export function ChatPage() {
     setRevisionHistory((previous) => [revision, ...previous].slice(0, 8))
     setPlanSaveState('saved')
     setLastSavedLabel(`${label} saved`)
-  }, [])
+    armSaveReceipt()
+  }, [armSaveReceipt])
 
   // A revision snapshot belongs to one conversation. Do not offer an Undo
   // from the previous week's plan after the teacher changes chats.
@@ -1573,6 +1586,7 @@ export function ChatPage() {
     setPlanSaveState('idle')
     setLastSavedLabel('Lesson plan saved')
     setPendingPlan(null)
+    setSaveReceiptVisible(false)
   }, [chatId])
 
   const undoLastChange = useCallback(async () => {
@@ -1593,6 +1607,7 @@ export function ChatPage() {
       setLastChange(null)
       setPlanSaveState('saved')
       setLastSavedLabel('Previous version restored')
+      armSaveReceipt()
       const reply = `Undid ${lastChange.label.toLowerCase()} and restored the previous version.`
       setMessages((previous) => [...previous, { id: nextId(), role: 'assistant', content: reply }])
       if (localFor.current) {
@@ -1605,7 +1620,7 @@ export function ChatPage() {
     } finally {
       setRevising(false)
     }
-  }, [lastChange, artifact, revising, persistMessage, toast])
+  }, [lastChange, artifact, revising, persistMessage, toast, armSaveReceipt])
 
   const stream = useLessonStream({
     onStart: ({ requestId }) => {
@@ -1623,6 +1638,7 @@ export function ChatPage() {
       showReadyNotice('Lesson plan ready')
       setPlanSaveState('saved')
       setLastSavedLabel('Lesson plan saved')
+      armSaveReceipt()
       const selectedStandardApplied = selectedStandard
         ? planContainsStandard(done.plan, selectedStandard.code)
         : null
@@ -3960,9 +3976,13 @@ export function ChatPage() {
           fixed-shape input shell. Only the wrapper's className may change. */}
       <div className={`composer-dock-surface shrink-0 bg-transparent pb-5 pt-3${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-open' : ''}`}>
         <div className="relative mx-auto w-full max-w-4xl px-gutter">
-          {artifact?.planId && (planSaveState === 'saved' || planSaveState === 'pending' || planSaveState === 'error') ? (
+          {artifact?.planId && (
+            planSaveState === 'pending' ||
+            planSaveState === 'error' ||
+            (planSaveState === 'saved' && saveReceiptExit.mounted)
+          ) ? (
             <div
-              className={`composer-writing-status composer-save-status mb-2${planSaveState === 'error' ? ' is-error' : planSaveState === 'pending' ? ' is-pending' : ' is-saved'}`}
+              className={`composer-writing-status composer-save-status mb-2${planSaveState === 'error' ? ' is-error' : planSaveState === 'pending' ? ' is-pending' : ' is-saved'}${saveReceiptExit.closing && planSaveState === 'saved' ? ' fa-chip-exit' : ''}`}
               role="status"
               aria-live="polite"
             >
