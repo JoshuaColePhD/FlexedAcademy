@@ -14,7 +14,7 @@ from collections.abc import Callable, Iterator
 _JOB_TTL_SECONDS = 30 * 60
 
 _lock = threading.Lock()
-_jobs: dict[tuple[str, str], "GenerationJob"] = {}
+_jobs: dict[tuple[str, str], GenerationJob] = {}
 
 
 class GenerationJob:
@@ -71,8 +71,7 @@ class GenerationJob:
                 idx = len(self.events)
                 done = self.finished and idx >= len(self.events)
                 keepalive = not batch and not self.finished
-            for item in batch:
-                yield item
+            yield from batch
             if done:
                 return
             if keepalive:
