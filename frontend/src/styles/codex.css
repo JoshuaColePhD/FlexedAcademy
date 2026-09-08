@@ -1882,6 +1882,9 @@
   gap: 14px;
   border-radius: 16px;
   padding: 8px 10px;
+  /* Fill so the wide flex-1 hit target reads as covering most of the
+     footer, not as a small left cluster with empty gap before the moon. */
+  background: var(--paper-inset);
 }
 .account-menu-footer.is-spacious .account-menu-avatar {
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.22);
