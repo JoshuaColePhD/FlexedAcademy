@@ -51,6 +51,37 @@ const RETRY_DELAY_MS = 600
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+function waitForVisible(signal) {
+  return new Promise((resolve, reject) => {
+    if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+      resolve()
+      return
+    }
+    const cleanup = () => {
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('pageshow', onVis)
+      signal?.removeEventListener('abort', onAbort)
+    }
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        cleanup()
+        resolve()
+      }
+    }
+    const onAbort = () => {
+      cleanup()
+      reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
+    }
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('pageshow', onVis)
+    if (signal?.aborted) {
+      onAbort()
+      return
+    }
+    signal?.addEventListener('abort', onAbort)
+  })
+}
+
 export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
   const [isStreaming, setIsStreaming] = useState(false)
   const [status, setStatus] = useState(null)
@@ -59,6 +90,9 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
   const [grounding, setGrounding] = useState(null)
   const [dayNames, setDayNames] = useState(null)
   const abortRef = useRef(null)
+  const paramsRef = useRef(null)
+  const stoppedRef = useRef(false)
+  const wakeLockRef = useRef(null)
   // Mirrors the grounding state so the resolved value can carry it — state set
   // mid-stream is not visible to the closure that started the stream.
   const groundingRef = useRef(null)
@@ -144,8 +178,13 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
    * Order matters: abort first, then clear, so the reader's `finally` cannot
    * race a stale value back in. */
   const stop = useCallback(() => {
+    stoppedRef.current = true
+    const requestId = paramsRef.current?.requestId
+    if (requestId) void api.cancelGenerate(requestId).catch(() => {})
     abortRef.current?.abort()
     abortRef.current = null
+    wakeLockRef.current?.release?.().catch(() => {})
+    wakeLockRef.current = null
     cancelQueuedPlan()
     setIsStreaming(false)
     setStatus(null)
@@ -347,17 +386,25 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
+      stoppedRef.current = false
       const requestId = requestedRequestId || (typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+      paramsRef.current = { query, chatId, weekNumber, classId, conversationContext, referenceContext, requestId }
       onStartRef.current?.({ requestId, attempt: 0 })
 
       setIsStreaming(true)
       setStatus({ phase: 'accepted', label: 'Accepted', requestId })
+      try {
+        wakeLockRef.current = await navigator.wakeLock?.request('screen')
+      } catch {
+        wakeLockRef.current = null
+      }
 
       try {
         let lastErr = null
-        for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
+        for (let tryNum = 0; tryNum < 40; tryNum++) {
+          if (stoppedRef.current) return null
           if (tryNum > 0) await sleep(RETRY_DELAY_MS)
           try {
             const result = await attempt(query, {
@@ -373,18 +420,57 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
             onDoneRef.current?.(result)
             return result
           } catch (err) {
-            if (err.name === 'AbortError') return null // user pressed Stop
+            if (stoppedRef.current || err.name === 'AbortError') return null
             lastErr = err
-            const retryStatus = { phase: 'retrying', label: tryNum < MAX_AUTO_RETRIES ? 'Reconnecting…' : 'Could not finish', requestId, attempt: tryNum }
-            setStatus(retryStatus)
-            onStatusRef.current?.({ code: retryStatus.phase, label: retryStatus.label, requestId, attempt: tryNum, step: 'building' })
-            const retryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable
-            if (!retryable || tryNum === MAX_AUTO_RETRIES) break
+            let snap = null
+            try {
+              snap = await api.getGenerateJob(requestId)
+            } catch {
+              snap = null
+            }
+            if (snap?.status === 'done' && snap.result) {
+              const result = { ...snap.result, requestId, grounding: groundingRef.current }
+              onDoneRef.current?.(result)
+              return result
+            }
+            if (snap?.status === 'cancelled') return null
+            if (snap?.status === 'error') {
+              lastErr = new ApiError(snap.error?.message || err.message, {
+                code: snap.error?.code || err.code || 'stream_error',
+                hint: snap.error?.hint || err.hint,
+              })
+              break
+            }
+            const retryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable || snap?.status === 'running'
+            setStatus({
+              phase: 'retrying',
+              label: snap?.status === 'running' ? 'Still building — reconnecting…' : 'Reconnecting…',
+              requestId,
+              attempt: tryNum,
+            })
+            onStatusRef.current?.({
+              code: 'retrying',
+              label: snap?.status === 'running' ? 'Still building — reconnecting…' : 'Reconnecting…',
+              requestId,
+              attempt: tryNum,
+              step: 'building',
+            })
+            if (retryable && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+              try {
+                await waitForVisible(controller.signal)
+              } catch {
+                return null
+              }
+            }
+            if (retryable || snap?.status === 'running') continue
+            if (tryNum >= MAX_AUTO_RETRIES) break
           }
         }
         onErrorRef.current?.(lastErr)
         throw lastErr
       } finally {
+        wakeLockRef.current?.release?.().catch(() => {})
+        wakeLockRef.current = null
         if (abortRef.current === controller) abortRef.current = null
         setIsStreaming(false)
       }
