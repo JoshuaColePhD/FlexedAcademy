@@ -9588,12 +9588,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    animation: composer-ghost-in 180ms var(--ease-out) both;
   }
   .composer-ghost-overlay {
     display: flex;
     align-items: center;
     min-width: 0;
-    padding: 0 0.5rem;
+    padding: 0;
     white-space: nowrap;
   }
   /* The attachment rail already gets its layout from the utility classes in
