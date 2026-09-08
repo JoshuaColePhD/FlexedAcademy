@@ -18,6 +18,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..generation_jobs import cancel_job, get_job, start_or_attach
 from ..generation_queue import generation_queue
 from ..ratelimit import limiter
 from ..schema import SchemaError
@@ -380,18 +381,26 @@ def generate(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, 
     )
 
 
+class CancelGenerateRequest(BaseModel):
+    request_id: str = Field(min_length=1, max_length=64)
+
+
 @router.post("/generate_stream")
 @limiter.limit("100/minute")
 def generate_stream(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     """Stream tokens, then emit the finished plan.
 
-    Every terminal event carries an `error` object with the same {code, message,
-    hint} shape as the REST errors, so the client has one path for both.
+    The model work runs as a job keyed by request_id so locking the phone or
+    switching apps does not cancel it. A later POST with the same request_id
+    attaches and replays. Every terminal event carries an `error` object with
+    the same {code, message, hint} shape as the REST errors.
     """
-    # Before the stream opens, so a blocked request is an ordinary 402 with the
-    # normal error envelope rather than an SSE frame the reader has to special-
-    # case. useLessonStream already reads a non-200 body through apiErrorFromBody.
-    require_entitlement(user_id)
+    request_id = req.request_id or str(uuid.uuid4())
+    existing = get_job(user_id, request_id)
+    if existing is None or existing.status not in {"running", "done"}:
+        # Attach/replay must not 402 a teacher who already started this week.
+        require_entitlement(user_id)
+
     cls = _request_class(user_id, req.class_id, req.chat_id)
     school_id = db.class_school(cls, user_id)
     template_days = day_names_for_school(school_id)
@@ -401,177 +410,208 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
         conversation_context=req.conversation_context,
         reference_context=req.reference_context,
     )
-    request_id = req.request_id or str(uuid.uuid4())
+
+    def worker(job):
+        _run_plan_job(
+            job,
+            user_id=user_id,
+            req=req,
+            cls=cls,
+            school_id=school_id,
+            template_days=template_days,
+            query=query,
+            model_query=model_query,
+        )
+
+    job = start_or_attach(user_id, request_id, worker)
 
     def event_stream():
-        lease = None
-        try:
-            yield ": keepalive\n\n"
-            yield _activity_sse(
-                {
-                    "status": "connecting",
-                    "status_code": "connecting",
-                    "label": "Starting…",
-                },
-                request_id,
-                step="context",
-                step_state="active",
-                attempt=req.attempt,
-            )
-            lease = generation_queue.enqueue(user_id)
-            yield _activity_sse(
-                {
-                    "status": "queued",
-                    "status_code": "queued",
-                    "label": "Queued behind another generation…" if lease.position > 1 else "Starting shortly…",
-                    "queue_position": lease.position,
-                },
-                request_id,
-                step="context",
-                step_state="active",
-                attempt=req.attempt,
-            )
-            while not lease.wait(timeout=15):
-                if lease.cancelled:
-                    lease.cancel()
-                    return
-                yield _activity_sse(
-                    {
-                        "status": "queued",
-                        "status_code": "queued",
-                        "label": "Still queued — your request is safe…",
-                        "queue_position": lease.position,
-                    },
-                    request_id,
-                    step="context",
-                    step_state="active",
-                    attempt=req.attempt,
-                )
-            # The weekly allowance may have changed while this request was
-            # queued behind another generation. Re-check at execution time so
-            # the queue never turns a hard weekly quota into an overspend.
-            require_entitlement(user_id)
-            yield _activity_sse(
-                {"status": "accepted", "status_code": "accepted", "label": "Generation started"},
-                request_id,
-                step="context",
-                step_state="complete",
-                attempt=req.attempt,
-            )
-        except (AppError, SchemaError) as e:
-            log.warning("stream queue failed code=%s", e.code)
-            if lease is not None:
-                lease.release()
-            yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="context", step_state="error", attempt=req.attempt)
-            return
-
-        chunks: list[str] = []
-        try:
-            # Emitted BEFORE service.prepare, which is the slowest thing in
-            # this whole request that isn't the model itself — an LLM
-            # expand_query call plus ~30 pgvector reads. It all used to happen
-            # ahead of the first yield, so the response headers were sent and
-            # then nothing followed for seconds: no bytes, nothing for the
-            # client to show, no way to tell a slow retrieval from a hung
-            # request. This costs one frame and makes the wait legible.
-            #
-            # Additive: useLessonStream.js only reads the keys it knows
-            # (grounding/chunk/done/error) and ignores anything else, so an
-            # older client is unaffected by a new frame type.
-            yield _activity_sse({"status": "retrieving", "template_days": template_days}, request_id, step="retrieval", step_state="active", attempt=req.attempt)
-            result = service.prepare(user_id, query, cls=cls)
-            yield _activity_sse({"status": "context_ready", "template_days": template_days}, request_id, step="planning", step_state="active", attempt=req.attempt)
-            yield _activity_sse(
-                {
-                    "grounding": {
-                        "codes": sorted(result.codes),
-                        "thin": result.thin,
-                        "count": len(result.chunks),
-                        "floor": result.floor,
-                    }
-                },
-                request_id,
-                step="retrieval",
-                step_state="complete",
-                attempt=req.attempt,
-            )
-            yield _activity_sse({"status": "thinking", "template_days": template_days}, request_id, step="planning", step_state="active", attempt=req.attempt)
-            yield _activity_sse({"status": "writing", "template_days": template_days}, request_id, step="building", step_state="active", attempt=req.attempt)
-            for delta in _with_keepalives(
-                llm.stream_plan(user_id, model_query, result, school_id=school_id, class_id=cls["id"] if cls else None)
-            ):
-                if delta is None:
-                    yield ": keepalive\n\n"
-                    continue
-                chunks.append(delta)
-                yield _activity_sse({"chunk": delta}, request_id, step="building", step_state="active", attempt=req.attempt)
-
-            from ..schema import loads_lenient
-
-            yield _activity_sse({"status": "saving", "template_days": template_days}, request_id, step="building", step_state="active", attempt=req.attempt)
-
-            def _finalize():
-                yield service.finalize(
-                    user_id=user_id,
-                    plan_raw=loads_lenient("".join(chunks)),
-                    query=query,
-                    result=result,
-                    chat_id=req.chat_id,
-                    bg_tasks=bg_tasks,
-                    class_id=cls["id"] if cls else None,
-                    cls=cls,
-                    week_number=req.week_number,
-                    school_id=school_id,
-                    subject=cls["subject"] if cls else None,
-                    grade=cls["grade"] if cls else None,
-                )
-
-            row = None
-            for item in _with_keepalives(_finalize()):
-                if item is None:
-                    yield ": keepalive\n\n"
-                    continue
-                row = item
-            if row is None:
-                raise RuntimeError("finalize returned no plan")
-            yield _activity_sse(
-                {
-                    "done": True,
-                    "plan_id": row["id"],
-                    "plan": row["plan_json"],
-                    "warnings": row["warnings"],
-                    "week_label": row["week_label"],
-                    "unit": row["unit"],
-                },
-                request_id,
-                step="complete",
-                step_state="complete",
-                attempt=req.attempt,
-            )
-        except (AppError, SchemaError) as e:
-            log.warning("stream failed code=%s", e.code)
-            yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="validation", step_state="error", attempt=req.attempt)
-        except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
-            yield _activity_sse({"error": _openai_error_event(e), "status": "error"}, request_id, step="building", step_state="error", attempt=req.attempt)
-        finally:
-            if lease is not None:
-                lease.release()
+        yield ": keepalive\n\n"
+        yield from job.follow()
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
         background=bg_tasks,
-        # X-Accel-Buffering: nginx (and several PaaS routers, Render's
-        # included) buffer a proxied response by default, which re-introduces
-        # exactly the batching that excluding this route from gzip
-        # (ConditionalGZipMiddleware) exists to avoid — just one hop further
-        # out, where it is invisible from here.
         headers={
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.get("/generate_jobs/{request_id}")
+@limiter.limit("100/minute")
+def generate_job_status(request_id: str, request: Request, user_id: str = Depends(get_current_user)):
+    job = get_job(user_id, request_id)
+    if job is None:
+        raise AppError("not_found", "That generation is not running.", status=404)
+    return job.snapshot()
+
+
+@router.post("/generate_cancel")
+@limiter.limit("100/minute")
+def generate_cancel(req: CancelGenerateRequest, request: Request, user_id: str = Depends(get_current_user)):
+    cancel_job(user_id, req.request_id)
+    return {"ok": True}
+
+
+def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, model_query):
+    request_id = job.request_id
+    lease = None
+
+    def emit(payload, **kwargs):
+        job.publish(_activity_sse(payload, request_id, **kwargs))
+
+    try:
+        job.publish(": keepalive\n\n")
+        emit(
+            {
+                "status": "connecting",
+                "status_code": "connecting",
+                "label": "Starting…",
+            },
+            step="context",
+            step_state="active",
+            attempt=req.attempt,
+        )
+        lease = generation_queue.enqueue(user_id)
+        emit(
+            {
+                "status": "queued",
+                "status_code": "queued",
+                "label": "Queued behind another generation…" if lease.position > 1 else "Starting shortly…",
+                "queue_position": lease.position,
+            },
+            step="context",
+            step_state="active",
+            attempt=req.attempt,
+        )
+        while not lease.wait(timeout=15):
+            if job.cancelled.is_set() or lease.cancelled:
+                lease.cancel()
+                job.complete(cancelled=True)
+                return
+            emit(
+                {
+                    "status": "queued",
+                    "status_code": "queued",
+                    "label": "Still queued — your request is safe…",
+                    "queue_position": lease.position,
+                },
+                step="context",
+                step_state="active",
+                attempt=req.attempt,
+            )
+        require_entitlement(user_id)
+        emit(
+            {"status": "accepted", "status_code": "accepted", "label": "Generation started"},
+            step="context",
+            step_state="complete",
+            attempt=req.attempt,
+        )
+    except (AppError, SchemaError) as e:
+        log.warning("stream queue failed code=%s", e.code)
+        if lease is not None:
+            lease.release()
+            lease = None
+        err = e.payload().get("error", e.payload())
+        emit({"error": err, "status": "error"}, step="context", step_state="error", attempt=req.attempt)
+        job.complete(error=err if isinstance(err, dict) else {"message": str(err)})
+        return
+
+    chunks: list[str] = []
+    try:
+        emit({"status": "retrieving", "template_days": template_days}, step="retrieval", step_state="active", attempt=req.attempt)
+        result = service.prepare(user_id, query, cls=cls)
+        if job.cancelled.is_set():
+            job.complete(cancelled=True)
+            return
+        emit({"status": "context_ready", "template_days": template_days}, step="planning", step_state="active", attempt=req.attempt)
+        emit(
+            {
+                "grounding": {
+                    "codes": sorted(result.codes),
+                    "thin": result.thin,
+                    "count": len(result.chunks),
+                    "floor": result.floor,
+                }
+            },
+            step="retrieval",
+            step_state="complete",
+            attempt=req.attempt,
+        )
+        emit({"status": "thinking", "template_days": template_days}, step="planning", step_state="active", attempt=req.attempt)
+        emit({"status": "writing", "template_days": template_days}, step="building", step_state="active", attempt=req.attempt)
+        for delta in _with_keepalives(
+            llm.stream_plan(user_id, model_query, result, school_id=school_id, class_id=cls["id"] if cls else None)
+        ):
+            if job.cancelled.is_set():
+                job.complete(cancelled=True)
+                return
+            if delta is None:
+                job.publish(": keepalive\n\n")
+                continue
+            chunks.append(delta)
+            emit({"chunk": delta}, step="building", step_state="active", attempt=req.attempt)
+
+        from ..schema import loads_lenient
+
+        emit({"status": "saving", "template_days": template_days}, step="building", step_state="active", attempt=req.attempt)
+        if job.cancelled.is_set():
+            job.complete(cancelled=True)
+            return
+
+        def _finalize():
+            yield service.finalize(
+                user_id=user_id,
+                plan_raw=loads_lenient("".join(chunks)),
+                query=query,
+                result=result,
+                chat_id=req.chat_id,
+                bg_tasks=None,
+                class_id=cls["id"] if cls else None,
+                cls=cls,
+                week_number=req.week_number,
+                school_id=school_id,
+                subject=cls["subject"] if cls else None,
+                grade=cls["grade"] if cls else None,
+            )
+
+        row = None
+        for item in _with_keepalives(_finalize()):
+            if job.cancelled.is_set():
+                job.complete(cancelled=True)
+                return
+            if item is None:
+                job.publish(": keepalive\n\n")
+                continue
+            row = item
+        if row is None:
+            raise RuntimeError("finalize returned no plan")
+        done = {
+            "done": True,
+            "plan_id": row["id"],
+            "plan": row["plan_json"],
+            "warnings": row["warnings"],
+            "week_label": row["week_label"],
+            "unit": row["unit"],
+        }
+        emit(done, step="complete", step_state="complete", attempt=req.attempt)
+        job.complete(result=done)
+    except (AppError, SchemaError) as e:
+        log.warning("stream failed code=%s", e.code)
+        err = e.payload().get("error", e.payload())
+        emit({"error": err, "status": "error"}, step="validation", step_state="error", attempt=req.attempt)
+        job.complete(error=err if isinstance(err, dict) else {"message": str(err)})
+    except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
+        err = _openai_error_event(e)
+        emit({"error": err, "status": "error"}, step="building", step_state="error", attempt=req.attempt)
+        job.complete(error=err)
+    finally:
+        if lease is not None:
+            lease.release()
 
 
 def _build_chat_system_prompt(
