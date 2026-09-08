@@ -1193,10 +1193,22 @@
   @media (max-width: 767.98px) {
     .onboarding-ground {
       padding: 0;
+      /* Pin to the visible window. 100dvh can sit 1px above window.innerHeight
+         in headless Chromium, and .glass-panel's 1px border on an edge-to-edge
+         card added a second pixel of overflow — the fixed Continue footer then
+         painted past the phone viewport. */
+      position: fixed;
+      inset: 0;
+      height: auto;
+      overflow: hidden;
     }
     .onboarding-card {
       max-width: none;
+      max-height: 100%;
+      min-height: 0;
+      height: 100%;
       border-radius: 0;
+      border: 0 !important;
     }
     .onboarding-column {
       min-height: 0;

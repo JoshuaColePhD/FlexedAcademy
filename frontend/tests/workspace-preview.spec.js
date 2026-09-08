@@ -1,6 +1,17 @@
 import { expect, test } from '@playwright/test'
 
 const seed = '/preview.html?fresh=0&at=/c/c1/chat/seed1'
+const weekPlanName = 'Open Week 03 — Aug 17-21, 2026'
+
+/* The outputs rail stays closed until the teacher asks for it, so a seeded
+   chat with a plan still needs this click before week/document controls in
+   the drawer exist. */
+async function openArtifactsPanel(page) {
+  const closeRail = page.getByRole('button', { name: 'Close artifacts panel', exact: true })
+  if (await closeRail.isVisible().catch(() => false)) return
+  await page.getByRole('button', { name: 'Open artifacts panel', exact: true }).click()
+  await expect(page.locator('.artifact-drawer')).toBeVisible()
+}
 
 test('desktop document spans most of the workspace under the composer and fullscreen restores it', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
@@ -8,7 +19,8 @@ test('desktop document spans most of the workspace under the composer and fullsc
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto(seed)
   await expect(page.locator('body')).not.toContainText('not retrieved')
-  await page.getByRole('button', { name: 'Open Week 03 — Aug 17-21, 2026', exact: true }).click()
+  await openArtifactsPanel(page)
+  await page.getByRole('button', { name: weekPlanName, exact: true }).click()
   const panel = page.locator('.is-composer-overlay')
   const composer = page.locator('#composer-input')
   await expect(panel).toBeVisible()
@@ -78,11 +90,14 @@ test('desktop document spans most of the workspace under the composer and fullsc
 
 test('system appearance updates without visiting settings', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 })
+  // Default account appearance is charcoal; this spec is the system-follow path.
+  await page.addInitScript(() => localStorage.setItem('aplang.theme', 'system'))
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
   await page.goto(seed)
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await expect(page.locator('.app-rail')).toHaveCSS('background-color', 'rgb(20, 20, 22)')
-  await page.getByRole('button', { name: 'Open Week 03 — Aug 17-21, 2026', exact: true }).click()
+  await expect(page.locator('.app-rail')).toHaveCSS('background-color', 'rgb(20, 20, 19)')
+  await openArtifactsPanel(page)
+  await page.getByRole('button', { name: weekPlanName, exact: true }).click()
   await expect(page.locator('.is-composer-overlay')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('dark-workspace.png') })
   await page.emulateMedia({ colorScheme: 'light' })
@@ -95,6 +110,7 @@ test('composer stays centered between the navigation and materials rails', async
   await page.goto(seed)
   const composer = page.locator('.composer-shell')
   await expect(composer).toBeVisible()
+  await openArtifactsPanel(page)
   await expect(page.locator('.artifact-drawer')).toBeVisible()
   await expect(page.locator('.artifact-drawer-handle')).toHaveCount(0)
   await expect(page.locator('.app-rail-handle')).toHaveCount(0)
