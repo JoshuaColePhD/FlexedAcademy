@@ -52,12 +52,22 @@ test('desktop document spans most of the workspace under the composer and fullsc
   }
   await assertComposerOverlay()
   const body = panel.locator('.doc-body')
+  const composerShell = page.locator('.composer-shell')
   await composer.fill('Keep the lesson plan open while I type.\nSecond line\nThird line\nFourth line\nFifth line\nSixth line')
-  await body.evaluate((el) => { el.scrollTop = el.scrollHeight })
-  const sheetBox = await body.locator('.doc-sheet').boundingBox()
-  const composerBox = await page.locator('.composer-shell').boundingBox()
-  expect(await body.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom))).toBeGreaterThan(composerBox.height)
-  expect(sheetBox.y + sheetBox.height).toBeLessThanOrEqual(composerBox.y)
+  /* --composer-h is measured with ResizeObserver, so padding lags the
+     textarea grow by a frame. Scroll only after that dock height is applied,
+     otherwise the last rows still sit behind the taller composer. */
+  await expect.poll(async () => {
+    const composerBox = await composerShell.boundingBox()
+    const padding = await body.evaluate((el) => parseFloat(getComputedStyle(el).paddingBottom))
+    return Boolean(composerBox) && padding > composerBox.height
+  }).toBe(true)
+  await expect.poll(async () => {
+    await body.evaluate((el) => { el.scrollTop = el.scrollHeight })
+    const sheetBox = await body.locator('.doc-sheet').boundingBox()
+    const composerBox = await composerShell.boundingBox()
+    return Boolean(sheetBox && composerBox) && sheetBox.y + sheetBox.height <= composerBox.y
+  }).toBe(true)
   await composer.fill('Keep the lesson plan open while I type.')
   await panel.getByRole('button', { name: 'Enter fullscreen' }).click()
   await expect(page.getByRole('dialog')).toBeVisible()
