@@ -42,6 +42,7 @@ from .routes import (
     onboarding,
     plans,
     quiz_library,
+    quizzes,
     school_calendars,
     standards,
 )
@@ -490,6 +491,7 @@ app.include_router(misc.router)
 app.include_router(generate.router)
 app.include_router(plans.router)
 app.include_router(quiz_library.router)
+app.include_router(quizzes.router)
 app.include_router(standards.router)
 app.include_router(curriculum.router)
 app.include_router(classes.router)

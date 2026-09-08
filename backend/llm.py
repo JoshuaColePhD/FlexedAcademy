@@ -691,6 +691,92 @@ def generate_quiz(
     return _randomize_mc_choice_order(loads_lenient(content or ""))
 
 
+def generate_passage_quiz(
+    user_id: str,
+    *,
+    subject: str,
+    grade: str,
+    question_types: list[str],
+    num_questions: int,
+    class_id: str | None = None,
+    passage_mode: str = "none",
+    passage_text: str | None = None,
+    passage_title: str | None = None,
+    topic: str | None = None,
+) -> dict:
+    """A standalone quiz with NO backing lesson plan.
+
+    The common case behind this is a teacher pasting a passage into chat and
+    asking for "multiple choice + a QTI" without first building a week. There
+    is no plan_json to constrain it, so the teacher's passage (or a named
+    topic) plus the class's subject/grade IS the source material.
+
+    Standards are deliberately NOT asserted here: a plan-free quiz has no
+    retrieval/grounding audit behind it the way generate_quiz's does, so the
+    prompt leaves standard_code empty rather than inventing a code. Returns
+    parsed (not yet validated — see schema.validate_quiz) JSON matching
+    QUIZ_JSON_SCHEMA.
+    """
+    types_wanted = ", ".join(_QUESTION_TYPE_PROMPT_NAMES.get(t, t) for t in question_types) or "multiple choice"
+    has_passage = passage_mode == "teacher_provided" and bool((passage_text or "").strip())
+    if has_passage:
+        source_instruction = (
+            "The teacher provided the passage below. It is the ONLY source for passage-based items; "
+            "do not rewrite it or add facts to it. Return it in `passages` with id `passage_1`, an "
+            "informative title, and source `teacher_provided`, and link passage-based multiple-choice "
+            "questions to it with passage_id `passage_1`.\n\n"
+            f"TEACHER-PROVIDED PASSAGE ({passage_title or 'Passage'}):\n{passage_text or ''}\n\n"
+        )
+    elif passage_mode == "ai_generated":
+        source_instruction = (
+            "Create one short, original, grade-appropriate passage on the topic below, and return it in "
+            "`passages` with id `passage_1`, an informative title, and source `ai_generated`. Write "
+            "passage-linked multiple-choice questions that require students to reason from that passage, "
+            "not from outside knowledge.\n\n"
+            f"TOPIC: {topic or subject}\n\n"
+        )
+    else:
+        source_instruction = (
+            "Return an empty `passages` array. Write questions on the topic below, appropriate for the "
+            "subject and grade.\n\n"
+            f"TOPIC: {topic or subject}\n\n"
+        )
+    system_prompt = (
+        f"You are an expert {subject} teacher writing a short, rigorous quiz for Grade {grade}. "
+        "Write self-contained questions a student can answer without seeing any lesson plan. "
+        "Because this quiz is not tied to a built week with a grounding audit, do NOT assert specific "
+        "standard codes: leave standard_code as an empty string.\n\n"
+        f"Write approximately {num_questions} questions, using ONLY these question type(s): {types_wanted}. "
+        "Each question must be self-contained.\n\n"
+        + source_instruction
+        + _ITEM_WRITING_GUIDELINES
+    )
+    custom_instructions = custom_instructions_for(user_id)
+    if custom_instructions:
+        system_prompt += (
+            "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only:\n\n"
+            + custom_instructions
+        )
+    class_custom_instructions = class_custom_instructions_for(user_id, class_id)
+    if class_custom_instructions:
+        system_prompt += (
+            "\n\nTEACHER'S CUSTOM INSTRUCTIONS FOR THIS CLASS — on top of the account-wide ones above:\n\n"
+            + class_custom_instructions
+        )
+    content = _cached_completion(
+        user_id,
+        "generate_passage_quiz",
+        model=settings.openai_model,
+        max_completion_tokens=3000,
+        response_format=_response_format("weekly_quiz", QUIZ_JSON_SCHEMA),
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": "Write the quiz now."},
+        ],
+    )
+    return _randomize_mc_choice_order(loads_lenient(content or ""))
+
+
 def revise_quiz(
     user_id: str, plan: dict, existing_quiz: dict, feedback: str, *, class_id: str | None = None
 ) -> dict:
