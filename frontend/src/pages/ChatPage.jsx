@@ -2239,7 +2239,7 @@ export function ChatPage() {
               .then(() => qc.invalidateQueries({ queryKey: ['chats'] }))
               .catch(() => {})
           }
-        } catch (err) {
+        } catch {
           // Silently continuing here used to mean a failed chat creation left
           // the message sitting on screen with no reply and no explanation —
           // indistinguishable from the app having simply not heard the teacher.
