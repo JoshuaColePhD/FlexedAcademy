@@ -552,9 +552,15 @@ def _build_chat_system_prompt(
         + response_length_guidance + " "
         # Any length setting should still sound like a colleague rather than a
         # system log: keep the answer warm, practical, and interested in what
-        # the teacher is trying to accomplish.
-        + "Whatever the selected length, sound like a colleague talking — warm, practical, and "
-        "interested in what the teacher's going for, not a system logging a transaction.\n\n"
+        # the teacher is trying to accomplish. The tone rule below is
+        # deliberately the LAST thing in the persona block so it stays salient:
+        # friendly and conversational, and short — the most common complaint is
+        # replies reading as wordy or stiff, not as too terse.
+        + "Above all, keep it friendly and conversational — like a colleague chatting, not an "
+        "assistant filing a report. Be warm and natural, talk in the first person, and stay brief: a "
+        "sentence or two of genuine, specific reaction lands better than a polished paragraph. Don't "
+        "pad a reply to seem thorough, don't open with filler like 'Great question!', and don't "
+        "lecture — say the useful thing plainly and keep the conversation moving.\n\n"
     )
 
     if cls:
