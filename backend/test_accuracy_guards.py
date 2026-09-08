@@ -17,8 +17,13 @@ import os
 
 import pytest
 
-from backend import schema
-from backend.retrieval import RetrievalResult, act_only_grounding_error, audit_grounding
+from backend import schema, template_context
+from backend.retrieval import (
+    RetrievalResult,
+    act_only_grounding_error,
+    audit_grounding,
+    validate_act_alignment,
+)
 from backend.schema import SchemaError
 
 # Needs DATABASE_URL — same requirement as the app itself, and skipped rather
@@ -137,6 +142,97 @@ def test_audit_grounding_does_not_raise_when_act_alignment_present():
     # Should not raise even though R4 isn't in `allowed` — that's a
     # different (warning-only) hallucination check, not this one.
     audit_grounding(plan, allowed=set(), subject_code="AP_Lang")
+
+
+def _act_result(code="E.TOD.301", description="Determine whether material is relevant to the focus of the paragraph."):
+    return RetrievalResult(chunks=[{
+        "id": code,
+        "document": description,
+        "metadata": {
+            "code": code,
+            "description": description,
+            "source_type": "act_standards",
+        },
+    }])
+
+
+def test_act_row_requires_the_retrieved_skill_description():
+    plan = _week(_full_day(act_alignment="E.TOD.301"))
+    with pytest.raises(SchemaError) as exc:
+        validate_act_alignment(
+            plan,
+            {"E.TOD.301"},
+            subject_code="AP_Lang",
+            expected=True,
+            result=_act_result(),
+        )
+    assert exc.value.code == "act_skill_description_missing"
+
+
+def test_act_row_accepts_description_from_retrieved_document_text():
+    plan = _week(_full_day(
+        act_alignment=(
+            "E.TOD.301 Determine whether material is relevant to the focus of the paragraph."
+        )
+    ))
+    result = _act_result()
+    result.chunks[0]["metadata"].pop("description")
+    validate_act_alignment(
+        plan,
+        {"E.TOD.301"},
+        subject_code="AP_Lang",
+        expected=True,
+        result=result,
+    )
+
+
+def test_act_row_rejects_a_skill_from_another_class_section():
+    plan = _week(_full_day(
+        act_alignment="S.IOD.301 Analyze data from an experiment."
+    ))
+    with pytest.raises(SchemaError) as exc:
+        validate_act_alignment(
+            plan,
+            {"S.IOD.301"},
+            subject_code="AP_Lang",
+            expected=True,
+            result=_act_result("S.IOD.301", "Analyze data from an experiment."),
+        )
+    assert exc.value.code == "act_skill_wrong_section"
+
+
+def test_template_without_act_row_cannot_emit_act_content():
+    plan = _week(_full_day(act_alignment="E.TOD.301 Some skill"))
+    with pytest.raises(SchemaError) as exc:
+        validate_act_alignment(
+            plan,
+            set(),
+            subject_code="AP_Lang",
+            expected=False,
+        )
+    assert exc.value.code == "act_row_unavailable"
+
+
+def test_template_without_act_row_clears_legacy_act_cell():
+    normalized, warnings = schema.validate_day(
+        _full_day(act_alignment="E.TOD.301 Some skill"),
+        act_alignment_enabled=False,
+    )
+    assert normalized["act_alignment"] == ""
+    assert any("no ACT row" in warning for warning in warnings)
+
+
+def test_generated_template_spec_controls_whether_act_row_exists(monkeypatch):
+    spec = {
+        "table": {
+            "body_rows": [
+                {"cell_source": {"kind": "day_field", "day_field": {"field": "standards"}}},
+            ]
+        }
+    }
+    monkeypatch.setattr(template_context.db, "get_school_builder_spec", lambda *_args: spec)
+    assert template_context.has_template_field("custom-school", "standards")
+    assert not template_context.has_template_field("custom-school", "act_alignment")
 
 
 # ---------------------------------------------------------------------------

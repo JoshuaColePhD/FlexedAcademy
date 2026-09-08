@@ -1386,6 +1386,10 @@ export function installMockApi() {
       const planId = uid('plan')
       const label = `Week ${String(seq).padStart(2, '0')} — Aug 17-21, 2026`
       state.plans[planId] = makePlan(label)
+      // Production service.finalize persists plans.chat_id. Keep the preview
+      // linked too, so reopening a generated chat exercises the same Outputs
+      // fallback when the assistant message write is delayed or unavailable.
+      state.planChat[planId] = body?.chat_id ?? null
       state.ownedPlanIds.push(planId)
       return sse([
         [{ grounding: { codes: RETRIEVED, thin: false, count: 5, floor: 0.65 } }, 200],

@@ -2144,6 +2144,14 @@ export function ChatPage() {
 
       const hadChatId = Boolean(chatId)
       let activeChatId = chatId
+      if (activeChatId) {
+        /* Claim an existing route-backed chat before the next await. The
+           initial getChat effect may still be in flight; its response must
+           not replace this optimistic turn or clear the artifact this
+           request produces. */
+        localFor.current = activeChatId
+        chatLoadVersionRef.current += 1
+      }
       if (!activeChatId) {
         try {
           // effectiveWeek is pinned onto the chat here, at creation, and is

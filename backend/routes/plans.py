@@ -17,6 +17,7 @@ from .. import (
     llm,
     qti_build,
     quiz_docx,
+    retrieval,
     schema,
     service,
     storage,
@@ -27,7 +28,7 @@ from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
 from ..generation_queue import generation_queue
-from ..template_context import day_names_for_school
+from ..template_context import day_names_for_school, has_template_field
 from .drive import get_valid_access_token
 
 log = logging.getLogger("flexedacademy.routes.plans")
@@ -395,8 +396,22 @@ def patch_plan(plan_id: str, body: PatchPlan, bg_tasks: BackgroundTasks, user_id
         # "most recently touched" row — same cross-class leak service.finalize
         # had (see service.identity_for).
         cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-        template_days = day_names_for_school(db.class_school(cls, user_id))
-        plan, warnings = schema.validate_plan(body.plan_json, day_names=template_days)
+        school_id = db.class_school(cls, user_id)
+        preferred_template = db.get_preferred_template_for_class(user_id, row.get("class_id"), school_id)
+        selected_template_id = row.get("template_id") or (
+            preferred_template.get("id") if preferred_template else None
+        )
+        template_days = day_names_for_school(
+            school_id, template_id=selected_template_id, user_id=user_id
+        )
+        act_row = has_template_field(
+            school_id, "act_alignment", template_id=selected_template_id, user_id=user_id
+        )
+        plan, warnings = schema.validate_plan(
+            body.plan_json,
+            day_names=template_days,
+            act_alignment_enabled=act_row,
+        )
         identity = service.identity_for(user_id, cls)
         plan = schema.with_identity(
             plan,
@@ -404,6 +419,13 @@ def patch_plan(plan_id: str, body: PatchPlan, bg_tasks: BackgroundTasks, user_id
             course=identity["course"],
             period=identity["period"],
             subject=service.subject_label(cls["subject"]) if cls else None,
+        )
+        subject_code, _ = service._resolve_subject_grade(user_id, cls)
+        warnings += retrieval.audit_grounding(
+            plan,
+            set(row.get("retrieved_ids") or []),
+            subject_code=subject_code,
+            act_expected=bool(act_row and retrieval.act_sections_for(subject_code)),
         )
         out_path = docx_build.plan_output_path(plan, plan_id)
         bg_tasks.add_task(service._build_docx_bg, user_id, plan, out_path, plan_id)
@@ -500,6 +522,13 @@ def revise_whole_plan(
     context = retrieval.format_context(res)
     
     school_id = db.class_school(cls, user_id)
+    preferred_template = db.get_preferred_template_for_class(user_id, row.get("class_id"), school_id)
+    selected_template_id = row.get("template_id") or (
+        preferred_template.get("id") if preferred_template else None
+    )
+    act_row = has_template_field(
+        school_id, "act_alignment", template_id=selected_template_id, user_id=user_id
+    )
 
     # Generate critique and revised plan. Revisions are subject to the same
     # bounded pacing as fresh plans; the second entitlement check preserves the
@@ -511,7 +540,13 @@ def revise_whole_plan(
         )
     
     # Validate and save
-    plan, warnings = schema.validate_plan(new_plan_json, day_names=day_names_for_school(school_id))
+    plan, warnings = schema.validate_plan(
+        new_plan_json,
+        day_names=day_names_for_school(
+            school_id, template_id=selected_template_id, user_id=user_id
+        ),
+        act_alignment_enabled=act_row,
+    )
     identity = service.identity_for(user_id, cls)
     plan = schema.with_identity(
         plan,
@@ -525,7 +560,13 @@ def revise_whole_plan(
     # the saved grounding snapshot in lockstep with the revised plan rather
     # than leaving citations from the previous version attached to it.
     allowed = set(retrieved_ids)
-    warnings += retrieval.audit_grounding(plan, allowed, subject_code=subject_code)
+    warnings += retrieval.audit_grounding(
+        plan,
+        allowed,
+        subject_code=subject_code,
+        act_expected=act_row and bool(retrieval.act_sections_for(subject_code)),
+        result=res,
+    )
     cited = retrieval.cited_standards(plan, allowed, subject_code=subject_code)
     
     out_path = docx_build.plan_output_path(plan, plan_id)

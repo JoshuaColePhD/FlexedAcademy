@@ -17,7 +17,7 @@ from .entitlement import require_entitlement
 from .errors import AppError
 from .generation_queue import generation_queue
 from .retrieval import RetrievalResult
-from .template_context import day_names_for_school
+from .template_context import day_names_for_school, has_template_field
 
 log = logging.getLogger("flexedacademy.service")
 
@@ -145,6 +145,35 @@ def _resolve_state(cls: dict | None) -> str:
     return state.upper() if state else "AL"
 
 
+def _school_for_class(cls: dict | None, user_id: str) -> str | None:
+    """Resolve a class's school while keeping lightweight eval DB doubles usable."""
+    if hasattr(db, "class_school"):
+        return db.class_school(cls, user_id)
+    return (cls or {}).get("school")
+
+
+def _selected_template_id(
+    user_id: str, class_id: str | None, school_id: str | None, fallback: str | None = None
+) -> str | None:
+    """Resolve the plan's selected template without breaking small eval doubles."""
+    if hasattr(db, "get_preferred_template_for_class"):
+        preferred = db.get_preferred_template_for_class(user_id, class_id, school_id)
+        if preferred:
+            return preferred.get("id")
+    return fallback
+
+
+def _act_row_expected(act_row: bool, subject_code: str) -> bool:
+    """Whether this template/course pair has a mandatory ACT row.
+
+    Small evaluation doubles do not necessarily implement the ACT corpus
+    helper; treating that as no ACT section keeps those tests focused on the
+    field they are exercising while production uses the real corpus map.
+    """
+    sections_for = getattr(retrieval, "act_sections_for", None)
+    return bool(act_row and sections_for and sections_for(subject_code))
+
+
 def identity_for(user_id: str, cls: dict | None) -> dict:
     """teacher/course/period to stamp onto a plan.
 
@@ -185,6 +214,11 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
     """
     subject_code, grade = _resolve_subject_grade(user_id, cls)
     state = _resolve_state(cls)
+    school_id = _school_for_class(cls, user_id) if cls else db.get_user_school(user_id)
+    template_id = _selected_template_id(user_id, (cls or {}).get("id"), school_id)
+    act_row = has_template_field(
+        school_id, "act_alignment", template_id=template_id, user_id=user_id
+    )
 
     off_scope = retrieval.out_of_scope_grades(query, corpus_grade=grade)
     if off_scope:
@@ -203,6 +237,7 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
         extra_queries=llm.expand_query(user_id, contextual_query),
         state=state,
         user_id=user_id,
+        include_act=act_row,
     )
     if result.empty:
         raise retrieval.no_grounded_standards_error(query, result)
@@ -427,15 +462,23 @@ def finalize(
     # permits an empty string.
     resolved_school_id = school_id or (cls or {}).get("school")
     uses_weeden_template = resolved_school_id == "weeden-elementary-school"
-    preferred_template = db.get_preferred_template_for_class(
-        user_id, class_id, resolved_school_id
+    selected_template_id = _selected_template_id(
+        user_id, class_id, resolved_school_id, fallback=None
     )
-    selected_template_id = preferred_template.get("id") if preferred_template else None
+    act_row = has_template_field(
+        resolved_school_id,
+        "act_alignment",
+        template_id=selected_template_id,
+        user_id=user_id,
+    )
     template_days = day_names_for_school(
         resolved_school_id, template_id=selected_template_id, user_id=user_id
     )
     plan, warnings = schema.validate_plan(
-        plan_raw, require_weeden_sections=uses_weeden_template, day_names=template_days
+        plan_raw,
+        require_weeden_sections=uses_weeden_template,
+        day_names=template_days,
+        act_alignment_enabled=act_row,
     )
 
     identity = identity_for(user_id, cls)
@@ -452,7 +495,13 @@ def finalize(
     # rows back, so this stays a pure list-of-strings function for its other
     # caller (revise_day) to keep using as before.
     cited = retrieval.cited_standards(plan, result.codes, subject_code=subject_code)
-    warnings += retrieval.audit_grounding(plan, result.codes, subject_code=subject_code)
+    warnings += retrieval.audit_grounding(
+        plan,
+        result.codes,
+        subject_code=subject_code,
+        act_expected=_act_row_expected(act_row, subject_code),
+        result=result,
+    )
 
     unit = units.unit_for_week(plan["week_of"], subject=plan["course"])
     if week_number is not None and school_id:
@@ -611,6 +660,19 @@ def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None)
         db.update_plan(user_id, plan_id, plan_json=plan)
 
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
+    school_id = _school_for_class(cls, user_id)
+    selected_template_id = row.get("template_id") or _selected_template_id(
+        user_id, row.get("class_id"), school_id
+    )
+    if not has_template_field(
+        school_id, "act_alignment", template_id=selected_template_id, user_id=user_id
+    ):
+        plan = dict(plan)
+        plan["days"] = [
+            {**day, "act_alignment": ""} if not day.get("no_school") else day
+            for day in plan.get("days", [])
+        ]
+        db.update_plan(user_id, plan_id, plan_json=plan)
     plan = with_subject(plan, cls=cls)
     if plan != row["plan_json"]:
         db.update_plan(user_id, plan_id, plan_json=plan)
@@ -689,6 +751,16 @@ def revise_day(
     # class-less chat.
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
     subject_code, grade = _resolve_subject_grade(user_id, cls)
+    school_for_revision = _school_for_class(cls, user_id)
+    selected_template_id = row.get("template_id") or _selected_template_id(
+        user_id, row.get("class_id"), school_for_revision
+    )
+    act_row = has_template_field(
+        school_for_revision,
+        "act_alignment",
+        template_id=selected_template_id,
+        user_id=user_id,
+    )
 
     # A tweak scoped to a field that cannot carry a standard code — do_now,
     # during, learning_targets — has nothing to retrieve FOR. Re-retrieving
@@ -708,6 +780,7 @@ def revise_day(
             grade=grade,
             state=_resolve_state(cls),
             user_id=user_id,
+            include_act=act_row,
         )
         if result.empty:
             # A revision is allowed to proceed ungrounded — it inherits the week's
@@ -723,15 +796,14 @@ def revise_day(
         updated_raw = llm.rewrite_day(
             user_id, original, feedback, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
         )
-        row_class = db.get_class(user_id, row.get("class_id")) if row.get("class_id") else None
-        school_for_revision = (
-            db.class_school(row_class, user_id)
-            if hasattr(db, "class_school")
-            else (row_class or {}).get("school")
+        template_days = day_names_for_school(
+            school_for_revision, template_id=selected_template_id, user_id=user_id
         )
-        template_days = day_names_for_school(school_for_revision, user_id=user_id)
         updated, warnings = schema.validate_day(
-            updated_raw, path=f"days[{day_index}]", day_names=template_days
+            updated_raw,
+            path=f"days[{day_index}]",
+            day_names=template_days,
+            act_alignment_enabled=act_row,
         )
 
         if updated["name"] != original.get("name"):
@@ -751,15 +823,14 @@ def revise_day(
         # Still validated: the merged day is what the .docx builder receives, and
         # a scoped rewrite can just as easily return a learning target that
         # doesn't start with "I can" or an off-list engagement strategy.
-        row_class = db.get_class(user_id, row.get("class_id")) if row.get("class_id") else None
-        school_for_revision = (
-            db.class_school(row_class, user_id)
-            if hasattr(db, "class_school")
-            else (row_class or {}).get("school")
+        template_days = day_names_for_school(
+            school_for_revision, template_id=selected_template_id, user_id=user_id
         )
-        template_days = day_names_for_school(school_for_revision, user_id=user_id)
         updated, warnings = schema.validate_day(
-            merged, path=f"days[{day_index}]", day_names=template_days
+            merged,
+            path=f"days[{day_index}]",
+            day_names=template_days,
+            act_alignment_enabled=act_row,
         )
         # validate_day normalizes (strips, collapses newlines), so re-assert the
         # promise on the fields the teacher did not touch.
@@ -773,7 +844,13 @@ def revise_day(
 
     allowed = set(row.get("retrieved_ids") or []) | result.codes
     if needs_retrieval:
-        warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
+        warnings += retrieval.audit_grounding(
+            new_plan,
+            allowed,
+            subject_code=subject_code,
+            act_expected=_act_row_expected(act_row, subject_code),
+            result=result,
+        )
 
     # The WHOLE plan's citations, not just this day's — plan_standards is a
     # full snapshot (see db.replace_plan_standards), and computing it only
@@ -862,9 +939,26 @@ def set_day_field(
     original = days[day_index]
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
     subject_code, grade = _resolve_subject_grade(user_id, cls)
+    school_for_edit = _school_for_class(cls, user_id)
+    selected_template_id = row.get("template_id") or _selected_template_id(
+        user_id, row.get("class_id"), school_for_edit
+    )
+    act_row = has_template_field(
+        school_for_edit,
+        "act_alignment",
+        template_id=selected_template_id,
+        user_id=user_id,
+    )
 
     merged = {**original, field: value}
-    updated, warnings = schema.validate_day(merged, path=f"days[{day_index}]")
+    updated, warnings = schema.validate_day(
+        merged,
+        path=f"days[{day_index}]",
+        day_names=day_names_for_school(
+            school_for_edit, template_id=selected_template_id, user_id=user_id
+        ),
+        act_alignment_enabled=act_row,
+    )
     for key, was in original.items():
         if key != field and key in updated:
             updated[key] = was
@@ -874,7 +968,12 @@ def set_day_field(
     new_plan = with_subject({**plan, "days": new_days}, cls=cls, subject=subject_code)
 
     allowed = set(row.get("retrieved_ids") or [])
-    warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
+    warnings += retrieval.audit_grounding(
+        new_plan,
+        allowed,
+        subject_code=subject_code,
+        act_expected=_act_row_expected(act_row, subject_code),
+    )
     cited = retrieval.cited_standards(new_plan, allowed, subject_code=subject_code)
 
     out_path = docx_build.plan_output_path(new_plan, plan_id)
@@ -960,11 +1059,25 @@ def edit_day_field(
         if hasattr(db, "class_school")
         else (row_class or {}).get("school")
     )
-    template_days = day_names_for_school(school_for_revision, user_id=user_id)
+    selected_template_id = row.get("template_id") or _selected_template_id(
+        user_id, row.get("class_id"), school_for_revision
+    )
+    act_row = has_template_field(
+        school_for_revision,
+        "act_alignment",
+        template_id=selected_template_id,
+        user_id=user_id,
+    )
+    template_days = day_names_for_school(
+        school_for_revision, template_id=selected_template_id, user_id=user_id
+    )
 
     merged = {**original, field: value}
     updated, warnings = schema.validate_day(
-        merged, path=f"days[{day_index}]", day_names=template_days
+        merged,
+        path=f"days[{day_index}]",
+        day_names=template_days,
+        act_alignment_enabled=act_row,
     )
     for key, was in original.items():
         if key != field and key in updated:
@@ -975,7 +1088,12 @@ def edit_day_field(
     new_plan = with_subject({**plan, "days": new_days}, cls=cls, subject=subject_code)
 
     allowed = set(row.get("retrieved_ids") or [])
-    warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
+    warnings += retrieval.audit_grounding(
+        new_plan,
+        allowed,
+        subject_code=subject_code,
+        act_expected=_act_row_expected(act_row, subject_code),
+    )
     cited = retrieval.cited_standards(new_plan, allowed, subject_code=subject_code)
 
     out_path = docx_build.plan_output_path(new_plan, plan_id)
@@ -1058,6 +1176,16 @@ def revise_days(
 
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
     subject_code, grade = _resolve_subject_grade(user_id, cls)
+    school_for_revision = _school_for_class(cls, user_id)
+    selected_template_id = row.get("template_id") or _selected_template_id(
+        user_id, row.get("class_id"), school_for_revision
+    )
+    act_row = has_template_field(
+        school_for_revision,
+        "act_alignment",
+        template_id=selected_template_id,
+        user_id=user_id,
+    )
     needs_retrieval = field in schema.CODE_BEARING_FIELDS
 
     import json as _json
@@ -1077,6 +1205,7 @@ def revise_days(
                 grade=grade,
                 state=_resolve_state(cls),
                 user_id=user_id,
+                include_act=act_row,
             )
             if result.empty:
                 result = RetrievalResult(chunks=[], rejected=result.rejected, floor=result.floor)
@@ -1088,7 +1217,14 @@ def revise_days(
             user_id, original, feedback, field, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
         )
         merged = {**original, field: value}
-        updated, day_warnings = schema.validate_day(merged, path=f"days[{idx}]")
+        updated, day_warnings = schema.validate_day(
+            merged,
+            path=f"days[{idx}]",
+            day_names=day_names_for_school(
+                school_for_revision, template_id=selected_template_id, user_id=user_id
+            ),
+            act_alignment_enabled=act_row,
+        )
         for key, was in original.items():
             if key != field and key in updated:
                 updated[key] = was
@@ -1099,7 +1235,13 @@ def revise_days(
 
     allowed = set(row.get("retrieved_ids") or []) | retrieved_codes
     if needs_retrieval:
-        warnings += retrieval.audit_grounding(new_plan, allowed, subject_code=subject_code)
+        warnings += retrieval.audit_grounding(
+            new_plan,
+            allowed,
+            subject_code=subject_code,
+            act_expected=_act_row_expected(act_row, subject_code),
+            result=result,
+        )
     cited = retrieval.cited_standards(new_plan, allowed, subject_code=subject_code)
 
     out_path = docx_build.plan_output_path(new_plan, plan_id)

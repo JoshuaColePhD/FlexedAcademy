@@ -99,7 +99,12 @@ def validate_spec_against_analysis(spec: dict, analysis: dict) -> list[str]:
         if row.get("control_type") == "dropdown" and not row.get("dropdown_options_ref"):
             findings.append(f"row {label!r}: control_type is 'dropdown' but dropdown_options_ref is not set")
 
-    missing_fields = set(DAY_CONTENT_FIELDS) - mapped_fields
+    # ACT alignment is a legitimate optional row.  Florence's district form
+    # maps it, while templates such as Weeden's do not.  The plan contract
+    # keeps the field as an internal empty-string compatibility slot, but a
+    # renderer spec must not be rejected merely because the selected document
+    # has no ACT row to render.
+    missing_fields = (set(DAY_CONTENT_FIELDS) - {"act_alignment"}) - mapped_fields
     if missing_fields:
         findings.append(
             f"the following day-content fields are never mapped to a cell: {sorted(missing_fields)}"

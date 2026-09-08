@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 
 from . import db
-from .schema import DAY_NAMES
+from .config import settings
+from .schema import DAY_CONTENT_FIELDS, DAY_NAMES
 from .schoolcal import NO_CALENDAR_SCHOOL_ID
 
 log = logging.getLogger("flexedacademy.template_context")
@@ -102,4 +104,72 @@ def weekly_template_context(
         "The teacher does not choose a weekly shape or day count. Build the "
         "complete template-defined week; use the school calendar only to mark "
         "individual no-school days."
+    )
+
+
+def template_fields_for_school(
+    school_id: str | None,
+    *,
+    template_id: str | None = None,
+    user_id: str | None = None,
+) -> set[str]:
+    """Return the day-content fields the selected document actually renders.
+
+    ``act_alignment`` is intentionally template-scoped.  The old generation
+    path treated it as a universal field because Florence's v2 form has an ACT
+    row; that leaked ACT content into templates such as Weeden's, which have no
+    such row.  A verified generated layout spec is the strongest source of
+    truth.  The two hand-authored builders get the same answer from their
+    known contract, and an unknown legacy builder fails closed for ACT rather
+    than adding an unrequested row to a document.
+    """
+    all_fields = set(DAY_CONTENT_FIELDS)
+    if not school_id:
+        # Legacy/class-less callers still use the canonical Florence contract.
+        return all_fields
+
+    try:
+        spec = db.get_school_builder_spec(school_id, template_id)
+    except Exception:  # noqa: BLE001 — optional metadata must not block planning
+        spec = None
+    if isinstance(spec, dict):
+        mapped: set[str] = set()
+        for row in ((spec.get("table") or {}).get("body_rows") or []):
+            source = row.get("cell_source") or {}
+            if source.get("kind") == "day_field":
+                field = (source.get("day_field") or {}).get("field")
+                if field:
+                    mapped.add(field)
+            elif source.get("kind") == "multi_field_block":
+                for block in ((source.get("multi_field_block") or {}).get("fields") or []):
+                    field = block.get("field")
+                    if field:
+                        mapped.add(field)
+        return mapped
+
+    if school_id == "weeden-elementary-school":
+        return all_fields - {"act_alignment"}
+    if school_id == settings.default_builder_school_id:
+        return all_fields
+
+    # A hand-authored non-default builder predates generated layout specs.
+    # Inspect only its local source declaration; never assume a Florence ACT
+    # row for another school's format.
+    builder_path = Path(settings.builder_path).parent / f"{school_id}_builder.py"
+    try:
+        source = builder_path.read_text(encoding="utf-8")
+    except OSError:
+        return all_fields - {"act_alignment"}
+    return all_fields if "act_alignment" in source else all_fields - {"act_alignment"}
+
+
+def has_template_field(
+    school_id: str | None,
+    field: str,
+    *,
+    template_id: str | None = None,
+    user_id: str | None = None,
+) -> bool:
+    return field in template_fields_for_school(
+        school_id, template_id=template_id, user_id=user_id
     )

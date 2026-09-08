@@ -171,6 +171,15 @@ _CODE_RE = re.compile(
     r")(?!\.?\w)"
 )
 
+# Only codes from the ACT source belong in the ACT Alignment row.  Keep this
+# narrower than _CODE_RE because Alabama's R1-R7 recurring standards are real
+# primary ELA standards, not ACT skills, even though they can appear beside an
+# ACT row in the legacy corpus.
+_ACT_CODE_RE = re.compile(
+    r"(?<![\w.])(?:[ERMSW]\.[A-Z]{1,4}\.\d{3}|(?:TOD|ORG|KLA|SST|USG|PUN)\s?\d{3})(?!\.?\w)",
+    re.IGNORECASE,
+)
+
 _RERANK_STOPWORDS = frozenset(
     [
         "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how",
@@ -1160,7 +1169,7 @@ def retrieve_raw(
 STRATA = ("ap_skills", "state_course_of_study", "act_standards", "act_recurring")
 
 
-def _retrieval_strata(course: str) -> tuple[str, ...]:
+def _retrieval_strata(course: str, include_act: bool | None = None) -> tuple[str, ...]:
     """Return only strata that are not already covered by the main query.
 
     The main query already includes state-course rows for ordinary classes and
@@ -1168,7 +1177,9 @@ def _retrieval_strata(course: str) -> tuple[str, ...]:
     every expanded search multiplied the hybrid query count and memory peak;
     ACT standards are the only separate national partition required here.
     """
-    return ("act_standards",) if act_sections_for(course) else ()
+    if include_act is None:
+        include_act = bool(act_sections_for(course))
+    return ("act_standards",) if include_act and act_sections_for(course) else ()
 
 
 @dataclass(frozen=True)
@@ -1296,9 +1307,12 @@ def retrieve_grounded(
     extra_queries: list[str] | None = None,
     state: str = "AL",
     user_id: str | None = None,
+    include_act: bool | None = None,
 ) -> RetrievalResult:
     top_k = top_k or settings.retrieval_top_k
     floor = settings.floor_for(subject_code) if max_distance is None else max_distance
+    if include_act is None:
+        include_act = bool(act_sections_for(subject_code))
 
     searches = [query, *(extra_queries or [])]
     best: dict[str, dict] = {}
@@ -1328,7 +1342,7 @@ def retrieve_grounded(
 
     # db.py now has a ThreadedConnectionPool, so we execute these queries concurrently.
     jobs = [(q, max(top_k * 3, top_k), None) for q in searches]
-    jobs += [(q, top_k, st) for q in searches for st in _retrieval_strata(subject_code)]
+    jobs += [(q, top_k, st) for q in searches for st in _retrieval_strata(subject_code, include_act)]
 
     # Exact identifier matches first, so they win the per-code dedup in
     # consider() against any approximate hit for the same standard.
@@ -1406,7 +1420,7 @@ def retrieve_grounded(
 
     keep = survivors[:top_k]
     kept_ids = {c["id"] for c in keep}
-    for source_type in _retrieval_strata(subject_code):
+    for source_type in _retrieval_strata(subject_code, include_act):
         best_stratum = next(
             (c for c in survivors if (c.get("metadata") or {}).get("source_type") == source_type),
             None,
@@ -1626,7 +1640,155 @@ def cited_standards(plan: dict, allowed: set[str], subject_code: str | None = No
     return entries
 
 
-def audit_grounding(plan: dict, allowed: set[str], subject_code: str | None = None) -> list[str]:
+def _normalized_words(value: object) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
+
+
+def _act_skill_sources(result: RetrievalResult | None, subject_code: str | None) -> dict[str, dict]:
+    """Return the exact ACT source rows available to this generation path."""
+    sources: dict[str, dict] = {}
+    for chunk in (result.chunks if result else []):
+        metadata = chunk.get("metadata") or {}
+        if metadata.get("source_type") != "act_standards":
+            continue
+        code = metadata.get("code")
+        if code:
+            source = dict(metadata)
+            # Postgres normally stores the parsed description in metadata;
+            # older/local retrieval rows may expose it only as document text.
+            # Keep both paths strict: an ACT code without its source skill text
+            # is not a proper alignment.
+            source.setdefault("description", chunk.get("document", ""))
+            sources[_norm_code(str(code))] = source
+
+    # Direct teacher edits use the picker without a RetrievalResult. Resolve
+    # those exact codes from the same scoped corpus rather than trusting text
+    # supplied by the browser.
+    if subject_code:
+        for code in list(sources):
+            if sources[code].get("description"):
+                continue
+            chunk = chunk_for_code(code, subject_code=subject_code)
+            if chunk and chunk.get("source_type") == "act_standards":
+                sources[code] = chunk
+    return sources
+
+
+def validate_act_alignment(
+    plan: dict,
+    allowed: set[str],
+    *,
+    subject_code: str | None,
+    expected: bool,
+    result: RetrievalResult | None = None,
+) -> None:
+    """Enforce the template/course ACT contract before a plan is persisted.
+
+    When the template has an ACT row, every teaching day must cite a retrieved
+    ACT code from a section appropriate to the class and include that source's
+    actual skill description.  When the template has no ACT row, both ACT
+    content and ACT codes are rejected.  This is deliberately a hard check:
+    an attractive but borrowed ACT alignment is worse than a retryable failed
+    generation.
+    """
+    from .schema import SchemaError
+
+    allowed_codes = {_norm_code(str(code)) for code in allowed}
+    expected_sections = set(act_sections_for(subject_code)) if subject_code else set()
+    sources = _act_skill_sources(result, subject_code)
+
+    for day in plan.get("days", []):
+        if day.get("no_school"):
+            continue
+        day_name = day.get("name", "?")
+        primary_codes = _ACT_CODE_RE.findall(str(day.get("standards", "")))
+        if primary_codes:
+            raise SchemaError(
+                "act_in_primary_standards",
+                f"{day_name} puts ACT code(s) {', '.join(primary_codes)} in the primary Standards row.",
+                path=f"days.{day_name}.standards",
+                hint="Keep primary course standards in Standards and ACT skills only in the ACT Alignment row.",
+            )
+
+        alignment = str(day.get("act_alignment", "") or "").strip()
+        if not expected:
+            if alignment or _ACT_CODE_RE.findall(alignment):
+                raise SchemaError(
+                    "act_row_unavailable",
+                    f"{day_name} includes ACT alignment, but the selected template has no ACT row.",
+                    path=f"days.{day_name}.act_alignment",
+                    hint="Remove the ACT alignment or choose a template that includes that row.",
+                )
+            continue
+
+        if not alignment:
+            raise SchemaError(
+                "act_skill_missing",
+                f"{day_name} has an ACT row but no ACT skill alignment.",
+                path=f"days.{day_name}.act_alignment",
+                hint="Cite the closest retrieved ACT code and its full skill description.",
+            )
+
+        codes = [_norm_code(code) for code in _ACT_CODE_RE.findall(alignment)]
+        if not codes:
+            raise SchemaError(
+                "act_skill_missing",
+                f"{day_name}'s ACT alignment does not contain a valid ACT skill code.",
+                path=f"days.{day_name}.act_alignment",
+                hint="Use a retrieved code such as E.TOD.301 or TOD 502, followed by its skill description.",
+            )
+
+        for code in codes:
+            section = code[0] if len(code) > 1 and code[1] == "." else ACT_ENGLISH
+            if section not in expected_sections:
+                raise SchemaError(
+                    "act_skill_wrong_section",
+                    f"{day_name} cites ACT {code}, which is not appropriate for {subject_code}.",
+                    path=f"days.{day_name}.act_alignment",
+                    hint=f"Use ACT section(s): {', '.join(sorted(expected_sections)) or 'none'}.",
+                )
+            source = sources.get(code)
+            if source is None and code not in allowed_codes:
+                raise SchemaError(
+                    "act_skill_not_retrieved",
+                    f"{day_name} cites ACT {code}, but that skill was not retrieved for this request.",
+                    path=f"days.{day_name}.act_alignment",
+                    hint="Use one of the ACT skills in the retrieved standards block.",
+                )
+            if source is None:
+                source = chunk_for_code(code, subject_code=subject_code)
+            if source is None:
+                raise SchemaError(
+                    "act_skill_not_retrieved",
+                    f"{day_name} cites ACT {code}, but its source skill could not be found.",
+                    path=f"days.{day_name}.act_alignment",
+                    hint="Use one of the ACT skills in the retrieved standards block.",
+                )
+            description = (source or {}).get("description") or (source or {}).get("document") or ""
+            if not description:
+                raise SchemaError(
+                    "act_skill_description_missing",
+                    f"{day_name} cites ACT {code}, but the source skill description is unavailable.",
+                    path=f"days.{day_name}.act_alignment",
+                    hint="Use a retrieved ACT skill that includes its full description.",
+                )
+            if _normalized_words(description) not in _normalized_words(alignment):
+                raise SchemaError(
+                    "act_skill_description_missing",
+                    f"{day_name} cites ACT {code} without its source skill description.",
+                    path=f"days.{day_name}.act_alignment",
+                    hint="Include the exact retrieved ACT skill wording after the code.",
+                )
+
+
+def audit_grounding(
+    plan: dict,
+    allowed: set[str],
+    subject_code: str | None = None,
+    *,
+    act_expected: bool | None = None,
+    result: RetrievalResult | None = None,
+) -> list[str]:
     """Flag every standard code the plan cites that retrieval didn't supply.
 
     Warnings, not errors: the canonical example-week.json itself cites CLR 501,
@@ -1659,8 +1821,18 @@ def audit_grounding(plan: dict, allowed: set[str], subject_code: str | None = No
     # content and the course it belongs to. Raises the same SchemaError
     # shape (and default retryable=True) schema.py's own empty-field checks
     # use, so the client gets the identical "safe to just try again" signal.
-    act_expected = bool(act_sections_for(subject_code)) if subject_code else False
-    if act_expected:
+    expected = bool(act_sections_for(subject_code)) if subject_code else False
+    if act_expected is not None:
+        expected = act_expected
+    if act_expected is not None:
+        validate_act_alignment(
+            plan,
+            allowed,
+            subject_code=subject_code,
+            expected=expected,
+            result=result,
+        )
+    elif expected:
         for day in plan.get("days", []):
             if day.get("no_school"):
                 continue

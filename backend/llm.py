@@ -1170,7 +1170,11 @@ original template where you can tell. Reuse the extracted visual facts exactly w
 	content mapping.
 
 If a review pass previously rejected an attempt, its feedback is given below — fix exactly what it flagged, \
-don't restart from scratch unless the feedback says the whole approach was wrong."""
+don't restart from scratch unless the feedback says the whole approach was wrong.
+
+Map `act_alignment` ONLY when the verified template analysis contains an ACT
+Alignment row. If that row is absent, do not invent or substitute an ACT row;
+the plan's internal act_alignment field will remain empty and will not render."""
 
 
 def generate_layout_spec(user_id: str, structure_summary: str, sections: list[dict], prior_feedback: str | None = None) -> dict:

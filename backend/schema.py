@@ -866,6 +866,7 @@ def normalize_day(day: dict, warnings: list[str] | None = None) -> dict:
 def validate_day(
     day: object, *, path: str = "day", require_weeden_sections: bool = False,
     day_names: list[str] | tuple[str, ...] | None = None,
+    act_alignment_enabled: bool | None = None,
 ) -> tuple[dict, list[str]]:
     """Validate one day. Returns (normalized_day, warnings)."""
     if not isinstance(day, dict):
@@ -893,6 +894,12 @@ def validate_day(
         return closed, warnings
 
     d = normalize_day(day, warnings)
+
+    if act_alignment_enabled is False and str(d.get("act_alignment") or "").strip():
+        warnings.append(
+            f"{name}: ACT alignment was removed because the selected template has no ACT row."
+        )
+        d["act_alignment"] = ""
 
     for field in DAY_CONTENT_FIELDS:
         if field not in d:
@@ -1011,6 +1018,7 @@ def _clean(obj):
 def validate_plan(
     plan: object, *, require_weeden_sections: bool = False,
     day_names: list[str] | tuple[str, ...] | None = None,
+    act_alignment_enabled: bool | None = None,
 ) -> tuple[dict, list[str]]:
     """Validate a whole week. Returns (normalized_plan, warnings).
 
@@ -1045,7 +1053,11 @@ def validate_plan(
     seen: list[str] = []
     for i, raw in enumerate(days):
         d, w = validate_day(
-            raw, path=f"days[{i}]", require_weeden_sections=require_weeden_sections, day_names=axis
+            raw,
+            path=f"days[{i}]",
+            require_weeden_sections=require_weeden_sections,
+            day_names=axis,
+            act_alignment_enabled=act_alignment_enabled,
         )
         warnings.extend(w)
         if d["name"] in seen:
