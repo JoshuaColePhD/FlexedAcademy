@@ -67,6 +67,13 @@ test.describe('onboarding progress journey', () => {
     await page.goto('/preview.html?fresh=1')
 
     await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible()
+    // Reduced-motion still used to run .fa-rise-panel for 0.01ms with
+    // fill-mode both, which can leave the shell translated by 2px when this
+    // geometry is read. Wait until that animation is gone before measuring.
+    await page.locator('.onboarding-card').evaluate(async (el) => {
+      if (typeof el.getAnimations !== 'function') return
+      await Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => {})))
+    })
     const layout = await page.evaluate(() => ({
       horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
       markerDuration: getComputedStyle(document.querySelector('.onboarding-rail-marker')).transitionDuration,
