@@ -11995,6 +11995,25 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@media (max-width: 767.98px) {
+  /* Unlayered so it can beat .glass-panel's later unlayered 1px !important
+     border. The matching rules inside @layer components lose that fight, and
+     the Continue footer then sits 1px past a 375×812 phone viewport. */
+  .onboarding-ground {
+    position: fixed;
+    inset: 0;
+    height: auto;
+    overflow: hidden;
+  }
+  .onboarding-card.glass-panel {
+    box-sizing: border-box;
+    height: 100%;
+    max-height: 100%;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}
 @media (max-width: 767px) {
   .onboarding-encouragement { display: none; }
   .onboarding-rail-visual { display: none; }
