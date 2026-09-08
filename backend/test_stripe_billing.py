@@ -8,7 +8,7 @@ import stripe
 
 from backend import stripe_api
 from backend.errors import AppError
-from backend.routes import billing
+from backend.routes import admin, billing
 
 
 def _signature(payload: bytes, secret: str, timestamp: int | None = None) -> str:
@@ -198,7 +198,7 @@ def test_admin_billing_does_not_report_stale_statuses_when_billing_is_disabled(m
         },
     )
 
-    result = billing.get_billing_route("owner")
+    result = admin.get_billing_route("owner")
 
     assert result["billing_enabled"] is False
     assert result["paying_accounts"] == 0
@@ -224,7 +224,7 @@ def test_admin_billing_counts_only_active_subscriptions(monkeypatch):
         lambda price_id: {"amount": 799, "currency": "USD", "interval": "month"},
     )
 
-    result = billing.get_billing_route("owner")
+    result = admin.get_billing_route("owner")
 
     assert result["paying_accounts"] == 2
     assert result["mrr_cents"] == 1598
