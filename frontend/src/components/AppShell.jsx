@@ -725,7 +725,7 @@ export function AppShell({ children }) {
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <button
               type="button"
-              className="btn-icon"
+              className="btn-icon app-shell-menu-toggle"
               aria-label="Show menu"
               onClick={() => setDrawerOpen(true)}
             >

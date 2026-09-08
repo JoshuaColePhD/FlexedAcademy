@@ -731,6 +731,17 @@
   background: var(--paper-inset) !important;
   outline: none;
 }
+.app-shell-menu-toggle {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+.app-shell-menu-toggle:hover,
+.app-shell-menu-toggle:focus-visible {
+  background: var(--paper-inset) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
 /* The rail brand row should flow directly into the navigation. Keep the
    divider off at every desktop breakpoint so a collapsed rail does not leave
    a stray horizontal rule beneath the centered seal. */
