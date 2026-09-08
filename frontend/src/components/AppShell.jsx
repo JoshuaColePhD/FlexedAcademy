@@ -562,8 +562,8 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
       )}
 
       {!collapsed ? (
-        <div className="pt-2 pb-1 flex shrink-0 flex-col">
-          <div className="mt-auto">
+        <div className="flex w-full shrink-0 flex-col pt-2 pb-1">
+          <div className="mt-auto w-full">
             <AccountMenu classPath={classPath} collapsed={false} spacious={spacious} />
           </div>
         </div>
