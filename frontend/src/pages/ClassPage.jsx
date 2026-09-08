@@ -171,8 +171,8 @@ function ClassSetup({ defaultState = '', activeStates, onCreated, onCancel }) {
   }
 
   return (
-    <section id="section-setup" className="w-full max-w-3xl">
-      <div className="max-w-2xl">
+    <section id="section-setup" className="w-full max-w-5xl">
+      <div className="max-w-5xl">
         <div className="mb-6">
           <p className="eyebrow mb-2">Class management</p>
           <h2 className="text-2xl font-semibold tracking-tight text-ink">Add a class</h2>
@@ -180,7 +180,7 @@ function ClassSetup({ defaultState = '', activeStates, onCreated, onCancel }) {
             Choose your state, course, and grade. FlexEd will load the matching standards and name the class for you.
           </p>
         </div>
-        <form onSubmit={submit} className="flex flex-col gap-6 rounded-2xl bg-paper-sunken p-6 sm:p-8 shadow-sm">
+        <form onSubmit={submit} data-course-picker-surface className="relative flex flex-col gap-6 rounded-2xl bg-paper-sunken p-6 sm:p-8 shadow-sm">
           <div className="flex flex-col gap-2">
             <label htmlFor="new-class-state" className="text-sm font-medium text-ink">
               State standards
@@ -215,6 +215,10 @@ function ClassSetup({ defaultState = '', activeStates, onCreated, onCancel }) {
                 onChange={setSubject}
                 id="new-class-framework"
                 constrainPopover
+                expandPopover
+                gradeFilter={grade}
+                onGradeFilterChange={setGrade}
+                gradeOptions={GRADES}
               />
             ) : (
               <input
@@ -227,22 +231,6 @@ function ClassSetup({ defaultState = '', activeStates, onCreated, onCancel }) {
             )}
           </div>
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="new-class-grade" className="text-sm font-medium text-ink">
-              Grade Level
-            </label>
-            <select
-              id="new-class-grade"
-              value={grade}
-              onChange={(e) => setGrade(e.target.value)}
-              className="neo-select neo-inset w-full rounded-lg bg-paper-raised py-2.5 pl-3 pr-8 text-sm text-ink"
-            >
-              {GRADES.map((item) => (
-                <option key={item.value} value={item.value}>{item.label}</option>
-              ))}
-            </select>
-          </div>
-          
           <div className="mt-2 flex items-center justify-end gap-3 pt-4 border-t border-edge">
             <button
               type="button"
@@ -1149,9 +1137,8 @@ export function ClassPage() {
         title="Class profiles"
         icon={GraduationCap}
         tabs={ADD_CLASS_TABS}
-        mobileTabs={ADD_CLASS_TABS}
         backPath="/"
-        contentMaxWidth="max-w-3xl"
+        contentMaxWidth="max-w-5xl"
       >
         <ClassSetup
           defaultState={classes.find((item) => item.state)?.state || ''}

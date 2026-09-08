@@ -175,19 +175,18 @@ export function SplitLayout({
              <button
               type="button"
               onClick={() => backPath ? navigate(backPath) : navigate(-1)}
-              className="rounded-md p-1.5 text-ink-muted bg-paper-sunken border border-edge/30"
+              className="split-layout-mobile-back inline-flex shrink-0 items-center justify-center rounded-full p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
               aria-label="Go back"
             >
-              <ArrowLeft size={16} aria-hidden="true" />
+              <ArrowLeft size={20} strokeWidth={1.8} aria-hidden="true" />
             </button>
-            <h1 className="text-xl font-bold text-ink">{title}</h1>
+            <h1 className="min-w-0 flex-1 truncate text-xl font-bold text-ink">{title}</h1>
+            {sidebarTopAction ? (
+              <div className="split-layout-mobile-header-action shrink-0">
+                {sidebarTopAction}
+              </div>
+            ) : null}
           </div> : null}
-
-          {!isGeneralLayout && sidebarTopAction ? (
-            <div className="mb-5 md:hidden">
-              {sidebarTopAction}
-            </div>
-          ) : null}
 
           {!isGeneralLayout && mobileTabs?.length ? (
             <nav className="split-layout-mobile-tabs md:hidden mb-8 -mx-1 flex gap-1 overflow-x-auto pb-1" aria-label={`${title} sections`}>

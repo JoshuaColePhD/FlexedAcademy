@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, MoreHorizontal, PanelLeft, Pencil, Pin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react'
+import { ChevronDown, MoreHorizontal, Pencil, Pin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react'
 
 import { useChats, useClasses, useDeleteChat, useRenameChat, useTogglePin } from '../hooks/useAppData'
 import { usePullToRefresh } from '../hooks/usePullToRefresh'
@@ -723,14 +723,6 @@ export function AppShell({ children }) {
         ) : null}
         {isNarrow && (!isPhone || !isChatRoute) ? (
           <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
-            <button
-              type="button"
-              className="btn-icon app-shell-menu-toggle"
-              aria-label="Show menu"
-              onClick={() => setDrawerOpen(true)}
-            >
-              <PanelLeft size={17} aria-hidden="true" />
-            </button>
             <span className="pointer-events-none absolute inset-x-0 truncate text-center text-sm font-semibold tracking-tight text-ink">
               FlexEd Academy
             </span>

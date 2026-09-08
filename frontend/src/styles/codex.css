@@ -1050,10 +1050,15 @@
 /* The course picker is a catalog, not a native-select substitute. Give the
    category rail, result list, and current selection a clear visual rhythm. */
 .fw-picker-popover {
-  width: min(44rem, calc(100vw - 2rem)) !important;
+  width: min(44rem, calc(100vw - 2rem));
   max-width: calc(100vw - 2rem);
   border: 1px solid var(--edge-strong);
   box-shadow: 0 20px 44px rgb(0 0 0 / 0.28), 0 4px 12px rgb(0 0 0 / 0.16);
+}
+.fw-picker-popover-expanded {
+  margin-top: 0;
+  border-color: var(--edge-strong);
+  box-shadow: 0 24px 70px rgb(var(--ink-rgb) / 0.2), 0 8px 24px rgb(var(--ink-rgb) / 0.12);
 }
 .fw-picker-current { border-color: color-mix(in srgb, var(--accent) 40%, var(--edge)); }
 .fw-picker-option-label { color: var(--ink); }
@@ -2493,10 +2498,23 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
 
   .workspace-artifact-toggle,
-  .split-layout-mobile-header > button,
+  .split-layout-mobile-back,
   .split-layout-general-header > button {
     min-width: 44px;
     min-height: 44px;
+  }
+
+  .split-layout-mobile-header-action {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+  }
+
+  .split-layout-mobile-header-action > * > * {
+    width: auto !important;
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 12px !important;
   }
 
   .split-layout-mobile-tabs button {

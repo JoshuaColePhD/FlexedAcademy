@@ -2212,7 +2212,150 @@ function AdminKpi({ label, value, detail, icon: Icon, tone = 'accent' }) {
   )
 }
 
-function AdminOverview({ accounts, onNavigate }) {
+function AdminPriorityQueue({ accounts, onNavigate, onFindCustomer, supportNotificationCount }) {
+  const [subscriberQuery, setSubscriberQuery] = useState('')
+  const plansQuery = useQuery({
+    queryKey: qk.adminPlans({ limit: 8, offset: 0 }),
+    queryFn: () => api.adminListPlans({ limit: 8, offset: 0 }),
+    staleTime: 30_000,
+  })
+  const standardsQuery = useQuery({
+    queryKey: ['admin', 'qa', 'standards-check'],
+    queryFn: () => api.adminStandardsCheck(),
+    staleTime: 30_000,
+  })
+  const billingQuery = useQuery({
+    queryKey: ['admin', 'billing'],
+    queryFn: () => api.adminBilling(),
+    staleTime: 30_000,
+  })
+
+  const plans = plansQuery.data?.items || []
+  const flaggedStandards = standardsQuery.data?.flagged || []
+  const workflowPlans = plans.filter((plan) => ['failed', 'queued', 'building'].includes(plan.document_status))
+  const accessAccounts = accounts.filter((account) => (
+    account.is_blocked
+      || account.subscription_status === 'past_due'
+      || capStatusFor(account).tone !== 'ok'
+  ))
+  const pastDue = billingQuery.data?.past_due_accounts || []
+
+  const findSubscriber = (event) => {
+    event.preventDefault()
+    const query = subscriberQuery.trim()
+    if (!query) return
+    onFindCustomer(query)
+  }
+
+  return (
+    <section className="space-y-3" aria-labelledby="admin-priority-heading">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-2xs font-semibold uppercase tracking-[0.16em] text-accent-text">Work queue</p>
+          <h3 id="admin-priority-heading" className="mt-1 text-lg font-semibold tracking-tight text-ink">Start with what needs action</h3>
+        </div>
+        <span className="text-2xs text-ink-muted">Subscriber access · quality · revenue · reliability</span>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-2">
+        <article className="neo-world neo-panel rounded-2xl border-accent/30 bg-accent-tint/20 p-4">
+          <div className="flex items-start gap-3">
+            <span className="rounded-xl bg-accent-tint p-2 text-accent-text"><Users size={17} aria-hidden="true" /></span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="font-semibold text-ink">Find or manage a subscriber</h4>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    {accessAccounts.length ? `${accessAccounts.length} account${accessAccounts.length === 1 ? '' : 's'} need access or usage review.` : 'Search the customer directory by name, email, or school.'}
+                  </p>
+                </div>
+                <span className="shrink-0 font-mono text-lg text-ink">{accessAccounts.length}</span>
+              </div>
+              <form className="mt-3 flex gap-2" onSubmit={findSubscriber}>
+                <label htmlFor="admin-subscriber-finder" className="sr-only">Find a subscriber</label>
+                <input
+                  id="admin-subscriber-finder"
+                  value={subscriberQuery}
+                  onChange={(event) => setSubscriberQuery(event.target.value)}
+                  placeholder="Name, email, or school"
+                  className="min-w-0 flex-1 rounded-lg border border-edge bg-paper-raised px-3 py-2 text-sm text-ink outline-none focus:border-accent"
+                />
+                <button type="submit" className="btn shrink-0 text-xs" disabled={!subscriberQuery.trim()}>
+                  Find
+                </button>
+              </form>
+              <button type="button" className="mt-2 text-xs font-medium text-accent-text hover:underline" onClick={() => onNavigate('users')}>
+                Open customer directory <ArrowUpRight size={12} className="inline" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        </article>
+
+        <article className="neo-world neo-panel rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <span className={`rounded-xl p-2 ${flaggedStandards.length ? 'bg-flag-tint text-flag' : 'bg-ok-tint text-ok'}`}><ShieldCheck size={17} aria-hidden="true" /></span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="font-semibold text-ink">Review plans and standards</h4>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    {standardsQuery.isLoading ? 'Checking cited standards…' : flaggedStandards.length ? `${flaggedStandards.length} plan${flaggedStandards.length === 1 ? '' : 's'} have a standards or course mismatch.` : 'No standards mismatches found.'}
+                  </p>
+                </div>
+                <span className={`shrink-0 font-mono text-lg ${flaggedStandards.length ? 'text-flag' : 'text-ok'}`}>{flaggedStandards.length}</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button type="button" className="btn text-xs" onClick={() => onNavigate('standards')}>Review standards</button>
+                <button type="button" className="btn text-xs" onClick={() => onNavigate('plans')}>Open lesson plans</button>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article className="neo-world neo-panel rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <span className={`rounded-xl p-2 ${pastDue.length ? 'bg-mark-tint text-mark' : 'bg-ok-tint text-ok'}`}><CircleDollarSign size={17} aria-hidden="true" /></span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="font-semibold text-ink">Handle billing and access</h4>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    {billingQuery.isLoading ? 'Loading payment status…' : pastDue.length ? `${pastDue.length} account${pastDue.length === 1 ? '' : 's'} are past due.` : 'No payment issues currently reported.'}
+                  </p>
+                </div>
+                <span className={`shrink-0 font-mono text-lg ${pastDue.length ? 'text-mark' : 'text-ok'}`}>{pastDue.length}</span>
+              </div>
+              <button type="button" className="mt-3 btn text-xs" onClick={() => onNavigate('billing')}>Open billing</button>
+            </div>
+          </div>
+        </article>
+
+        <article className="neo-world neo-panel rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <span className={`rounded-xl p-2 ${workflowPlans.length ? 'bg-flag-tint text-flag' : 'bg-ok-tint text-ok'}`}><Activity size={17} aria-hidden="true" /></span>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h4 className="font-semibold text-ink">Monitor incomplete workflows</h4>
+                  <p className="mt-1 text-xs text-ink-muted">
+                    {plansQuery.isLoading ? 'Loading recent plan work…' : workflowPlans.length ? `${workflowPlans.length} recent plan document${workflowPlans.length === 1 ? '' : 's'} is queued, building, or failed.` : 'No recent plan document work needs attention.'}
+                  </p>
+                </div>
+                <span className={`shrink-0 font-mono text-lg ${workflowPlans.length ? 'text-flag' : 'text-ok'}`}>{workflowPlans.length}</span>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button type="button" className="btn text-xs" onClick={() => onNavigate('plans')}>Open recent plans</button>
+                {supportNotificationCount ? <span className="text-2xs text-ink-muted">{supportNotificationCount} support thread{supportNotificationCount === 1 ? '' : 's'} awaiting reply</span> : null}
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+  )
+}
+
+function AdminOverview({ accounts, onNavigate, onFindCustomer, supportNotificationCount }) {
   const summary = useMemo(() => {
     const activeThisWeek = accounts.filter((account) => {
       if (!account.last_plan_at) return false
@@ -2253,6 +2396,13 @@ function AdminOverview({ accounts, onNavigate }) {
         <AdminKpi label="Planning context" value={summary.contextReady} detail="Have a guide or confirmed calendar" icon={FileText} tone="ok" />
         <AdminKpi label="Needs attention" value={summary.attention} detail="Usage, billing, or context follow-up" icon={Activity} tone={summary.attention ? 'flag' : 'ok'} />
       </div>
+
+      <AdminPriorityQueue
+        accounts={accounts}
+        onNavigate={onNavigate}
+        onFindCustomer={onFindCustomer}
+        supportNotificationCount={supportNotificationCount}
+      />
 
       <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-accent/20 bg-accent-tint/40 p-3">
         <span className="mr-1 text-xs font-semibold text-ink">Jump to</span>
@@ -2621,12 +2771,12 @@ export function AdminPage() {
   const TABS = React.useMemo(() => [
     { id: 'overview', label: 'Overview' },
     { id: 'users', label: 'Customers', count: accounts.length || undefined },
-    { id: 'support', label: 'Support', count: supportNotificationCount || undefined },
     { id: 'plans', label: 'Lesson Plans' },
     { id: 'standards', label: 'Standards Check' },
-    { id: 'schools', label: 'Schools' },
-    { id: 'onboarding', label: 'Onboarding' },
     { id: 'billing', label: 'Billing' },
+    { id: 'support', label: 'Support', count: supportNotificationCount || undefined },
+    { id: 'onboarding', label: 'Onboarding' },
+    { id: 'schools', label: 'Schools' },
     { id: 'settings', label: 'Settings' },
   ], [accounts.length, supportNotificationCount])
 
@@ -2650,7 +2800,17 @@ export function AdminPage() {
               ) : isError ? (
                 <p className="text-sm text-mark">{error?.message || 'Could not load accounts.'}</p>
               ) : (
-                <AdminOverview accounts={accounts} onNavigate={setActiveTab} />
+                <AdminOverview
+                  accounts={accounts}
+                  onNavigate={setActiveTab}
+                  supportNotificationCount={supportNotificationCount}
+                  onFindCustomer={(query) => {
+                    setSearch(query)
+                    setStatusFilter('all')
+                    setContextFilter('all')
+                    setActiveTab('users')
+                  }}
+                />
               )}
             </div>
 
