@@ -267,7 +267,7 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
     : name
 
   return (
-    <div className={`account-menu-footer relative flex items-center gap-1 py-2${spacious ? ' is-spacious' : ''} ${collapsed ? 'px-1 justify-center' : 'px-2'}`} ref={ref}>
+    <div className={`account-menu-footer relative flex w-full items-center gap-1 py-2${spacious ? ' is-spacious' : ''} ${collapsed ? 'px-1 justify-center' : 'px-2'}`} ref={ref}>
       {collapsed ? (
         <button
           type="button"

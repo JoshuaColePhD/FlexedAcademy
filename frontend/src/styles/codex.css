@@ -1862,6 +1862,9 @@
    the magnifying-glass control in its header is used. */
 .rail-search-popover { flex: 0 0 auto; }
 .account-menu-footer.is-spacious {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
   margin-top: 6px;
   padding: 10px 12px max(10px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--edge);
