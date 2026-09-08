@@ -1085,7 +1085,7 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                 re.search(
                     r"\b(more questions|ask (me )?more|keep asking|another round|ask again)\b",
                     last_user or "",
-                    re.I,
+                    re.IGNORECASE,
                 )
             )
             if prior_clarify_rounds >= 1 and not asks_for_more_questions:
