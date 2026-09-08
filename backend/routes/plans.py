@@ -68,11 +68,15 @@ class DayUpdateRequest(BaseModel):
 
 @router.put("/{plan_id}/days/{day_index}")
 def update_day(
-    plan_id: str, day_index: int, body: DayUpdateRequest, user_id: str = Depends(get_current_user)
+    plan_id: str,
+    day_index: int,
+    body: DayUpdateRequest,
+    bg_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
 ):
     """Save one exact teacher edit and rebuild the matching document."""
     require_entitlement(user_id)
-    return service.edit_day_field(user_id, plan_id, day_index, body.field, body.content)
+    return service.edit_day_field(user_id, plan_id, day_index, body.field, body.content, bg_tasks)
 
 class QuizUpdateRequest(BaseModel):
     quiz_json: dict

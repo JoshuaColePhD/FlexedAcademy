@@ -1287,11 +1287,16 @@ def revise_day(req: ReviseDayRequest, request: Request, user_id: str = Depends(g
 
 @router.post("/set_day_field")
 @limiter.limit("100/minute")
-def set_day_field(req: SetDayFieldRequest, request: Request, user_id: str = Depends(get_current_user)):
+def set_day_field(
+    req: SetDayFieldRequest,
+    request: Request,
+    bg_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
+):
     """The standard-picker's endpoint: set one cell to an exact value with no
     model call, then rebuild the .docx. See service.set_day_field."""
     require_entitlement(user_id)
-    return service.set_day_field(user_id, req.plan_id, req.day_index, req.field, req.value)
+    return service.set_day_field(user_id, req.plan_id, req.day_index, req.field, req.value, bg_tasks)
 
 
 @router.post("/revise_days")
