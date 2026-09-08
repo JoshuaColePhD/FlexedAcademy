@@ -472,8 +472,16 @@ function normalizeChatMode(mode) {
 /* Shown in the empty assistant slot while chat_stream is running. This is
    not the lesson builder — that uses WorkActivityCard ("Building the lesson
    plan"). Hardcoding "Crafting your lesson" here made a "how are you?"
-   follow-up look like a five-day generation. */
-function chatThinkingLabel(mode, { planning } = {}) {
+   follow-up look like a five-day generation. A greeting must never borrow
+   lesson language just because this chat lives on a week. */
+function isCasualTurn(prompt) {
+  const text = String(prompt || '').trim()
+  if (!text) return false
+  return /^(hi+|hello|hey there|hey|yo|sup|good (morning|afternoon|evening)|thanks|thank you|thx|ok|okay|cool)[\s!?.]*$/i.test(text)
+}
+
+function chatThinkingLabel(mode, { planning, prompt } = {}) {
+  if (isCasualTurn(prompt)) return 'Thinking'
   if (planning) return 'Starting your lesson'
   if (mode === 'research') return 'Looking through sources'
   if (mode === 'sub_plan') return 'Putting together a sub plan'
@@ -2394,7 +2402,7 @@ export function ChatPage() {
         setPreparing(false)
         if (chatMode === 'research') pendingActivityKindRef.current = 'research'
         liveMessageIdRef.current = nextId()
-        const firstThinking = chatThinkingLabel(chatMode, { planning })
+        const firstThinking = chatThinkingLabel(chatMode, { planning, prompt: promptText })
         setMessages((prev) => [
           ...prev,
           { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: firstThinking },
@@ -2474,7 +2482,7 @@ export function ChatPage() {
          spoken) with no idea which week it was on. The chat's pinned week
          doesn't drift, so it's safe to keep sending. */
       liveMessageIdRef.current = nextId()
-      const laterThinking = chatThinkingLabel(chatMode, { planning })
+      const laterThinking = chatThinkingLabel(chatMode, { planning, prompt: promptText })
       setMessages((prev) => [
         ...prev,
         { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: laterThinking },
