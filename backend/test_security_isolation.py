@@ -30,7 +30,7 @@ def test_admin_access_is_owner_only(monkeypatch):
     """A persisted is_admin flag must not let a subscriber become admin."""
     monkeypatch.setattr(db, "is_owner", lambda user_id: user_id == "owner")
     monkeypatch.setattr(db, "is_admin", lambda _user_id: True)
-    monkeypatch.setattr(db, "list_accounts_with_stats", lambda: [])
+    monkeypatch.setattr(db, "list_accounts_with_stats", list)
 
     try:
         assert get_current_admin("owner") == "owner"
