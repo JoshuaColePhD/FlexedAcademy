@@ -9584,7 +9584,10 @@
     animation: composer-reason-in 260ms var(--ease-out) 45ms both;
   }
   .composer-ghost {
-    animation: composer-ghost-in 180ms var(--ease-out) both;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .composer-ghost-overlay {
     display: flex;
@@ -10117,6 +10120,11 @@
        only the placeholder-only state was ever wrong). */
     .composer-input {
       min-height: 48px;
+    }
+    .composer-input::placeholder {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
 

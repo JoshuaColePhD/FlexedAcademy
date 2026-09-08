@@ -3947,7 +3947,7 @@ export function ChatPage() {
                 "not yet decided" through every question after it, which
                 read as the app losing the answer, not as it waiting on a
                 bundle. */}
-            {!hasArtifact && !busy && !pendingQuestions && decisions.length > 0 ? (
+            {!hasArtifact && !busy && !pendingQuestions && [...coreChecklist, ...extraDecisions].some((item) => item.key !== 'week' && item.value != null) ? (
               // fa-rise: this used to pop in/out with the conditional itself,
               // no different from any other layout change — but it's tied to
               // a few booleans that flip turn to turn (hasArtifact, busy),
@@ -4358,8 +4358,8 @@ export function ChatPage() {
             placeholder={
               chatMode === 'research' ? 'What should I look up?'
                 : chatMode === 'build' || chatMode === 'sub_plan'
-                  ? (displayWeek ? `What should Week ${displayWeek.week} cover?` : 'What should this week cover?')
-                : (displayWeek ? `Ask anything about Week ${displayWeek.week}…` : 'Ask anything about this week…')
+                  ? (displayWeek ? `Week ${displayWeek.week} — what’s the focus?` : 'What’s the focus this week?')
+                : (displayWeek ? `Ask about Week ${displayWeek.week}…` : 'Ask about this week…')
             }
             sendLabel="Send message"
           />

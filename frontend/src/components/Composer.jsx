@@ -1059,7 +1059,7 @@ export function Composer({
                 className={`composer-ghost-overlay pointer-events-none absolute inset-0 overflow-hidden ${COMPOSER_GHOST_METRICS}`}
               >
                 <span className="composer-ghost-prefix text-ink">{value}</span>
-                <span className="composer-ghost shrink-0 animate-slide-in-right text-ink-faint">
+                <span className="composer-ghost min-w-0 animate-slide-in-right text-ink-faint">
                   {completion}
                 </span>
               </div>
@@ -1091,7 +1091,7 @@ export function Composer({
                  a multiline draft. The shared COMPOSER_TEXT_METRICS keeps the
                  ghost preview and real draft on the same line-height and
                  padding so they never jump when typing starts. */
-              className={`composer-input min-h-12 max-h-36 w-full resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-muted transition-[color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
+              className={`composer-input min-h-12 max-h-36 w-full resize-none overflow-x-hidden overflow-y-auto border-none bg-transparent ${COMPOSER_TEXT_METRICS} outline-none placeholder:font-normal placeholder:text-ink-muted placeholder:whitespace-nowrap placeholder:overflow-hidden placeholder:text-ellipsis transition-[color] duration-200 ease-out ${completion ? 'text-transparent caret-ink' : 'text-ink'}`}
               onChange={(e) => onChange(e.target.value)}
               onKeyDown={onKeyDown}
               disabled={isRecording || isTranscribing}
