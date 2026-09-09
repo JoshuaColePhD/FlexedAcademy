@@ -3538,10 +3538,34 @@ export function ChatPage() {
   // does the rest, unchanged, now measured explicitly instead of inherited
   // by accident.
   useEffect(() => {
-    const anchor = (desktopInspectorOpen && !artifactFullscreen && documentStageRef.current)
-      || overlayAnchorRef.current
+    const resolveAnchor = () => {
+      if (artifactFullscreen) return null
+      if (desktopInspectorOpen) {
+        return documentStageRef.current
+          || overlayAnchorRef.current?.querySelector('.document-stage')
+      }
+      return overlayAnchorRef.current
+    }
+    const hostRect = (anchor) => {
+      if (!anchor) return null
+      const r = anchor.getBoundingClientRect()
+      if (desktopInspectorOpen && anchor.classList.contains('workspace-panes')) {
+        const chat = anchor.querySelector('.chat-workspace-main')
+        const chatBox = chat?.getBoundingClientRect()
+        if (chatBox) {
+          return {
+            top: r.top,
+            left: chatBox.right,
+            width: Math.max(0, r.right - chatBox.right),
+            height: r.height,
+          }
+        }
+      }
+      return r
+    }
     const transition = 'top 420ms var(--ease-glide), left 420ms var(--ease-glide), width 420ms var(--ease-glide), height 420ms var(--ease-glide)'
     const sync = ({ animate = false } = {}) => {
+      const anchor = resolveAnchor()
       if (animate) {
         overlayPortalHost.style.transition = 'none'
         void overlayPortalHost.offsetWidth
@@ -3549,14 +3573,14 @@ export function ChatPage() {
       } else if (!overlayHostReadyRef.current) {
         overlayPortalHost.style.transition = 'none'
       }
-      if (artifactFullscreen || !anchor) {
+      const r = hostRect(anchor)
+      if (artifactFullscreen || !r) {
         overlayPortalHost.style.top = '0px'
         overlayPortalHost.style.left = '0px'
         overlayPortalHost.style.width = '100vw'
         overlayPortalHost.style.height = '100vh'
         return
       }
-      const r = anchor.getBoundingClientRect()
       overlayPortalHost.style.top = `${r.top}px`
       overlayPortalHost.style.left = `${r.left}px`
       overlayPortalHost.style.width = `${r.width}px`
@@ -3566,12 +3590,14 @@ export function ChatPage() {
     if (!overlayHostReadyRef.current) {
       requestAnimationFrame(() => {
         overlayHostReadyRef.current = true
+        sync()
       })
     }
     const ro = new ResizeObserver(() => sync())
-    if (anchor) ro.observe(anchor)
+    const stage = resolveAnchor()
+    if (stage) ro.observe(stage)
     const panes = overlayAnchorRef.current
-    if (panes && panes !== anchor) ro.observe(panes)
+    if (panes && panes !== stage) ro.observe(panes)
     window.addEventListener('resize', sync)
     return () => {
       ro.disconnect()
