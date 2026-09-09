@@ -21,7 +21,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
    reserves blue for "something is waiting for you"; the class you are already
    looking at is not waiting for anything, and spending accent here is part of
    why the blue had stopped meaning anything. */
-export function ClassSwitcher({ classes, activeClass, inline = false, variant = 'default', fullWidthMenu = false }) {
+export function ClassSwitcher({ classes, activeClass, inline = false, variant = 'default', fullWidthMenu = false, onOpenChange }) {
   const heading = variant === 'heading'
   const [open, setOpen] = useState(false)
   // The menu used to unmount the instant `open` went false — a hard cut, the
@@ -31,6 +31,10 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
   const ref = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
+
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [onOpenChange, open])
 
   // The backend now refuses to create or rename a class onto a name another
   // one of the same account's classes already has (routes/classes.py) — but
@@ -128,7 +132,7 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
      stays a fixed-width card either way; only the trigger's shape and the
      popup's anchoring edge change. */
   return (
-    <div className={heading ? 'relative min-w-0' : inline ? 'relative min-w-0 shrink' : 'relative px-2 pb-1'} ref={ref}>
+    <div className={`${heading ? 'relative min-w-0' : inline ? 'relative min-w-0 shrink' : 'relative px-2 pb-1'}${open ? ' is-open' : ''}`} ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}

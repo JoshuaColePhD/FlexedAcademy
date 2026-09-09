@@ -765,6 +765,11 @@ export function ChatPage() {
   // Open the workspace on request. A new message never steals conversation space.
   const [railOpen, setRailOpen] = useState(false)
   const railAutoOpenedRef = useRef(true)
+  // A live plan should earn the document surface as soon as the stream has a
+  // real day to show. Keep this one-way per build: the teacher can close it
+  // while the rest of the week writes without React reopening it on every
+  // token.
+  const livePreviewOpenedRef = useRef(false)
   /* Mobile plan peek: a first build opens the lightweight sheet above the
      composer once the saved plan is actually ready. Revisions do not force it
      back open after a teacher has intentionally collapsed it. Existing plans
@@ -3611,6 +3616,24 @@ export function ChatPage() {
       setRailOpen(true)
     }
   }, [artifact?.planId, isLandscapePhone, isPhone, preparing, stream.isStreaming])
+
+  useEffect(() => {
+    if (!stream.isStreaming) {
+      livePreviewOpenedRef.current = false
+      return
+    }
+    if (isPhone || isLandscapePhone || artifact?.planId || livePreviewOpenedRef.current) return
+    const hasWrittenContent = (stream.preview?.days || []).some((day) => (
+      day && !day.no_school && [
+        'learning_targets', 'standards', 'do_now', 'during', 'assessment',
+      ].some((field) => String(day[field] || '').trim())
+    ))
+    if (!hasWrittenContent) return
+    setViewKind('plan')
+    setRailOpen(true)
+    setExpanded(true)
+    livePreviewOpenedRef.current = true
+  }, [artifact?.planId, isLandscapePhone, isPhone, stream.isStreaming, stream.preview])
 
   // Process autoPrompt from navigation (e.g. 5-Minute Sub Plan)
   useEffect(() => {

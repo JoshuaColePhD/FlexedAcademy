@@ -797,7 +797,7 @@ def _build_chat_system_prompt(
         "\n\nFIXED WEEKLY PLAN STRUCTURE: The selected school's weekly lesson-plan format is already "
         "configured in the app. " + weekly_template_context(school_id) + " "
         "For a normal new plan, use the template-defined weekdays automatically; use the school calendar to mark "
-        "holidays or no-school days. Never ask the teacher how many days the plan should run, whether it "
+        "holidays or no-school days, unless the teacher explicitly asks to teach on a named closed day. Never ask the teacher how many days the plan should run, whether it "
         "is a one-, two-, three-, four-, or five-day week, or what duration to use. Clarifying questions should instead "
         "narrow the anchor text or topic, skill, throughline, or student task."
     )

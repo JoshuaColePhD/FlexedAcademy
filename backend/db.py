@@ -7565,13 +7565,20 @@ def is_admin(user_id: str) -> bool:
 
 
 def is_owner(user_id: str) -> bool:
-    """Return whether this is the one configured owner account.
+    """Return whether this is Joshua Cole's one authorized admin account.
 
     `is_admin` remains stored for historical account data and reporting, but
     it is not an authorization boundary: subscribers and any old admin flags
     must never be able to turn themselves into the owner.
     """
-    return bool(user_id and user_id == settings.owner_user_id)
+    if not user_id:
+        return False
+    row = get_user_by_id(user_id)
+    return bool(
+        row
+        and str(row.get("email") or "").strip().casefold()
+        == settings.owner_email.strip().casefold()
+    )
 
 
 def list_accounts_with_stats() -> list[dict]:
