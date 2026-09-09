@@ -461,6 +461,12 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
           } catch (err) {
             if (stoppedRef.current || err.name === 'AbortError') return null
             lastErr = err
+            // A structured SSE error (validation, schema, entitlement, …) is
+            // terminal for this attempt. Job-status reconnect exists for
+            // dropped/truncated streams where the server may still be writing
+            // — not for a request the stream already rejected.
+            const streamRetryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable
+            if (!streamRetryable) break
             let snap = null
             try {
               snap = await api.getGenerateJob(requestId)
@@ -480,7 +486,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
               })
               break
             }
-            const retryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable || snap?.status === 'running'
+            const retryable = streamRetryable || snap?.status === 'running'
             setStatus({
               phase: 'retrying',
               label: snap?.status === 'running' ? 'Still building — reconnecting…' : 'Reconnecting…',
@@ -500,7 +506,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
                 return null
               }
             }
-            if (retryable || snap?.status === 'running') continue
+            if (retryable) continue
             if (tryNum >= MAX_AUTO_RETRIES) break
           }
         }

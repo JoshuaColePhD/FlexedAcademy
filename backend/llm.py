@@ -40,6 +40,7 @@ from .schema import (
     BUILDER_RENDER_JUDGE_JSON_SCHEMA,
     CALENDAR_JSON_SCHEMA,
     DAY_NAMES,
+    QUESTION_TYPES,
     QUIZ_JSON_SCHEMA,
     REVISABLE_FIELDS,
     TEMPLATE_ANALYSIS_JSON_SCHEMA,
@@ -689,6 +690,35 @@ def generate_quiz(
         ],
     )
     return _randomize_mc_choice_order(loads_lenient(content or ""))
+
+
+def generate_quiz_tool_payload(args: dict) -> dict:
+    """Normalize generate_quiz tool arguments into the SSE event ChatPage consumes.
+
+    Exists so the tool schema, stream_chat, and evals share one mapping —
+    especially revises_current, which used to be read from the model but was
+    missing from the tool parameters, so models omitted it and every
+    follow-up created a new quiz.
+
+    Missing question_types defaults to multiple choice — the tool
+    description already says that, and a 502 here is how a slightly
+    incomplete call used to look like the chat had crashed.
+    """
+    question_types = args.get("question_types") or ["multiple_choice"]
+    if isinstance(question_types, str):
+        question_types = [question_types]
+    known = [t for t in question_types if t in QUESTION_TYPES]
+    if not known:
+        known = ["multiple_choice"]
+    return {
+        "tool_call": "generate_quiz",
+        "question_types": known,
+        "num_questions": args.get("num_questions") or 10,
+        "passage_mode": args.get("passage_mode") or "none",
+        "passage_title": args.get("passage_title") or "",
+        "passage_text": args.get("passage_text") or "",
+        "revises_current": bool(args.get("revises_current")),
+    }
 
 
 def revise_quiz(
@@ -1712,16 +1742,21 @@ CHAT_TOOLS = [
             "name": "generate_quiz",
             # ONLY on explicit request, never volunteered — the teacher
             # asked for exactly this (a lesson plan, not a lesson plan
-            # PLUS a quiz they didn't ask for), and this tool only makes
-            # sense once a plan actually exists for it to test.
+            # PLUS a quiz they didn't ask for). Prefer a built week when one
+            # exists; a class-scoped standalone quiz is allowed when they
+            # clearly asked for a quiz with no week in this conversation.
             "description": (
                 "Call this ONLY when the teacher explicitly asks for a quiz, test, or assessment as a "
                 "downloadable file, AND their request already says which question type(s) they want and "
                 "roughly how many — never volunteer it alongside a lesson plan, and never guess type or "
-                "count silently: call ask_clarifying_questions instead when either is missing. Requires a "
-                "plan to already exist for this conversation; if none does yet, tell the teacher to build "
-                "the week first instead of calling this. The quiz is built over that plan's own content "
-                "and standards, not anything new."
+                "count silently: call ask_clarifying_questions instead when either is missing. If a week "
+                "already exists in this conversation, the quiz is built over that plan's own content and "
+                "standards. If no week exists yet, still call this for a class-scoped quiz when the "
+                "teacher clearly asked for one (optionally with a pasted passage); do not tell them to "
+                "build the week first. Never call this in the same turn as generate_lesson_plan. "
+                "Set revises_current true when they are changing the quiz already built in this "
+                "conversation ('make it harder', 'fix question 3'); leave it false for an additional, "
+                "distinct quiz."
             ),
             "parameters": {
                 "type": "object",
@@ -1755,6 +1790,13 @@ CHAT_TOOLS = [
                     "passage_text": {
                         "type": "string",
                         "description": "The teacher's supplied passage text when passage_mode is teacher_provided; copy it faithfully from the conversation.",
+                    },
+                    "revises_current": {
+                        "type": "boolean",
+                        "description": (
+                            "True when changing the quiz already built in this conversation; "
+                            "false for an additional, distinct quiz."
+                        ),
                     },
                 },
                 "required": ["question_types"],
@@ -2012,25 +2054,9 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                     args = json.loads(tool_args)
                 except ValueError:
                     args = {}
-                question_types = args.get("question_types") or []
-                if not question_types:
-                    raise AppError(
-                        "malformed_tool_call",
-                        "The model tried to build a quiz but didn't send back which question types.",
-                        status=502,
-                        hint="Try asking for the quiz again.",
-                    )
                 yielded_anything = True
                 tool_completed = True
-                yield {
-                    "tool_call": "generate_quiz",
-                    "question_types": question_types,
-                    "num_questions": args.get("num_questions") or 10,
-                    "passage_mode": args.get("passage_mode") or "none",
-                    "passage_title": args.get("passage_title") or "",
-                    "passage_text": args.get("passage_text") or "",
-                    "revises_current": bool(args.get("revises_current")),
-                }
+                yield generate_quiz_tool_payload(args)
                 break
 
             # Same reasoning as generate_quiz just above — day/field/feedback
