@@ -885,14 +885,9 @@
     flex-direction: column;
     justify-content: flex-end;
   }
-  /* Invisible composer-height spacer (ChatPage documentComposerAnchorRef).
-     Height is set inline from composerDockH; shrink-0 keeps that reserved
-     space from collapsing in the stage's column flex. */
-  .document-stage-composer {
-    flex: 0 0 auto;
-    width: 100%;
-    pointer-events: none;
-  }
+  /* Marker for ChatPage's document-stage composer-height anchor.
+     Height is set inline from composerDockH. */
+  .document-stage-composer {}
   .artifact-overlay.is-composer-overlay.is-chat-docked:not(.is-overlay-fullscreen) {
     inset: 10px 0 10px 10px !important;
   }
