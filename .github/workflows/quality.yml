@@ -9,6 +9,14 @@ on:
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    # Chromium and OS libraries are already in this image, so the job never
+    # runs `playwright install --with-deps`. That flag apt-updates the
+    # GitHub-hosted runner's google-chrome source (dl.google.com) and fails
+    # the workflow on a Hash Sum mismatch before checks or tests run. Pin
+    # matches frontend/package-lock.json (@playwright/test 1.62.1). Same
+    # approach as the Uptime workflow (v1.56.0-noble for playwright@1.56.0).
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
     defaults:
       run:
         working-directory: frontend
@@ -21,8 +29,6 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
       - name: Run frontend checks
         run: npm run check
       - name: Run focused behavior tests
