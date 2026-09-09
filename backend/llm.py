@@ -24,7 +24,12 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from openai import OpenAI
 
 from . import costs, curriculum, db
-from .chat_policy import typed_chat_tools, validate_plan_action, validate_quiz_action, preserve_quiz_scope
+from .chat_policy import (
+    preserve_quiz_scope,
+    typed_chat_tools,
+    validate_plan_action,
+    validate_quiz_action,
+)
 from .config import settings
 from .embeddings import embed_query
 from .errors import AppError
