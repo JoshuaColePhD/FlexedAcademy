@@ -60,7 +60,10 @@ for (const prompt of ['Why use this approach?', 'Could a debate help students ex
 
 test('commands from the open week apply to that plan', async ({ page }) => {
   await openChat(page)
-  await page.getByRole('button', { name: /View lesson plan/ }).click()
+  await page.getByRole('button', { name: 'Open artifacts panel', exact: true }).click()
+  await expect(page.locator('.artifact-drawer')).toBeVisible()
+  await page.getByRole('button', { name: 'Open Week 03 — Aug 17-21, 2026', exact: true }).click()
+  await expect(page.locator('.is-composer-overlay')).toBeVisible()
   await events(page, [planAction('revise_week'), done])
   await send(page, 'Ask questions')
   expect(await page.evaluate(() => window.chatCalls[0].body.plan_open)).toBe(true)
