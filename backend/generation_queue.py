@@ -35,6 +35,7 @@ class GenerationLease:
     def __init__(self, queue: GenerationQueue, ticket: _Ticket):
         self._queue = queue
         self._ticket = ticket
+        self._released = False
 
     @property
     def acquired(self) -> bool:
@@ -65,6 +66,9 @@ class GenerationLease:
             raise
 
     def release(self) -> None:
+        if self._released:
+            return
+        self._released = True
         self._queue.release(self._ticket)
 
     def cancel(self) -> None:

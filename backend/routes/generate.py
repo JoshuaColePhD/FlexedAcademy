@@ -477,6 +477,7 @@ def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, mo
             attempt=req.attempt,
         )
         lease = generation_queue.enqueue(user_id)
+        job.lease = lease
         emit(
             {
                 "status": "queued",
@@ -523,8 +524,27 @@ def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, mo
 
     chunks: list[str] = []
     try:
-        emit({"status": "retrieving", "template_days": template_days}, step="retrieval", step_state="active", attempt=req.attempt)
-        result = service.prepare(user_id, query, cls=cls)
+        emit({"status": "retrieving", "label": "Matching standards…", "template_days": template_days}, step="retrieval", step_state="active", attempt=req.attempt)
+
+        def _prepare():
+            yield service.prepare(user_id, query, cls=cls)
+
+        result = None
+        for item in _with_keepalives(_prepare()):
+            if job.cancelled.is_set():
+                job.complete(cancelled=True)
+                return
+            if item is None:
+                emit(
+                    {"status": "retrieving", "label": "Still matching standards…", "template_days": template_days},
+                    step="retrieval",
+                    step_state="active",
+                    attempt=req.attempt,
+                )
+                continue
+            result = item
+        if result is None:
+            raise RuntimeError("prepare returned no retrieval")
         if job.cancelled.is_set():
             job.complete(cancelled=True)
             return
@@ -610,6 +630,7 @@ def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, mo
         emit({"error": err, "status": "error"}, step="building", step_state="error", attempt=req.attempt)
         job.complete(error=err)
     finally:
+        job.lease = None
         if lease is not None:
             lease.release()
 
