@@ -968,57 +968,6 @@ export function ChatPage() {
     document.body.appendChild(overlayPortalHost)
     return () => document.body.removeChild(overlayPortalHost)
   }, [overlayPortalHost])
-  // Fullscreen: the host becomes the true viewport. Docked: the host
-  // becomes exactly the box #main used to provide for free (before this
-  // was always portaled, .artifact-overlay's own position:fixed picked up
-  // #main as its containing block, since #main's backdrop-filter/transform
-  // make it one) — .artifact-overlay's own left:64px etc. (base.css) still
-  // does the rest, unchanged, now measured explicitly instead of inherited
-  // by accident.
-  useEffect(() => {
-    const anchor = (desktopInspectorOpen && !artifactFullscreen && documentStageRef.current)
-      || overlayAnchorRef.current
-    const transition = 'top 420ms var(--ease-glide), left 420ms var(--ease-glide), width 420ms var(--ease-glide), height 420ms var(--ease-glide)'
-    const sync = ({ animate = false } = {}) => {
-      if (animate) {
-        // Commit the current box before writing the next one. Otherwise the
-        // portal host can batch both writes into one layout pass and the
-        // shrink reads as a replacement instead of a reversal.
-        overlayPortalHost.style.transition = 'none'
-        void overlayPortalHost.offsetWidth
-        overlayPortalHost.style.transition = transition
-      } else if (!overlayHostReadyRef.current) {
-        overlayPortalHost.style.transition = 'none'
-      }
-      if (artifactFullscreen || !anchor) {
-        overlayPortalHost.style.top = '0px'
-        overlayPortalHost.style.left = '0px'
-        overlayPortalHost.style.width = '100vw'
-        overlayPortalHost.style.height = '100vh'
-        return
-      }
-      const r = anchor.getBoundingClientRect()
-      overlayPortalHost.style.top = `${r.top}px`
-      overlayPortalHost.style.left = `${r.left}px`
-      overlayPortalHost.style.width = `${r.width}px`
-      overlayPortalHost.style.height = `${r.height}px`
-    }
-    sync({ animate: overlayHostReadyRef.current })
-    if (!overlayHostReadyRef.current) {
-      requestAnimationFrame(() => {
-        overlayHostReadyRef.current = true
-      })
-    }
-    const ro = new ResizeObserver(() => sync())
-    if (anchor) ro.observe(anchor)
-    const panes = overlayAnchorRef.current
-    if (panes && panes !== anchor) ro.observe(panes)
-    window.addEventListener('resize', sync)
-    return () => {
-      ro.disconnect()
-      window.removeEventListener('resize', sync)
-    }
-  }, [artifactFullscreen, overlayPortalHost, desktopInspectorOpen])
   /* The composer dock is portaled to document.body — see composerAnchorRef's
      own comment near chatPane's return for why — which needs two pieces of
      plumbing: an invisible ANCHOR left in the dock's normal flow position
@@ -1061,49 +1010,6 @@ export function ChatPage() {
   const composerAnchorRef = useRef(null)
   const composerDockRef = useRef(null)
   const [composerDockH, setComposerDockH] = useState(0)
-  // Keeps the host's left/width and shared bottom inset matched to the
-  // anchor's live rect. The anchor never moves for its OWN reasons (it's a
-  // plain shrink-0 flex child), but the chat column it lives in resizes when
-  // the plans rail toggles, the window resizes, or the composer's own content
-  // changes height (attachments, the autosizing textarea, a banner) — anything
-  // that changes the anchor's box needs the host to follow.
-  useEffect(() => {
-    const anchor = (desktopInspectorOpen && documentComposerAnchorRef.current) || composerAnchorRef.current
-    if (!anchor) return
-    const sync = () => {
-      const r = anchor.getBoundingClientRect()
-      // Match the chat column itself. The greeting and transcript already
-      // center a max-width column inside this box; capping the host and
-      // pinning it to the left edge left the composer sitting off-center
-      // in the same panel.
-      portalHost.style.left = `${r.left}px`
-      portalHost.style.width = `${Math.max(0, r.width)}px`
-      // The same bottom inset applies whether the plan overlay is open or not.
-      // Positioning from the anchor's top made the composer depend on the
-      // flex transcript's available height; positioning from a special
-      // viewport-height formula made the overlay use a different edge. The
-      // anchor's bottom is the shared contract for both states.
-      portalHost.style.top = 'auto'
-      portalHost.style.bottom = `${Math.max(0, window.innerHeight - r.bottom)}px`
-      portalHost.style.height = 'auto'
-    }
-    sync()
-    const ro = new ResizeObserver(sync)
-    ro.observe(anchor)
-    const pane = anchor.parentElement
-    if (pane && pane !== anchor) ro.observe(pane)
-    window.addEventListener('resize', sync)
-    window.visualViewport?.addEventListener('resize', sync)
-    return () => {
-      ro.disconnect()
-      window.removeEventListener('resize', sync)
-      window.visualViewport?.removeEventListener('resize', sync)
-    }
-  // `isPhone` is included deliberately: layout mode can settle after the
-  // first render when the browser reports its real viewport. The composer
-  // then moves between normal flow and the portal, so the anchor and portal
-  // geometry must be rebound instead of retaining the boot-time bounds.
-  }, [composerDockH, portalHost, isPhone, railOpen, desktopInspectorOpen])
   // The portaled dock's OWN rendered height, fed back to the anchor (below)
   // so the anchor reserves exactly the space the floating dock actually
   // needs — otherwise the transcript would sit a fixed guess-height short of
@@ -3624,6 +3530,81 @@ export function ChatPage() {
       setDocumentReading?.(false)
     }
   }, [desktopInspectorOpen, setDocumentReading])
+  // Fullscreen: the host becomes the true viewport. Docked: the host
+  // becomes exactly the box #main used to provide for free (before this
+  // was always portaled, .artifact-overlay's own position:fixed picked up
+  // #main as its containing block, since #main's backdrop-filter/transform
+  // make it one) — .artifact-overlay's own left:64px etc. (base.css) still
+  // does the rest, unchanged, now measured explicitly instead of inherited
+  // by accident.
+  useEffect(() => {
+    const anchor = (desktopInspectorOpen && !artifactFullscreen && documentStageRef.current)
+      || overlayAnchorRef.current
+    const transition = 'top 420ms var(--ease-glide), left 420ms var(--ease-glide), width 420ms var(--ease-glide), height 420ms var(--ease-glide)'
+    const sync = ({ animate = false } = {}) => {
+      if (animate) {
+        overlayPortalHost.style.transition = 'none'
+        void overlayPortalHost.offsetWidth
+        overlayPortalHost.style.transition = transition
+      } else if (!overlayHostReadyRef.current) {
+        overlayPortalHost.style.transition = 'none'
+      }
+      if (artifactFullscreen || !anchor) {
+        overlayPortalHost.style.top = '0px'
+        overlayPortalHost.style.left = '0px'
+        overlayPortalHost.style.width = '100vw'
+        overlayPortalHost.style.height = '100vh'
+        return
+      }
+      const r = anchor.getBoundingClientRect()
+      overlayPortalHost.style.top = `${r.top}px`
+      overlayPortalHost.style.left = `${r.left}px`
+      overlayPortalHost.style.width = `${r.width}px`
+      overlayPortalHost.style.height = `${r.height}px`
+    }
+    sync({ animate: overlayHostReadyRef.current })
+    if (!overlayHostReadyRef.current) {
+      requestAnimationFrame(() => {
+        overlayHostReadyRef.current = true
+      })
+    }
+    const ro = new ResizeObserver(() => sync())
+    if (anchor) ro.observe(anchor)
+    const panes = overlayAnchorRef.current
+    if (panes && panes !== anchor) ro.observe(panes)
+    window.addEventListener('resize', sync)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', sync)
+    }
+  }, [artifactFullscreen, overlayPortalHost, desktopInspectorOpen])
+  // Keeps the composer host's left/width and shared bottom inset matched to
+  // the live anchor. While the week is open that anchor is the document
+  // stage; otherwise it is the chat column.
+  useEffect(() => {
+    const anchor = (desktopInspectorOpen && documentComposerAnchorRef.current) || composerAnchorRef.current
+    if (!anchor) return
+    const sync = () => {
+      const r = anchor.getBoundingClientRect()
+      portalHost.style.left = `${r.left}px`
+      portalHost.style.width = `${Math.max(0, r.width)}px`
+      portalHost.style.top = 'auto'
+      portalHost.style.bottom = `${Math.max(0, window.innerHeight - r.bottom)}px`
+      portalHost.style.height = 'auto'
+    }
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(anchor)
+    const pane = anchor.parentElement
+    if (pane && pane !== anchor) ro.observe(pane)
+    window.addEventListener('resize', sync)
+    window.visualViewport?.addEventListener('resize', sync)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', sync)
+      window.visualViewport?.removeEventListener('resize', sync)
+    }
+  }, [composerDockH, portalHost, isPhone, railOpen, desktopInspectorOpen])
   // Keep the composer above the document in both docked and fullscreen
   // reading modes. Fullscreen expands the lesson plan's reading surface, but
   // it should not take away the command surface the teacher is actively using.
