@@ -143,8 +143,6 @@ export function applyPlanPatch(plan, patch) {
   return applied ? next : null
 }
 
-import { todayISO, weekdayIsosFromWeekLabel } from './dates'
-
 /** True only when this column is the actual calendar date, not merely the
  *  same weekday name as today (Week 18 in November is not "today" in September). */
 export function isPlanDayToday(day, weekOf) {
