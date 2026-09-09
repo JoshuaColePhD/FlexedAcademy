@@ -19,7 +19,7 @@ async function openChat(page, fresh = false) {
         return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'Content-Type': 'text/event-stream' } })
       }
       if (url.includes('/api/generate_stream')) {
-        window.chatCalls.push({ path: 'create', body })
+        window.chatCalls.push({ path: body?.revise_plan_id ? 'week' : 'create', body })
         if (window.generationFailure) return new Response(`data: ${JSON.stringify({ error: { code: 'validation_error', message: 'Generation test failure' } })}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } })
       }
       if (url.includes('/api/revise_day') || /\/plans\/[^/]+\/revise$/.test(url)) {
@@ -83,11 +83,13 @@ test('selected-day revision routes exact days and preserves the rest', async ({ 
   await expect(page.getByText(/Done — .* is updated/)).toBeVisible()
 })
 
-test('whole-week request routes to the existing revision endpoint', async ({ page }) => {
+test('whole-week request streams a revision onto the open plan', async ({ page }) => {
   await openChat(page)
   await events(page, [planAction('revise_week'), done])
   await send(page, 'Rework the whole week for shorter class periods.')
   await expect.poll(() => page.evaluate(() => window.chatCalls.filter((c) => c.path === 'week').length)).toBe(1)
+  const call = await page.evaluate(() => window.chatCalls.find((c) => c.path === 'week'))
+  expect(call.body.revise_plan_id).toBe('plan1')
   await expect(page.getByText(/Done — .* is updated/)).toBeVisible()
   expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'create'))).toEqual([])
 })

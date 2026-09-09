@@ -1,3 +1,5 @@
+import { todayISO, weekdayIsosFromWeekLabel } from './dates'
+
 /* The shared vocabulary of a lesson plan.
  *
  * Extracted so the desktop table and the phone day-cards cannot fork on what a
@@ -118,10 +120,44 @@ export function dayTitle(day) {
 export const dayState = (d) =>
   d?.no_school ? 'no_school' : d?.pending ? 'pending' : d?.incomplete ? 'incomplete' : 'ok'
 
+/** Merge streamed cell updates onto the saved week so the table can preview
+ *  a revision without waiting for a full five-day rewrite. */
+export function applyPlanPatch(plan, patch) {
+  if (!plan?.days?.length || !Array.isArray(patch?.updates)) return null
+  const next = { ...plan, days: plan.days.map((day) => ({ ...day })) }
+  let applied = 0
+  for (const update of patch.updates) {
+    const day = next.days.find((item) => item.name === update?.day)
+    const field = update?.field
+    if (!day || !field) continue
+    if (field === 'engagement_strategy') {
+      if (!Array.isArray(update.tags)) continue
+      day[field] = update.tags.map((tag) => String(tag || '').trim()).filter(Boolean).slice(0, 2)
+      applied += 1
+      continue
+    }
+    if (typeof update.text !== 'string' || !update.text.trim()) continue
+    day[field] = update.text
+    applied += 1
+  }
+  return applied ? next : null
+}
+
+import { todayISO, weekdayIsosFromWeekLabel } from './dates'
+
+/** True only when this column is the actual calendar date, not merely the
+ *  same weekday name as today (Week 18 in November is not "today" in September). */
+export function isPlanDayToday(day, weekOf) {
+  const today = todayISO()
+  if (day?.date && day.date === today) return true
+  const byName = weekdayIsosFromWeekLabel(weekOf)
+  return Boolean(day?.name && byName?.[day.name] === today)
+}
+
 /** Index of the day to open first: today if the week is running, else the first
  *  day school is actually in session. */
-export function initialDayIndex(days, todayName) {
-  const today = days.findIndex((d) => d.name === todayName && dayState(d) === 'ok')
+export function initialDayIndex(days, weekOf) {
+  const today = days.findIndex((d) => isPlanDayToday(d, weekOf) && dayState(d) === 'ok')
   if (today >= 0) return today
   const firstTeaching = days.findIndex((d) => dayState(d) === 'ok')
   return firstTeaching >= 0 ? firstTeaching : 0

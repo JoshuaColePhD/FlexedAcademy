@@ -802,6 +802,77 @@ def field_json_schema(field: str, day_names: list[str] | tuple[str, ...] | None 
     }
 
 
+def plan_patch_json_schema(day_names: list[str] | tuple[str, ...] | None = None) -> dict:
+    """Structured output for a revision: only the cells that actually change.
+
+    A whole-plan rewrite re-emits five days of JSON and is what made follow-up
+    edits time out. Strict mode still requires every property, so unused `text`
+    or `tags` are empty rather than omitted.
+    """
+    names = list(day_names or DAY_NAMES)
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "updates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "day": {"type": "string", "enum": names},
+                        "field": {"type": "string", "enum": list(REVISABLE_FIELDS)},
+                        "text": {"type": "string"},
+                        "tags": {"type": "array", "items": {"type": "string"}},
+                    },
+                    "required": ["day", "field", "text", "tags"],
+                },
+            }
+        },
+        "required": ["updates"],
+    }
+
+
+def apply_plan_patch(plan: dict, patch: dict) -> dict:
+    """Merge cell updates onto a copy of the current week. Unmentioned cells stay."""
+    if not isinstance(plan, dict) or not isinstance(plan.get("days"), list):
+        raise SchemaError("bad_patch", "There is no saved week to revise.")
+    if not isinstance(patch, dict) or not isinstance(patch.get("updates"), list):
+        raise SchemaError("bad_patch", "The revision did not contain any updates.")
+    out = deepcopy(plan)
+    by_name = {day.get("name"): day for day in out["days"] if isinstance(day, dict)}
+    applied = 0
+    for item in patch["updates"]:
+        if not isinstance(item, dict):
+            continue
+        day = by_name.get(item.get("day"))
+        field = item.get("field")
+        if day is None or field not in REVISABLE_FIELDS:
+            continue
+        if field == "engagement_strategy":
+            tags = item.get("tags") or []
+            if not isinstance(tags, list):
+                continue
+            cleaned = [str(tag).strip() for tag in tags if str(tag).strip()][:2]
+            if not cleaned:
+                continue
+            day[field] = cleaned
+            applied += 1
+            continue
+        text = item.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        day[field] = text
+        applied += 1
+    if applied == 0:
+        raise SchemaError(
+            "empty_patch",
+            "The revision did not change any fields.",
+            hint="Try naming the day or the row you want changed.",
+        )
+    return out
+
+
 def plan_schema_snippet(day_names: list[str] | tuple[str, ...] | None = None) -> str:
     return json.dumps(plan_json_schema(day_names), indent=2)
 

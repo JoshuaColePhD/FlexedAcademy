@@ -591,6 +591,117 @@ def finalize(
     return row
 
 
+def retrieval_result_for_saved_plan(user_id: str, row: dict, cls: dict | None) -> RetrievalResult:
+    """Reuse the week's saved standard codes instead of embedding a new query."""
+    retrieved_ids = row.get("retrieved_ids") or []
+    if not retrieved_ids:
+        raise AppError("no_context", "Cannot revise without retrieved standards.", status=400)
+    subject_code = (cls or {}).get("subject") or row.get("course") or ""
+    if not str(subject_code).strip():
+        raise AppError(
+            "subject_required",
+            "Set this class's subject before I can revise this plan.",
+            status=400,
+            hint="Open class settings and pick a subject. I won't assume AP Language.",
+        )
+    state = (cls or {}).get("state") or "AL"
+    wanted = {retrieval._norm_code(c) for c in retrieved_ids}
+    chunks = [
+        chunk
+        for code in wanted
+        if (chunk := retrieval.chunk_for_code(code, subject_code=subject_code, state=state))
+    ]
+    if not chunks:
+        raise AppError(
+            "no_context",
+            "None of this plan's standards could be found in the corpus.",
+            status=409,
+            hint=(
+                "The plan cites codes the current corpus doesn't contain — it was "
+                "probably built against a different framework or before a re-ingest. "
+                "Rebuild the plan rather than revising it."
+            ),
+            extra={"codes": sorted(wanted)},
+        )
+    return RetrievalResult(
+        chunks=[
+            {
+                "id": c.get("code"),
+                "document": c.get("description", ""),
+                "metadata": c,
+                "distance": 0.0,
+            }
+            for c in chunks
+        ]
+    )
+
+
+def persist_revised_plan(
+    *,
+    user_id: str,
+    row: dict,
+    plan_raw: dict,
+    result: RetrievalResult,
+    cls: dict | None,
+    bg_tasks=None,
+) -> dict:
+    """Validate a revised week and overwrite the existing plan row."""
+    plan_id = row["id"]
+    school_id = _school_for_class(cls, user_id)
+    selected_template_id = row.get("template_id") or _selected_template_id(
+        user_id, row.get("class_id"), school_id
+    )
+    act_row = has_template_field(
+        school_id, "act_alignment", template_id=selected_template_id, user_id=user_id
+    )
+    plan, warnings = schema.validate_plan(
+        plan_raw,
+        day_names=day_names_for_school(
+            school_id, template_id=selected_template_id, user_id=user_id
+        ),
+        act_alignment_enabled=act_row,
+    )
+    identity = identity_for(user_id, cls)
+    plan = schema.with_identity(
+        plan,
+        teacher=identity["teacher"],
+        course=identity["course"],
+        period=identity["period"],
+        subject=subject_label(cls["subject"]) if cls else None,
+    )
+    subject_code = (cls or {}).get("subject") or row.get("course") or ""
+    allowed = set(row.get("retrieved_ids") or [])
+    warnings += retrieval.audit_grounding(
+        plan,
+        allowed,
+        subject_code=subject_code,
+        act_expected=act_row and bool(retrieval.act_sections_for(subject_code)),
+        result=result,
+    )
+    cited = retrieval.cited_standards(plan, allowed, subject_code=subject_code)
+    db.update_plan(
+        user_id,
+        plan_id,
+        plan_json=plan,
+        docx_path=None,
+        week_label=plan.get("week_of", row["week_label"]),
+        unit=units.unit_for_week(plan.get("week_of", row["week_label"])),
+        warnings=warnings,
+        course=plan.get("course", row["course"]),
+    )
+    if hasattr(db, "enqueue_document_build"):
+        db.enqueue_document_build(plan_id, user_id)
+    db.replace_plan_standards(
+        plan_id,
+        user_id,
+        class_id=row.get("class_id"),
+        subject=subject_code,
+        grade=str((cls or {}).get("grade") or ""),
+        entries=cited,
+    )
+    return db.get_plan(user_id, plan_id)
+
+
 def generate(
     user_id: str,
     query: str,

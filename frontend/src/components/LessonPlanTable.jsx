@@ -3,7 +3,7 @@ import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useLayoutMode } from '../hooks/useMediaQuery'
-import { LESSON_PARTS, ROWS, orderedDays } from '../lib/planShape'
+import { LESSON_PARTS, ROWS, isPlanDayToday, orderedDays } from '../lib/planShape'
 import { CitedText } from './Citation'
 import { PlanDayCards } from './PlanDayCards'
 import { SkeletonText } from './Skeleton'
@@ -248,6 +248,7 @@ export const LessonPlanTable = memo(function LessonPlanTable({
         ) : (
           <PlanTable
             ordered={ordered}
+            weekOf={plan.week_of}
             groundedCodes={groundedCodes}
             subject={subject}
             state={state}
@@ -272,6 +273,7 @@ export const LessonPlanTable = memo(function LessonPlanTable({
    happens when you click — never the columns, the rows or the colours. */
 function PlanTable({
   ordered,
+  weekOf,
   groundedCodes,
   subject,
   state,
@@ -285,7 +287,6 @@ function PlanTable({
   draft,
   setDraft,
 }) {
-  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' })
   const { isOpen, flashed, editableProps, tweakBody } = cellKit({
     busy,
     flashCells,
@@ -317,12 +318,15 @@ function PlanTable({
             <th scope="col">
               <span className="visually-hidden">Lesson plan component</span>
             </th>
-            {ordered.map((d) => (
-              <th scope="col" key={d.name} className={d.name === todayName ? 'is-today' : undefined}>
+            {ordered.map((d) => {
+              const isToday = isPlanDayToday(d, weekOf)
+              return (
+              <th scope="col" key={d.name} className={isToday ? 'is-today' : undefined}>
                 <span>{d.name}</span>
-                {d.name === todayName ? <small className="plan-table-today-label">Today</small> : null}
+                {isToday ? <small className="plan-table-today-label">Today</small> : null}
               </th>
-            ))}
+              )
+            })}
           </tr>
         </thead>
         <tbody>

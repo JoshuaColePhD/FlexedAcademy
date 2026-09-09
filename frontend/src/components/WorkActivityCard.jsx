@@ -33,7 +33,7 @@ export function WorkActivityCard({
   const cancelled = activity.status === 'cancelled'
   const complete = activity.status === 'complete'
   const title = complete
-    ? activity.kind === 'quiz' ? 'Quiz ready' : activity.kind === 'research' ? 'Research ready' : 'Plan ready'
+    ? activity.kind === 'quiz' ? 'Quiz ready' : activity.kind === 'research' ? 'Research ready' : activity.kind === 'revision' ? 'Plan updated' : 'Plan ready'
     : failed
       ? activity.kind === 'plan' ? 'Couldn’t finish the week' : 'Couldn’t finish this request'
       : cancelled ? 'Request stopped' : activity.title
@@ -74,7 +74,7 @@ export function WorkActivityCard({
           <strong className="work-activity-title">{title}</strong>
           <span className="work-activity-summary">{summary}</span>
         </div>
-        {active && onStop ? (
+        {active && onStop && activity.kind !== 'plan' ? (
           <button type="button" className="work-activity-stop fa-press" onClick={onStop} aria-label="Stop this request">
             <Square size={12} fill="currentColor" aria-hidden="true" />
             <span>Stop</span>

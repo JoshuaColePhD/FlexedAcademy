@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api, apiErrorFromBody } from '../lib/api'
 import { droppedConnectionCopy, isDroppedConnectionError } from '../lib/streamTransport'
 import { parsePartialJson, usablePlan } from '../lib/partialJson'
+import { applyPlanPatch } from '../lib/planShape'
 import * as perf from '../lib/performanceMetrics'
 
 /* All the streaming logic, in one place.
@@ -109,6 +110,16 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
   const firstPreviewRef = useRef(false)
   const lastPreviewParseAtRef = useRef(0)
   const PREVIEW_PARSE_INTERVAL_MS = 100
+  const basePlanRef = useRef(null)
+
+  const previewFromText = useCallback((value) => {
+    const parsed = parsePartialJson(value)
+    if (!parsed) return null
+    if (basePlanRef.current && Array.isArray(parsed.updates)) {
+      return applyPlanPatch(basePlanRef.current, parsed)
+    }
+    return usablePlan(parsed)
+  }, [])
 
   const flushPlanUpdate = useCallback((finalText = null) => {
     if (previewRafRef.current != null) {
@@ -118,20 +129,20 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
     const textToPaint = finalText ?? pendingTextRef.current
     if (textToPaint != null) setText(textToPaint)
     if (finalText != null) {
-      const parsed = usablePlan(parsePartialJson(finalText))
+      const parsed = previewFromText(finalText)
       if (parsed) setPreview(parsed)
     } else if (pendingPreviewRef.current !== undefined) {
       setPreview(pendingPreviewRef.current)
     }
     pendingTextRef.current = null
     pendingPreviewRef.current = undefined
-  }, [])
+  }, [previewFromText])
 
   const queuePlanUpdate = useCallback((value) => {
     pendingTextRef.current = value
     const now = performance.now()
     if (now - lastPreviewParseAtRef.current >= PREVIEW_PARSE_INTERVAL_MS) {
-      const parsed = usablePlan(parsePartialJson(value))
+      const parsed = previewFromText(value)
       if (parsed) {
         pendingPreviewRef.current = parsed
         if (!firstPreviewRef.current) {
@@ -151,7 +162,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
       pendingTextRef.current = null
       pendingPreviewRef.current = undefined
     })
-  }, [])
+  }, [previewFromText])
 
   const cancelQueuedPlan = useCallback(() => {
     if (previewRafRef.current != null) {
@@ -216,10 +227,10 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
   // One attempt: opens the SSE connection and either returns the finished
   // result or throws. Retrying lives in `start`, not here — see useChatStream
   // for why that split matters (onDone must fire at most once per call).
-  const attempt = useCallback(async (query, { chatId, weekNumber, classId, conversationContext, referenceContext, controller, requestId, attempt }) => {
+  const attempt = useCallback(async (query, { chatId, weekNumber, classId, conversationContext, referenceContext, controller, requestId, attempt, revisePlanId }) => {
     cancelQueuedPlan()
     setText('')
-    setPreview(null)
+    setPreview(basePlanRef.current)
     setGrounding(null)
     setDayNames(null)
     groundingRef.current = null
@@ -280,6 +291,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
           class_id: classId ?? null,
           request_id: requestId,
           attempt,
+          ...(revisePlanId ? { revise_plan_id: revisePlanId } : {}),
         }),
         signal: attemptController.signal,
         credentials: 'include',
@@ -432,7 +444,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
   }, [cancelQueuedPlan, flushPlanUpdate, queuePlanUpdate])
 
   const start = useCallback(
-    async (query, { chatId, weekNumber, classId, conversationContext = '', referenceContext = '', requestId: requestedRequestId } = {}) => {
+    async (query, { chatId, weekNumber, classId, conversationContext = '', referenceContext = '', requestId: requestedRequestId, revisePlanId = null, basePlan = null } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -441,7 +453,8 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
       firstPreviewRef.current = false
-      paramsRef.current = { query, chatId, weekNumber, classId, conversationContext, referenceContext, requestId }
+      basePlanRef.current = basePlan
+      paramsRef.current = { query, chatId, weekNumber, classId, conversationContext, referenceContext, requestId, revisePlanId }
       onStartRef.current?.({ requestId, attempt: 0 })
 
       setIsStreaming(true)
@@ -467,6 +480,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
               controller,
               requestId,
               attempt: tryNum,
+              revisePlanId,
             })
             if (!result || controller.signal.aborted || stoppedRef.current) return null
             onDoneRef.current?.(result)

@@ -388,7 +388,11 @@ export const api = {
   /* With `feedback` this is the chat's iteration loop — "make Thursday a
      Socratic seminar". Without it, the autonomous self-critique it has always
      been. Returns the updated row so the caller can put it straight into state. */
-  revisePlan: (id, feedback, { signal, timeoutMs = 60000 } = {}) =>
+  /* Whole-week critique_and_revise rewrites five days of structured JSON in
+     one blocking call. 60s was shorter than a typical successful rewrite, so
+     the browser aborted a still-running job and the UI called it a timeout.
+     Stay under Render's ~100s proxy cap. */
+  revisePlan: (id, feedback, { signal, timeoutMs = 90000 } = {}) =>
     request(`/api/plans/${id}/revise`, {
       method: 'POST',
       body: { feedback: feedback || null },
@@ -540,9 +544,9 @@ export const api = {
      generic suggestion it already had. */
   getSuggestion: (payload) => request('/api/suggestion', { method: 'POST', body: payload }),
 
-  reviseDay: (payload) => request('/api/revise_day', { method: 'POST', body: payload }),
+  reviseDay: (payload) => request('/api/revise_day', { method: 'POST', body: payload, timeoutMs: 60000 }),
 
-  reviseDays: (payload) => request('/api/revise_days', { method: 'POST', body: payload }),
+  reviseDays: (payload) => request('/api/revise_days', { method: 'POST', body: payload, timeoutMs: 90000 }),
 
   // The standard picker's own write: an exact, already-grounded value the
   // teacher chose from what this week retrieved — no model call, unlike

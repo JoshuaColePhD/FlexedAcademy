@@ -50,8 +50,10 @@ create produces a separate plan even when one is open. For revisions, copy the
 active target_plan_id exactly. Use revise_days for any named subset of days, and
 for one field across days (list all affected day names). Use field=null only when
 whole days must change. For a single day's single field update_lesson_day is also
-available. Use revise_week only when the teacher requests changes across the whole
-plan. Never broaden a targeted change. If the target or change is unclear, ask.
+available. Use revise_week when applying advice or a change across the whole
+plan. Prefer revise_days over revise_week when the teacher names specific days
+or a single field. Agreeing to offered advice revises the open plan — never
+create a second week for that. Never broaden a targeted change. If the target or change is unclear, ask.
 Include the requested change and relevant previously established constraints in
 instruction/feedback, keeping it under 4000 characters. Preserve unrelated content.
 For creation include the requested week_number if known; do not infer a different
@@ -97,7 +99,7 @@ def typed_chat_tools(legacy_tools):
             fn["description"] = (
                 "Execute an explicitly requested plan creation or revision. Advice uses no tool. "
                 "Use create for a separate plan, revise_days for selected days or fields, "
-                "and revise_week only for a whole-plan change. Preserve prior constraints. "
+                "and revise_week when applying a change across the open week. Preserve prior constraints. "
                 "Set also_quiz true when this same message also asks for a quiz or test."
             )
             fn["parameters"] = {

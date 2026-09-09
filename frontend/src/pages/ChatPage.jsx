@@ -814,9 +814,11 @@ export function ChatPage() {
   // generation. Live work is shown directly beneath that teacher message.
   const [workActivities, setWorkActivities] = useState({})
   const activityAnchorRef = useRef(null)
+  const lastAssistantTurnIdRef = useRef(null)
   const activeActivityRequestRef = useRef(null)
   const pendingActivityKindRef = useRef(null)
   const planBuildInFlightRef = useRef(false)
+  const revisionBeforePlanRef = useRef(null)
   const startedActionRef = useRef(null)
   const pendingQuizRef = useRef(null)
   const beginQuizFromRequestRef = useRef(null)
@@ -831,8 +833,7 @@ export function ChatPage() {
     research: 'Gathering research',
   }[kind] || 'Working on your request'), [])
 
-  const startWorkActivity = useCallback((requestId, kind = 'plan') => {
-    const anchorId = activityAnchorRef.current
+  const startWorkActivity = useCallback((requestId, kind = 'plan', anchorId = activityAnchorRef.current) => {
     if (!requestId || !anchorId) return
     const priorActiveId = activeActivityRequestRef.current
     activeActivityRequestRef.current = requestId
@@ -1707,44 +1708,50 @@ export function ChatPage() {
     onStatus: (event) => updateActiveWorkActivity(event),
     onDone: (done) => {
       planBuildInFlightRef.current = false
+      const revised = Boolean(done.revised)
+      const previousPlan = revisionBeforePlanRef.current
+      revisionBeforePlanRef.current = null
+      setRevising(false)
       finishWorkActivity(done.requestId, {
         status: 'complete',
-        summary: `${done.plan?.days?.length || 0} days built and checked.`,
+        summary: revised
+          ? 'The lesson plan was updated and saved.'
+          : `${done.plan?.days?.length || 0} days built and checked.`,
         planId: done.plan_id,
       })
-      showReadyNotice('Lesson plan ready')
+      showReadyNotice(revised ? 'Lesson plan updated' : 'Lesson plan ready')
       setPlanSaveState('saved')
-      setLastSavedLabel('Lesson plan saved')
+      setLastSavedLabel(revised ? 'Lesson plan updated' : 'Lesson plan saved')
       armSaveReceipt()
+      if (revised && previousPlan) recordRevision('Lesson plan update', previousPlan)
       const selectedStandardApplied = selectedStandard
         ? planContainsStandard(done.plan, selectedStandard.code)
         : null
       if (selectedStandard) {
         setSelectedStandardStatus(selectedStandardApplied ? 'applied' : 'review')
       }
-      setArtifact({
+      setArtifact((current) => ({
+        ...(revised ? current : {}),
         planId: done.plan_id,
         plan: done.plan,
         warnings: done.warnings,
         retrievedIds: done.retrieved_ids ?? done.grounding?.codes,
         unit: done.unit,
-      })
-      // Was a flat "Built Week 12. Tell me what to change and I'll revise
-      // it." — identical every single time regardless of what was actually
-      // in it, at the one moment (a whole week just finished) that most
-      // deserved to sound like a person handing off finished work instead
-      // of a system toast. unitSuffix already knows not to repeat the week
-      // number back when there's no real unit name to add (see its own
-      // comment) — same guard SplitLayout and ArtifactRail lean on.
+      }))
       const standardHandoffNote = selectedStandard
         ? selectedStandardApplied
           ? ` I included ${selectedStandard.code} in the alignment.`
           : ` I couldn't confirm ${selectedStandard.code} in the generated alignment, so please review the Standards section.`
         : ''
-      const content = `${done.plan?.week_of || 'The week'} is built${unitSuffix(
-        done.unit,
-        ', centered on '
-      )}.${standardHandoffNote} Take a look, and tell me what needs to change.`
+      const content = revised
+        ? `Done — ${done.week_label || done.plan?.week_of || 'the week'} is updated${unitSuffix(
+          done.unit,
+          ', still centered on '
+        )}. Let me know if anything else needs adjusting.`
+        : `${done.plan?.week_of || 'The week'} is built${unitSuffix(
+          done.unit,
+          ', centered on '
+        )}.${standardHandoffNote} Take a look, and tell me what needs to change.`
       setMessages((prev) => [
         ...prev,
         {
@@ -1797,30 +1804,36 @@ export function ChatPage() {
     onError: (err) => {
       pendingQuizRef.current = null
       planBuildInFlightRef.current = false
+      const wasRevision = Boolean(revisionBeforePlanRef.current)
+      revisionBeforePlanRef.current = null
+      setRevising(false)
       const dropped = isDroppedConnectionError(err)
       const copy = dropped ? droppedConnectionCopy(true) : null
       finishWorkActivity(null, {
         status: 'error',
-        error: copy?.message || err.message || "I couldn't finish the week just then.",
+        error: copy?.message || err.message || (wasRevision
+          ? "I couldn't finish that update. The saved week is unchanged."
+          : "I couldn't finish the week just then."),
       })
+      setPlanSaveState(wasRevision ? 'saved' : 'error')
       setMessages((prev) => [
         ...prev,
         {
           id: nextId(),
           role: 'assistant',
           isError: true,
-          content: copy?.message || "I couldn't finish the week just then.",
+          content: copy?.message || (wasRevision
+            ? "I couldn't finish that update. The saved week is unchanged."
+            : "I couldn't finish the week just then."),
           hint: copy?.hint || err.hint || 'Tap Try again.',
         },
       ])
-      // The server is the authority; if it refused on entitlement, show the
-      // offer rather than only a toast the teacher can't act on.
       if (err.code === 'subscription_required') {
         refreshAuth()
         openPaywall()
         return
       }
-      toast.apiError("Couldn't build that", err)
+      toast.apiError(wasRevision ? "Couldn't revise that" : "Couldn't build that", err)
     },
   })
 
@@ -1921,6 +1934,7 @@ export function ChatPage() {
       // already watching stream in is the SAME element that lands, not one
       // that vanishes and gets replaced. See liveMessageIdRef's own comment.
       const liveId = liveMessageIdRef.current
+      if (liveId) lastAssistantTurnIdRef.current = liveId
       liveMessageIdRef.current = null
       const settle = (patch) =>
         setMessages((prev) =>
@@ -2073,7 +2087,7 @@ export function ChatPage() {
   })
 
   const busy = stream.isStreaming || revising || quizBuilding || chatStream.isStreaming || preparing
-  const generationBusy = preparing || stream.isStreaming || chatStream.isStreaming || quizBuilding
+  const generationBusy = preparing || stream.isStreaming || chatStream.isStreaming || quizBuilding || revising
   const generationStatus = stream.isStreaming
     ? { label: 'Building your lesson plan', detail: stream.status?.label || 'Matching standards and shaping the week.' }
     : chatStream.isStreaming
@@ -2318,18 +2332,55 @@ export function ChatPage() {
     const revisionFeedback = action.instruction || ctx.promptText || 'Use the attached documents as reference for this revision.'
     if (ctx.voiceOpen) voice.speak(VOICE_REVISING)
     fillLiveIfEmpty(action.action === 'revise_days' ? 'Updating the requested days now — one moment.' : 'Reworking the week now — one moment.')
+    startWorkActivity(
+      result.requestId,
+      'revision',
+      liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current,
+    )
+    if (action.action === 'revise_week') {
+      pendingActivityKindRef.current = 'revision'
+      planBuildInFlightRef.current = true
+      revisionBeforePlanRef.current = clonePlan(ctx.artifact.plan)
+      setRevising(true)
+      setPlanSaveState('saving')
+      if (!expanded && !isPhone) setExpanded(true)
+      let history = ctx.priorConversation || ''
+      if (action?.instruction) history += `\n\nRequest summary and prior constraints: ${action.instruction}`
+      if (result.text?.trim()) history += `\n\nASSISTANT: ${result.text}`
+      stream.start(revisionFeedback, {
+        chatId: ctx.activeChatId,
+        weekNumber: action?.week_number ?? ctx.conversationWeek ?? ctx.effectiveWeek,
+        classId: ctx.classId,
+        conversationContext: history,
+        referenceContext: ctx.referenceContext,
+        requestId: result.requestId,
+        revisePlanId: ctx.artifact.planId,
+        basePlan: ctx.artifact.plan,
+      }).catch(() => {})
+      return
+    }
+    updateActiveWorkActivity({
+      requestId: result.requestId,
+      step: 'standards',
+      label: 'Updating the requested days…',
+    })
     const previousPlan = clonePlan(ctx.artifact.plan)
     setRevising(true)
     setPlanSaveState('saving')
+    const revisionProgress = window.setTimeout(() => {
+      updateActiveWorkActivity({
+        requestId: result.requestId,
+        step: 'days',
+        label: 'Writing the updated days…',
+      })
+    }, 1800)
     try {
-      const row = action.action === 'revise_days'
-        ? await api.reviseDays({
-          plan_id: ctx.artifact.planId,
-          day_indices: revisionDayIndices(ctx.artifact.plan, action.days),
-          feedback: revisionFeedback,
-          field: action.field,
-        })
-        : await api.revisePlan(ctx.artifact.planId, revisionFeedback, { timeoutMs: 60000 })
+      const row = await api.reviseDays({
+        plan_id: ctx.artifact.planId,
+        day_indices: revisionDayIndices(ctx.artifact.plan, action.days),
+        feedback: revisionFeedback,
+        field: action.field,
+      })
       if (quizCancelRef.current === result.requestId) return
       setArtifact((a) => ({
         ...a,
@@ -2366,21 +2417,43 @@ export function ChatPage() {
     } catch (err) {
       pendingQuizRef.current = null
       if (quizCancelRef.current === result.requestId) return
-      finishWorkActivity(result.requestId, { status: 'error', error: err.message })
-      setPlanSaveState('error')
+      const timedOut = err.code === 'timeout'
+      finishWorkActivity(result.requestId, {
+        status: 'error',
+        error: timedOut
+          ? 'The week-wide update needed more time than we waited. The saved plan is unchanged.'
+          : err.message,
+      })
+      // Timeout is not a save failure: the previous plan is still on disk.
+      setPlanSaveState(timedOut ? 'saved' : 'error')
       setMessages((prev) => [
         ...prev,
-        { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
+        {
+          id: nextId(),
+          role: 'assistant',
+          isError: true,
+          content: timedOut
+            ? 'That update needed more time than we waited. The saved week is unchanged.'
+            : err.message,
+          hint: timedOut
+            ? 'Try one day or one field at a time — those finish more reliably than rewriting the whole week.'
+            : err.hint,
+        },
       ])
       toast.apiError("Couldn't revise that", err)
     } finally {
+      window.clearTimeout(revisionProgress)
       setRevising(false)
     }
   }
 
   const beginDayRevision = async (requested, result) => {
     const ctx = chatTurnRef.current
-    startWorkActivity(result.requestId, 'revision')
+    startWorkActivity(
+      result.requestId,
+      'revision',
+      liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current,
+    )
     const { day: dayName, field, feedback } = requested
     const targetPlanId = requested.targetPlanId || ctx.artifact?.planId
     const dayIndex = ctx.artifact?.plan?.days?.findIndex((day) => day.name === dayName) ?? -1
@@ -4120,8 +4193,8 @@ export function ChatPage() {
                       return (
                         <WorkActivityCard
                           activity={activity}
-                          compact={isLive && activity.kind !== 'plan'}
-                          onStop={activity.status === 'active' ? stopActiveGeneration : undefined}
+                          compact={isLive && activity.kind !== 'plan' && activity.kind !== 'revision'}
+                          onStop={activity.status === 'active' && (activity.kind === 'quiz' || activity.kind === 'research') ? stopActiveGeneration : undefined}
                           onRetry={activity.status === 'error' && !busy ? () => retryLast(activity.requestId) : undefined}
                           onViewPlan={activity.status === 'complete' && artifact?.planId ? () => openDocument() : undefined}
                           onViewSources={activity.status === 'complete' && artifact?.planId ? openStandards : undefined}
@@ -4233,6 +4306,7 @@ export function ChatPage() {
           onOpenQuiz={openQuiz}
           busy={busy}
           quizBuilding={quizBuilding}
+          updating={revising}
           variant="bar"
           artifactLoadError={artifactLoadError}
           onRetryArtifact={retryArtifactLoad}
@@ -4478,7 +4552,7 @@ export function ChatPage() {
                prepared or streamed. Revisions remain outside this state: the
                revision API has no AbortController, so promising Stop there
                would be misleading. */
-            onStop={generationBusy ? stopActiveGeneration : undefined}
+            onStop={generationBusy && !stream.isStreaming && !revising ? stopActiveGeneration : undefined}
             isStreaming={generationBusy}
             attachments={attachments}
             setAttachments={setAttachments}
@@ -4677,6 +4751,7 @@ export function ChatPage() {
           onOpenDocument={openDoc}
           busy={busy}
           quizBuilding={quizBuilding}
+          updating={revising}
           artifactLoadError={artifactLoadError}
           onRetryArtifact={retryArtifactLoad}
           onSuggestPrompt={suggestRailPrompt}

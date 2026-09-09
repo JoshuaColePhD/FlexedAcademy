@@ -233,6 +233,7 @@ export function ArtifactRail({
   // that triggers it (a chat message) and the card that shows its progress
   // live in different components.
   quizBuilding = false,
+  updating = false,
   // Opens the same embossed panel the plan card does (see onExpand above),
   // just pointed at a different kind of content — ArtifactDetailPanel in
   // ChatPage.jsx switches on what each of these was given. Not gated behind
@@ -310,7 +311,13 @@ export function ArtifactRail({
               <span className="rail-text rail-open-title">
                 <span className="rail-title">{plan?.week_of || 'Weekly lesson plan'}</span>
                 <span className="rail-sub">
-                  View lesson plan{unitSuffix(artifact?.unit, ' · ')}
+                  {updating ? (
+                    <>
+                      <Loader2 size={12} className="inline animate-spin" aria-hidden="true" /> Updating the week
+                    </>
+                  ) : (
+                    <>View lesson plan{unitSuffix(artifact?.unit, ' · ')}</>
+                  )}
                 </span>
               </span>
               </span>

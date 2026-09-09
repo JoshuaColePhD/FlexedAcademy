@@ -1423,6 +1423,30 @@ export function installMockApi() {
       // the transcript shows — the two are deliberately different once a file
       // is attached.
       state.lastPrompt = body?.query ?? null
+      if (body?.revise_plan_id) {
+        const planId = body.revise_plan_id
+        const current = state.plans[planId] || Object.values(state.plans)[0]
+        const revised = {
+          ...current,
+          days: (current.days || []).map((day) => (
+            day.name === 'Wednesday' ? { ...day, during: `${day.during || ''} Language support added.` } : day
+          )),
+        }
+        state.plans[planId] = revised
+        return sse([
+          [{ chunk: '{"updates":[{"day":"Wednesday","field":"during","text":"Language support added.","tags":[]}]}' }, latency.stream / 2],
+          [{
+            done: true,
+            revised: true,
+            plan_id: planId,
+            plan: revised,
+            warnings: WARNINGS,
+            week_label: revised.week_of,
+            unit: 'Unit 2 · weeks 3–6',
+            retrieved_ids: RETRIEVED,
+          }, latency.stream / 2],
+        ])
+      }
       const planId = uid('plan')
       const label = `Week ${String(seq).padStart(2, '0')} — Aug 17-21, 2026`
       state.plans[planId] = makePlan(label)

@@ -51,10 +51,12 @@ from .schema import (
     TEMPLATE_ANALYSIS_JSON_SCHEMA,
     TEMPLATE_VERIFICATION_JSON_SCHEMA,
     SchemaError,
+    apply_plan_patch,
     day_json_schema,
     field_json_schema,
     loads_lenient,
     plan_json_schema,
+    plan_patch_json_schema,
 )
 from .template_context import day_names_for_school
 
@@ -87,6 +89,7 @@ _OUTPUT_LENGTH_VALUES = frozenset(OUTPUT_LENGTH_BUDGETS)
 # model how much to aim for, while this leaves enough room for a longer week or
 # a school template with additional required sections to finish valid JSON.
 PLAN_COMPLETION_CEILING = 8_000
+PATCH_COMPLETION_CEILING = 2_500
 
 # retrieve_map_context is a nice-to-have supplement, not something the teacher
 # is aware is even running — it must never be the reason a chat reply is slow
@@ -1022,59 +1025,103 @@ _CRITIQUE_PROMPT = """You are a master curriculum coordinator. Your job is to re
 Provide a brief, stern critique, then rewrite the ENTIRE week's plan to fix the issues while strictly adhering to the schema.
 """
 
+_PATCH_SYSTEM = """You revise an existing weekly lesson plan by returning ONLY the cells that must change.
+Do not restate unchanged days or fields. Do not change week_of, teacher, course, period, or no_school days.
+Keep every standard code grounded in the retrieved context; do not introduce a code that is not there.
+For engagement_strategy, put one or two allowed tags in `tags` and leave `text` empty.
+For every other field, put the full replacement cell in `text` and leave `tags` empty.
+The teacher's instruction is the requirement — do not overrule it with your own judgement."""
+
+
+def _revision_messages(plan: dict, retrieved_context: str, feedback: str | None, subject: str, grade: str) -> list[dict]:
+    instruction = feedback.strip() if feedback and feedback.strip() else (
+        "Improve the week without changing its learning goals."
+    )
+    return [
+        {
+            "role": "system",
+            "content": (
+                f"{_PATCH_SYSTEM}\n\nSubject: {subject} (Grade {grade})\n\n"
+                f"Retrieved Standards Context:\n{retrieved_context}"
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Teacher instruction:\n{instruction}\n\n"
+                f"Current plan JSON:\n{json.dumps(plan, separators=(',', ':'))}"
+            ),
+        },
+    ]
+
+
 def critique_and_revise(
     user_id: str, plan: dict, retrieved_context: str, feedback: str | None = None,
     school_id: str | None = None,
 ) -> dict:
-    """Rewrites the whole plan — either on the teacher's instruction, or, with no
+    """Patch the current week — either on the teacher's instruction, or, with no
     instruction, as an autonomous self-critique.
 
-    `feedback` is what makes the chat loop work. Without it this could only ever
-    do what it thought best, so a teacher saying "make Thursday a Socratic
-    seminar" had nowhere to go but a per-day revise. When feedback is present it
-    OUTRANKS the critique prompt: the teacher asking for something is not a
-    defect to be corrected, and a self-critique that quietly undoes what they
-    just asked for is the most annoying possible behaviour.
+    Returns a full plan (the saved week with only requested cells replaced).
+    Used to rewrite every field of every day, which is why follow-up edits
+    timed out; the model now emits only the changed cells.
     """
     s = db.get_settings_row(user_id)
-    output_length = output_length_for(user_id)
-
-    if feedback:
-        instruction = (
-            "Revise the plan to do what the teacher asks. Their instruction is "
-            "the requirement — do not overrule it with your own judgement.\n"
-            "Change only what the instruction implies; leave every other day and "
-            "field exactly as it is. Keep every standard code grounded in the "
-            "retrieved context below; do not introduce a code that is not there.\n\n"
-            f"Teacher's instruction:\n{feedback}"
-        )
-    else:
-        instruction = _CRITIQUE_PROMPT
-
     template_days = day_names_for_school(school_id)
     content = _cached_completion(
         user_id,
         "critique_and_revise",
         model=settings.openai_model,
-        max_completion_tokens=plan_completion_tokens_for(user_id),
+        max_completion_tokens=PATCH_COMPLETION_CEILING,
         reasoning_effort="none",
-        response_format=_response_format("weekly_lesson_plan", plan_json_schema(template_days)),
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    f"{instruction}\n\n{output_length_block(output_length)}\n\n"
-                    f"Subject: {s['subject']} (Grade {s['grade']})\n\n"
-                    f"Retrieved Standards Context:\n{retrieved_context}"
-                )
-            },
-            {
-                "role": "user",
-                "content": f"Here is the current plan:\n{json.dumps(plan, indent=2)}"
-            },
-        ],
+        response_format=_response_format("lesson_plan_patch", plan_patch_json_schema(template_days)),
+        messages=_revision_messages(
+            plan, retrieved_context, feedback, str(s.get("subject") or ""), str(s.get("grade") or "")
+        ),
     )
-    return loads_lenient(content or "")
+    return apply_plan_patch(plan, loads_lenient(content or ""))
+
+
+def stream_plan_revision(
+    user_id: str, plan: dict, retrieved_context: str, feedback: str | None = None,
+    *, school_id: str | None = None, class_id: str | None = None,
+) -> Iterator[str]:
+    """Yield patch JSON deltas. The caller accumulates, applies, and saves."""
+    subject, grade = _prompt_subject_grade(user_id, class_id)
+    template_days = day_names_for_school(school_id, user_id=user_id)
+    started_at = time.perf_counter()
+    stream = client().chat.completions.create(
+        model=settings.openai_model,
+        max_completion_tokens=PATCH_COMPLETION_CEILING,
+        reasoning_effort="none",
+        response_format=_response_format("lesson_plan_patch", plan_patch_json_schema(template_days)),
+        messages=_revision_messages(plan, retrieved_context, feedback, subject, grade),
+        stream=True,
+        stream_options={"include_usage": True},
+    )
+    finish_reason = None
+    try:
+        for chunk in stream:
+            if getattr(chunk, "usage", None):
+                _record(user_id, "stream_plan_revision", chunk.usage, started_at=started_at)
+            if not chunk.choices:
+                continue
+            finish_reason = getattr(chunk.choices[0], "finish_reason", None) or finish_reason
+            delta = chunk.choices[0].delta
+            if getattr(delta, "refusal", None):
+                raise AppError(
+                    "model_refusal", f"The model declined this request: {delta.refusal}", status=422
+                )
+            if delta.content:
+                yield delta.content
+        if finish_reason == "length":
+            raise SchemaError(
+                "truncated_json",
+                "The model stopped before finishing the revision.",
+                hint="The response was cut off. Try again.",
+            )
+    finally:
+        stream.close()
 
 
 QUERY_EXPANSION_SCHEMA = {

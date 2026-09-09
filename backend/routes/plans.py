@@ -473,134 +473,27 @@ def revise_whole_plan(
     user_id: str = Depends(get_current_user),
 ):
     """Revise the whole plan, on the teacher's instruction or by self-critique."""
-    from .. import llm, retrieval
-
     require_entitlement(user_id)
     row = _require_plan(user_id, plan_id)
-    retrieved_ids = row.get("retrieved_ids") or []
-    if not retrieved_ids:
-        raise AppError("no_context", "Cannot revise without retrieved standards.", status=400)
-
-    # plans.retrieved_ids holds standard CODES — service.finalize writes
-    # `sorted(result.codes)`, which reads metadata["code"]. Resolve each code
-    # through the plan's own class so a revision cannot pick the same code from
-    # another state or course. This matters especially for DC/Common Core,
-    # where identical code shapes occur in multiple jurisdictions.
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code = (cls or {}).get("subject") or row.get("course") or ""
-    if not str(subject_code).strip():
-        raise AppError(
-            "subject_required",
-            "Set this class's subject before I can revise this plan.",
-            status=400,
-            hint="Open class settings and pick a subject. I won't assume AP Language.",
-        )
-    state = (cls or {}).get("state") or "AL"
-    wanted = {retrieval._norm_code(c) for c in retrieved_ids}
-    chunks = [
-        chunk
-        for code in wanted
-        if (chunk := retrieval.chunk_for_code(code, subject_code=subject_code, state=state))
-    ]
-    if not chunks:
-        raise AppError(
-            "no_context",
-            "None of this plan's standards could be found in the corpus.",
-            status=409,
-            hint=(
-                "The plan cites codes the current corpus doesn't contain — it was "
-                "probably built against a different framework or before a re-ingest. "
-                "Rebuild the plan rather than revising it."
-            ),
-            extra={"codes": sorted(wanted)},
-        )
-
-    # chunks.json records carry `code` and `description`; they have no `id` and
-    # no `text` — those are the pgvector row's shape, not the source file's.
-    res = retrieval.RetrievalResult(
-        chunks=[
-            {
-                "id": c.get("code"),
-                "document": c.get("description", ""),
-                "metadata": c,
-                "distance": 0.0,
-            }
-            for c in chunks
-        ]
-    )
+    res = service.retrieval_result_for_saved_plan(user_id, row, cls)
     context = retrieval.format_context(res)
-    
     school_id = db.class_school(cls, user_id)
-    preferred_template = db.get_preferred_template_for_class(user_id, row.get("class_id"), school_id)
-    selected_template_id = row.get("template_id") or (
-        preferred_template.get("id") if preferred_template else None
-    )
-    act_row = has_template_field(
-        school_id, "act_alignment", template_id=selected_template_id, user_id=user_id
-    )
 
-    # Generate critique and revised plan. Revisions are subject to the same
-    # bounded pacing as fresh plans; the second entitlement check preserves the
-    # weekly hard stop if an earlier queued job used the remaining allowance.
     with generation_queue.slot(user_id):
         require_entitlement(user_id)
         new_plan_json = llm.critique_and_revise(
             user_id, row["plan_json"], context, feedback=(body.feedback if body else None), school_id=school_id
         )
-    
-    # Validate and save
-    plan, warnings = schema.validate_plan(
-        new_plan_json,
-        day_names=day_names_for_school(
-            school_id, template_id=selected_template_id, user_id=user_id
-        ),
-        act_alignment_enabled=act_row,
-    )
-    identity = service.identity_for(user_id, cls)
-    plan = schema.with_identity(
-        plan,
-        teacher=identity["teacher"],
-        course=identity["course"],
-        period=identity["period"],
-        subject=service.subject_label(cls["subject"]) if cls else None,
-    )
 
-    # A whole-plan revision can add, drop, or move standard references. Keep
-    # the saved grounding snapshot in lockstep with the revised plan rather
-    # than leaving citations from the previous version attached to it.
-    allowed = set(retrieved_ids)
-    warnings += retrieval.audit_grounding(
-        plan,
-        allowed,
-        subject_code=subject_code,
-        act_expected=act_row and bool(retrieval.act_sections_for(subject_code)),
+    return service.persist_revised_plan(
+        user_id=user_id,
+        row=row,
+        plan_raw=new_plan_json,
         result=res,
+        cls=cls,
+        bg_tasks=bg_tasks,
     )
-    cited = retrieval.cited_standards(plan, allowed, subject_code=subject_code)
-    
-    out_path = docx_build.plan_output_path(plan, plan_id)
-    bg_tasks.add_task(service._build_docx_bg, user_id, plan, out_path, plan_id)
-    
-    db.update_plan(
-        user_id, 
-        plan_id, 
-        plan_json=plan,
-        docx_path=None,
-        week_label=plan.get("week_of", row["week_label"]),
-        unit=units.unit_for_week(plan.get("week_of", row["week_label"])),
-        warnings=warnings,
-        course=plan.get("course", row["course"]),
-    )
-    db.replace_plan_standards(
-        plan_id,
-        user_id,
-        class_id=row.get("class_id"),
-        subject=subject_code,
-        grade=str((cls or {}).get("grade") or ""),
-        entries=cited,
-    )
-
-    return db.get_plan(user_id, plan_id)
 
 
 @router.delete("/{plan_id}", status_code=204)

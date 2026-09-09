@@ -3,7 +3,6 @@ import { SHORT_DAY, dayState, initialDayIndex, orderedDays } from '../lib/planSh
 import { SkeletonText } from './Skeleton'
 import { cellKit } from './cellTweakKit'
 
-const TODAY_NAME = new Date().toLocaleDateString('en-US', { weekday: 'long' })
 
 const FIELDS = [
   ['Learning Target / Essential Questions', 'learning_targets', '#e69138', '#111827'],
@@ -96,7 +95,7 @@ export function WeedenPlanDayCards({
     applyTweak: applyEdit,
     draft,
   }) : null
-  const [active, setActive] = useState(() => initialDayIndex(days, TODAY_NAME))
+  const [active, setActive] = useState(() => initialDayIndex(days, plan.week_of))
   const scrollerRef = useRef(null)
   const syncing = useRef(false)
   const offsetOf = (el, i) => el.children[i]?.offsetLeft ?? i * el.clientWidth

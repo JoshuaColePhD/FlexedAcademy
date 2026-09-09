@@ -8,6 +8,7 @@ import {
   SHORT_DAY,
   dayState,
   initialDayIndex,
+  isPlanDayToday,
   orderedDays,
 } from '../lib/planShape'
 
@@ -24,8 +25,6 @@ import {
  * up controlling the same scrollLeft, so they cannot disagree about which day
  * is showing.
  */
-
-const TODAY_NAME = new Date().toLocaleDateString('en-US', { weekday: 'long' })
 
 /* Same tap-to-edit affordance as the district table's cells (CellTweak.jsx's
  * cellKit) — `kit` is the SAME interaction model LessonPlanTable built from
@@ -183,7 +182,7 @@ export function PlanDayCards({
   setDraft,
 }) {
   const days = orderedDays(plan, missingDays)
-  const [active, setActive] = useState(() => initialDayIndex(days, TODAY_NAME))
+  const [active, setActive] = useState(() => initialDayIndex(days, plan.week_of))
   const scrollerRef = useRef(null)
   const syncing = useRef(false)
   // Built from the SAME state LessonPlanTable owns (openTweak/draft live one
@@ -266,7 +265,7 @@ export function PlanDayCards({
               // The closed state was carried by a hatch pattern alone.
               aria-label={state === 'no_school' ? `${d.name} — no school` : d.name}
               onClick={() => goTo(i)}
-              className={`plan-deck-tab ${i === active ? 'is-active' : ''} ${d.name === TODAY_NAME ? 'is-today' : ''} ${
+              className={`plan-deck-tab ${i === active ? 'is-active' : ''} ${isPlanDayToday(d, plan.week_of) ? 'is-today' : ''} ${
                 state === 'no_school' ? 'is-closed' : ''
               }`}
             >

@@ -12,7 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from .. import costs, curriculum, db, llm, prompts, research, schoolcal, service
+from .. import costs, curriculum, db, llm, prompts, research, retrieval, schoolcal, service
 from ..chat_policy import TYPED_CHAT_POLICY, complete_typed_event, validate_action_target
 from ..config import settings
 from ..deps import get_current_user
@@ -98,6 +98,8 @@ class GenerateRequest(BaseModel):
     # still be attached to the correct teacher turn.
     request_id: str | None = None
     attempt: int = Field(default=0, ge=0)
+    # When set, stream a patch onto this existing week instead of creating one.
+    revise_plan_id: str | None = None
 
 
 def _with_week(query: str, week_number: int | None, school_id: str) -> str:
@@ -492,7 +494,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     cls = _request_class(user_id, req.class_id, req.chat_id)
     school_id = db.class_school(cls, user_id)
     template_days = day_names_for_school(school_id)
-    query = _with_week(req.query, req.week_number, school_id)
+    query = req.query if req.revise_plan_id else _with_week(req.query, req.week_number, school_id)
     model_query = _generation_query(
         query,
         conversation_context=req.conversation_context,
@@ -500,6 +502,16 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
     )
 
     def worker(job):
+        if req.revise_plan_id:
+            _run_revision_job(
+                job,
+                user_id=user_id,
+                req=req,
+                cls=cls,
+                school_id=school_id,
+                model_query=model_query,
+            )
+            return
         _run_plan_job(
             job,
             user_id=user_id,
@@ -714,6 +726,100 @@ def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, mo
         emit({"error": err, "status": "error"}, step="validation", step_state="error", attempt=req.attempt)
         job.complete(error=err if isinstance(err, dict) else {"message": str(err)})
     except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
+        err = _openai_error_event(e)
+        emit({"error": err, "status": "error"}, step="building", step_state="error", attempt=req.attempt)
+        job.complete(error=err)
+    finally:
+        job.lease = None
+        if lease is not None:
+            lease.release()
+
+
+def _run_revision_job(job, *, user_id, req, cls, school_id, model_query):
+    request_id = job.request_id
+    lease = None
+
+    def emit(payload, **kwargs):
+        job.publish(_activity_sse(payload, request_id, **kwargs))
+
+    try:
+        job.publish(": keepalive\n\n")
+        emit({"status": "connecting", "status_code": "connecting", "label": "Starting…"}, step="context", step_state="active", attempt=req.attempt)
+        lease = generation_queue.enqueue(user_id)
+        job.lease = lease
+        while not lease.wait(timeout=15):
+            if job.cancelled.is_set() or lease.cancelled:
+                lease.cancel()
+                job.complete(cancelled=True)
+                return
+            emit({"status": "queued", "status_code": "queued", "label": "Still queued — your request is safe…"}, step="context", step_state="active", attempt=req.attempt)
+        require_entitlement(user_id)
+        emit({"status": "accepted", "status_code": "accepted", "label": "Revision started"}, step="context", step_state="complete", attempt=req.attempt)
+    except (AppError, SchemaError) as e:
+        if lease is not None:
+            lease.release()
+            lease = None
+        err = e.payload().get("error", e.payload())
+        emit({"error": err, "status": "error"}, step="context", step_state="error", attempt=req.attempt)
+        job.complete(error=err if isinstance(err, dict) else {"message": str(err)})
+        return
+
+    chunks: list[str] = []
+    try:
+        row = db.get_plan(user_id, req.revise_plan_id)
+        if not row:
+            raise AppError("plan_not_found", "No such plan.", status=404)
+        emit({"status": "retrieving", "label": "Reading this week…"}, step="retrieval", step_state="active", attempt=req.attempt)
+        result = service.retrieval_result_for_saved_plan(user_id, row, cls)
+        context = retrieval.format_context(result)
+        emit({"status": "writing", "label": "Updating the week…"}, step="building", step_state="active", attempt=req.attempt)
+        for delta in _with_keepalives(
+            llm.stream_plan_revision(
+                user_id,
+                row["plan_json"],
+                context,
+                feedback=model_query,
+                school_id=school_id,
+                class_id=cls["id"] if cls else None,
+            )
+        ):
+            if job.cancelled.is_set():
+                job.complete(cancelled=True)
+                return
+            if delta is None:
+                job.publish(": keepalive\n\n")
+                continue
+            chunks.append(delta)
+            emit({"chunk": delta}, step="building", step_state="active", attempt=req.attempt)
+
+        from ..schema import apply_plan_patch, loads_lenient
+
+        emit({"status": "saving", "label": "Saving the update…"}, step="building", step_state="active", attempt=req.attempt)
+        patched = apply_plan_patch(row["plan_json"], loads_lenient("".join(chunks)))
+        saved = service.persist_revised_plan(
+            user_id=user_id,
+            row=row,
+            plan_raw=patched,
+            result=result,
+            cls=cls,
+        )
+        done = {
+            "done": True,
+            "revised": True,
+            "plan_id": saved["id"],
+            "plan": saved["plan_json"],
+            "warnings": saved["warnings"],
+            "week_label": saved["week_label"],
+            "unit": saved.get("unit"),
+            "retrieved_ids": saved.get("retrieved_ids"),
+        }
+        emit(done, step="complete", step_state="complete", attempt=req.attempt)
+        job.complete(result=done)
+    except (AppError, SchemaError) as e:
+        err = e.payload().get("error", e.payload())
+        emit({"error": err, "status": "error"}, step="validation", step_state="error", attempt=req.attempt)
+        job.complete(error=err if isinstance(err, dict) else {"message": str(err)})
+    except Exception as e:  # noqa: BLE001
         err = _openai_error_event(e)
         emit({"error": err, "status": "error"}, step="building", step_state="error", attempt=req.attempt)
         job.complete(error=err)
