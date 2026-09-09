@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# Cloud Agent environment bootstrap for FlexedAcademy.
+#
+# Idempotent, repository-dependent setup. Runs after the source checkout and
+# may run repeatedly, so every step tolerates already-being-done. Slow, stable
+# system packages are installed here (rather than a Dockerfile) so the default
+# base image keeps working; per-boot process startup lives in start.sh.
+#
+# What this leaves behind:
+#   - a Python 3.12 venv with the backend + dev deps installed
+#   - a built frontend (frontend/dist) the backend serves directly
+#   - a local Postgres 16 + pgvector database matching the production shape
+#     (Supabase): role, database, `vector` extension, the externally-managed
+#     `global_standards` table, and the anon/authenticated/service_role roles
+#     the migrations REVOKE against
+#   - data/processed/chunks.json (offline standards parse; no OpenAI needed)
+#   - a local .env pointing at that database, with the read-only demo account on
+set -euo pipefail
+cd "$(dirname "$0")/.."
+REPO="$PWD"
+
+PG_VERSION=16
+DB_NAME=flexed
+DB_USER=flexed
+DB_PASS=flexed
+
+log() { printf '\n=== %s ===\n' "$*"; }
+
+# --- system packages --------------------------------------------------------
+log "Installing system packages (Postgres ${PG_VERSION}, pgvector, poppler, tesseract, venv)"
+export DEBIAN_FRONTEND=noninteractive
+sudo apt-get update -y
+sudo apt-get install -y \
+  "postgresql-${PG_VERSION}" \
+  "postgresql-${PG_VERSION}-pgvector" \
+  "postgresql-client-${PG_VERSION}" \
+  python3.12-venv \
+  poppler-utils \
+  tesseract-ocr
+
+# --- start Postgres so we can provision it ----------------------------------
+log "Ensuring Postgres cluster is running"
+sudo pg_ctlcluster "${PG_VERSION}" main start || true
+# Wait for the socket to accept connections.
+for _ in $(seq 1 30); do
+  if sudo -u postgres pg_isready -q; then break; fi
+  sleep 1
+done
+
+# --- provision the database to match the production (Supabase) shape --------
+log "Provisioning database '${DB_NAME}' and role '${DB_USER}'"
+# Superuser role: the app runs CREATE EXTENSION vector at migrate() time and
+# relies on BYPASSRLS exactly as it does against Supabase's pooler `postgres`.
+sudo -u postgres psql -v ON_ERROR_STOP=1 <<SQL
+DO \$\$ BEGIN
+  CREATE ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}' SUPERUSER;
+EXCEPTION WHEN duplicate_object THEN
+  ALTER ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASS}' SUPERUSER;
+END \$\$;
+SELECT 'CREATE DATABASE ${DB_NAME} OWNER ${DB_USER}'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${DB_NAME}')\gexec
+SQL
+
+# Supabase ships these roles by default; several migrations REVOKE table
+# privileges FROM anon, authenticated. Create them so migrations apply cleanly.
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d "${DB_NAME}" <<SQL
+DO \$\$ BEGIN CREATE ROLE anon NOLOGIN NOINHERIT; EXCEPTION WHEN duplicate_object THEN null; END \$\$;
+DO \$\$ BEGIN CREATE ROLE authenticated NOLOGIN NOINHERIT; EXCEPTION WHEN duplicate_object THEN null; END \$\$;
+DO \$\$ BEGIN CREATE ROLE service_role NOLOGIN NOINHERIT BYPASSRLS; EXCEPTION WHEN duplicate_object THEN null; END \$\$;
+
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- global_standards is created outside the migration list (by a one-off data
+-- load script on Supabase). Migration 56 only ALTERs it to enable RLS, so a
+-- fresh database needs the table to exist first. Schema matches the columns
+-- backend/db.py's insert_global_standards()/get_global_standards() use.
+CREATE TABLE IF NOT EXISTS global_standards (
+    id           BIGSERIAL PRIMARY KEY,
+    state        TEXT NOT NULL,
+    subject      TEXT NOT NULL,
+    grade        TEXT NOT NULL,
+    code         TEXT NOT NULL,
+    description  TEXT,
+    created_by   TEXT,
+    created_at   TEXT,
+    UNIQUE (state, subject, grade, code)
+);
+ALTER TABLE global_standards OWNER TO ${DB_USER};
+SQL
+
+# --- Python backend ---------------------------------------------------------
+log "Creating Python venv and installing backend (+dev) dependencies"
+if [[ ! -x venv/bin/python ]]; then
+  python3.12 -m venv venv
+fi
+./venv/bin/python -m pip install --upgrade pip
+./venv/bin/pip install -e ".[dev]"
+
+# --- frontend ---------------------------------------------------------------
+log "Installing frontend dependencies and building the SPA"
+(cd frontend && npm install && npm run build)
+
+# --- offline standards corpus (no OpenAI required) --------------------------
+log "Parsing the standards source docs into data/processed/chunks.json"
+mkdir -p data/processed
+./venv/bin/python scripts/01_parse_chunks.py || \
+  echo "warning: chunk parse failed; the Standards browser will be empty until it runs"
+
+# --- local .env -------------------------------------------------------------
+if [[ ! -f .env ]]; then
+  log "Writing local .env (points at the local Postgres; read-only demo enabled)"
+  SECRET="$(./venv/bin/python -c 'import secrets; print(secrets.token_hex(32))')"
+  cat > .env <<ENV
+# Local Cloud Agent development environment (generated by .cursor/install.sh).
+# No OpenAI key or Supabase — points at the local Postgres+pgvector instance.
+DATABASE_URL="postgresql://${DB_USER}:${DB_PASS}@127.0.0.1:5432/${DB_NAME}"
+
+# Real signing key so REQUIRE_LOGIN=true can boot (the app refuses the dev default).
+SESSION_SECRET="${SECRET}"
+REQUIRE_LOGIN="true"
+COOKIE_SECURE="false"
+
+# One-click read-only recruiter showcase: seeds a real sample AP Lang week from
+# backend/builder/example-week.json at boot. Demonstrates the full UI, DB round
+# trips, and DOCX without needing an OpenAI key.
+DEMO_ACCOUNT_EMAIL="demo@flexedacademy.local"
+DEMO_ACCOUNT_PASSWORD="flexed-demo-2026"
+DEMO_ACCOUNT_NAME="Recruiter Demo"
+
+# Generation/transcription need OpenAI; left empty for local boot. Set your own
+# key here to enable plan generation, then run scripts/02_embed_store.py to load
+# the embedded standards corpus.
+OPENAI_API_KEY=""
+
+API_PORT="8010"
+LOG_LEVEL="INFO"
+ENV
+else
+  log ".env already present — leaving it untouched"
+fi
+
+log "Install complete"

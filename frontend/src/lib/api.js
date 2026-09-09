@@ -446,6 +446,20 @@ export const api = {
         ...(passageTitle ? { passage_title: passageTitle } : {}),
       },
     }),
+  createStandaloneQuiz: (classId, { questionTypes, numQuestions, passageMode = 'none', passageText, passageTitle, topic } = {}) =>
+    request(`/api/classes/${encodeURIComponent(classId)}/quizzes`, {
+      method: 'POST',
+      body: {
+        question_types: questionTypes,
+        num_questions: numQuestions,
+        passage_mode: passageMode,
+        ...(passageText ? { passage_text: passageText } : {}),
+        ...(passageTitle ? { passage_title: passageTitle } : {}),
+        ...(topic ? { topic } : {}),
+      },
+    }),
+  listStandaloneQuizzes: (classId, { signal } = {}) =>
+    request(`/api/classes/${encodeURIComponent(classId)}/quizzes`, { signal }),
   updateQuiz: (planId, quizId, quizJson) =>
     request(`/api/plans/${planId}/quizzes/${quizId}`, { method: 'PUT', body: { quiz_json: quizJson } }),
   /* The chat-driven counterpart to createQuiz — a follow-up like "make it
@@ -459,6 +473,13 @@ export const api = {
       method: 'POST',
       body: { feedback },
     }),
+  reviseStandaloneQuiz: (quizId, feedback) =>
+    request(`/api/quizzes/${encodeURIComponent(quizId)}/revise`, {
+      method: 'POST',
+      body: { feedback },
+    }),
+  updateStandaloneQuiz: (quizId, quizJson) =>
+    request(`/api/quizzes/${encodeURIComponent(quizId)}`, { method: 'PUT', body: { quiz_json: quizJson } }),
   quizLibrarySuggestions: (planId, { signal } = {}) => request(`/api/quiz-library/suggestions?plan_id=${encodeURIComponent(planId)}`, { signal }),
   saveQuizToLibrary: (planId, quizId, { permissionConfirmed = false } = {}) =>
     request(`/api/quiz-library/plans/${encodeURIComponent(planId)}/quizzes/${encodeURIComponent(quizId)}`, {
@@ -477,8 +498,14 @@ export const api = {
   useQuizLibrarySet: (libraryId) =>
     request(`/api/quiz-library/sets/${encodeURIComponent(libraryId)}/use`, { method: 'POST' }),
   quizDownloadUrl: (planId, quizId) => `${API_BASE}/api/plans/${planId}/quizzes/${quizId}/download`,
+  standaloneQuizDownloadUrl: (quizId) => `${API_BASE}/api/quizzes/${encodeURIComponent(quizId)}/download`,
   downloadQuizDocx: (planId, quizId, options = {}) =>
     downloadFile(`${API_BASE}/api/plans/${encodeURIComponent(planId)}/quizzes/${encodeURIComponent(quizId)}/download-docx`, {
+      ...options,
+      fallbackName: options.fallbackName || 'quiz.docx',
+    }),
+  downloadStandaloneQuizDocx: (quizId, options = {}) =>
+    downloadFile(`${API_BASE}/api/quizzes/${encodeURIComponent(quizId)}/download-docx`, {
       ...options,
       fallbackName: options.fallbackName || 'quiz.docx',
     }),

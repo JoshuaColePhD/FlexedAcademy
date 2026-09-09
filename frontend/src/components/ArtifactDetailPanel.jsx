@@ -409,7 +409,9 @@ function QuizBody({ quiz }) {
     setPassages(nextPassages)
     setIsSaving(true)
     try {
-      await api.updateQuiz(quiz.plan_id, quiz.id, { ...quiz.quiz_json, questions: nextQuestions, passages: nextPassages })
+      await (quiz.plan_id
+        ? api.updateQuiz(quiz.plan_id, quiz.id, { ...quiz.quiz_json, questions: nextQuestions, passages: nextPassages })
+        : api.updateStandaloneQuiz(quiz.id, { ...quiz.quiz_json, questions: nextQuestions, passages: nextPassages }))
       toast.success('Quiz Updated', 'Your edits have been saved securely.')
     } catch (err) {
       toast.apiError('Failed to save quiz', err)
@@ -1153,7 +1155,7 @@ export function ArtifactDetailPanel({
         <span className="flex-1" />
 
         <div className="flex items-center gap-2">
-          {kind === 'quiz' && planId ? (
+          {kind === 'quiz' && quiz?.id ? (
             quiz ? (
               <>
                 {/* Cloud sharing lives behind one export control; the two
@@ -1169,8 +1171,12 @@ export function ArtifactDetailPanel({
                 </button>
 
                 <DocxDownloadButton
-                  planId={planId}
-                  downloadRequest={() => api.downloadQuizDocx(planId, quiz.id, { fallbackName: `${title}.docx` })}
+                  planId={planId || quiz.id}
+                  downloadRequest={() => (
+                    quiz.plan_id
+                      ? api.downloadQuizDocx(quiz.plan_id, quiz.id, { fallbackName: `${title}.docx` })
+                      : api.downloadStandaloneQuizDocx(quiz.id, { fallbackName: `${title}.docx` })
+                  )}
                   className="doc-download fa-press flex items-center gap-1.5"
                   aria-label="Download Word document"
                   title="Download Word document"
@@ -1180,7 +1186,11 @@ export function ArtifactDetailPanel({
                 </DocxDownloadButton>
                 {quiz?.has_qti ? (
                   <a
-                    href={planId && quiz?.id ? api.quizDownloadUrl(planId, quiz.id) : undefined}
+                    href={
+                      quiz.plan_id
+                        ? api.quizDownloadUrl(quiz.plan_id, quiz.id)
+                        : api.standaloneQuizDownloadUrl(quiz.id)
+                    }
                     download
                     className="doc-download fa-press flex items-center gap-1.5"
                     aria-label="Download QTI .zip"

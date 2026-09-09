@@ -19,6 +19,7 @@ import { firstUnplanned } from '../lib/queue'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
+import { CLARIFY_MARKER, isClarifyingMessage, stripClarifyMarker } from '../lib/chatToolRecovery'
 import { splitDecisions } from '../lib/decisionChecklist'
 import { dayLabel, isSameDay } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
@@ -78,6 +79,15 @@ import { WorkspaceRailContext } from '../lib/workspaceRailContext'
 
 let idSeq = 0
 const nextId = () => `m${++idSeq}`
+
+function standaloneQuizBody(requested, topicFallback) {
+  const types = requested?.questionTypes?.length ? requested.questionTypes : ['multiple_choice']
+  return {
+    ...requested,
+    questionTypes: types,
+    topic: String(requested?.passageText || topicFallback || '').slice(0, 500),
+  }
+}
 
 // The composer is a command surface, not a child of whichever side rail is
 // currently open. Its portal follows the live middle column so the input can
@@ -461,6 +471,15 @@ function speakableQuestions(intro, questions) {
   return [intro, ...questions.map((q) => q.text)].filter(Boolean).join(' ')
 }
 
+function chatPayloadFromMessage(m) {
+  const content = m.content || m.planLabel || m.weekLabel || ''
+  return {
+    role: m.role,
+    content,
+    ...(isClarifyingMessage(m) ? { kind: 'clarifying_questions' } : {}),
+  }
+}
+
 function normalizeChatMode(mode) {
   if (mode === 'research' || mode === 'build' || mode === 'brainstorm' || mode === 'sub_plan') return mode
   // Preserve links from the older interview/standard entry points while
@@ -792,6 +811,12 @@ export function ChatPage() {
      appeared, and then nothing: no spinner, no "Building…", nothing to show
      the app had even heard them. */
   const [preparing, setPreparing] = useState(false)
+  // Creating a brand-new chat happens before either SSE hook owns an
+  // AbortController. Keep a token for that small gap so the composer can
+  // still honor Stop instead of briefly replacing Send with a dead spinner.
+  // A token (rather than a boolean) also prevents a cancelled slow request
+  // from resuming after the teacher has already started another one.
+  const pendingSubmissionRef = useRef(null)
   // One inline activity per request. The key is the stream's request_id, while
   // anchorId keeps the completion receipt attached to the teacher message
   // that started it even when the request changes from chat routing to plan
@@ -1425,7 +1450,8 @@ export function ChatPage() {
         const loaded = (row.messages || []).map((m) => ({
           id: nextId(),
           role: m.role,
-          content: m.content,
+          content: stripClarifyMarker(m.content),
+          kind: String(m.content || '').includes(CLARIFY_MARKER) ? 'clarifying_questions' : undefined,
           researchSources: (() => {
             if (Array.isArray(m.research_sources_json)) return m.research_sources_json
             try { return m.research_sources_json ? JSON.parse(m.research_sources_json) : null } catch { return null }
@@ -1916,7 +1942,7 @@ export function ChatPage() {
         const saveTo = localFor.current
         if (saveTo) {
           const asText = result.questions.map((q) => `• ${q.text}`).join('\n')
-          void persistMessage(saveTo, { role: 'assistant', content: `${intro}\n\n${asText}` })
+          void persistMessage(saveTo, { role: 'assistant', content: `${CLARIFY_MARKER}\n${intro}\n\n${asText}` })
         }
         qc.invalidateQueries({ queryKey: ['chats'] })
         return
@@ -2015,6 +2041,14 @@ export function ChatPage() {
   })
 
   const busy = stream.isStreaming || revising || chatStream.isStreaming || preparing
+  const generationBusy = preparing || stream.isStreaming || chatStream.isStreaming
+  const generationStatus = stream.isStreaming
+    ? { label: 'Building your lesson plan', detail: stream.status?.label || 'Matching standards and shaping the week.' }
+    : chatStream.isStreaming
+      ? { label: 'Working on your request', detail: 'Reading the context and preparing the next step.' }
+      : preparing
+        ? { label: 'Getting your request ready', detail: 'Starting a workspace for this conversation.' }
+        : null
   useEffect(() => {
     if (!isPhone) {
       planBuildStartedRef.current = false
@@ -2205,6 +2239,12 @@ export function ChatPage() {
       const voiceTurn = Boolean(options.voiceTurn)
       if (!content.trim() || (busy && !voiceTurn)) return
       perf.mark('turn:submit')
+      const submissionToken = nextId()
+      pendingSubmissionRef.current = submissionToken
+      const finishPreparing = () => {
+        if (pendingSubmissionRef.current === submissionToken) pendingSubmissionRef.current = null
+        setPreparing(false)
+      }
       setPreparing(true)
       setQuery('')
       // A sent message shouldn't leave a stale draft behind to reappear on
@@ -2277,6 +2317,9 @@ export function ChatPage() {
             }
           }
           if (!created) throw lastCreateErr
+          // Stop may have been pressed while the new chat was being created.
+          // Do not navigate, persist the turn, or begin a stream afterward.
+          if (pendingSubmissionRef.current !== submissionToken) return
           activeChatId = created.id
           localFor.current = created.id
           qc.invalidateQueries({ queryKey: ['chats'] })
@@ -2306,6 +2349,7 @@ export function ChatPage() {
               .catch(() => {})
           }
         } catch {
+          if (pendingSubmissionRef.current !== submissionToken) return
           // Silently continuing here used to mean a failed chat creation left
           // the message sitting on screen with no reply and no explanation —
           // indistinguishable from the app having simply not heard the teacher.
@@ -2315,7 +2359,7 @@ export function ChatPage() {
           // already spent ~1s, and by then the device may have reconnected
           // on its own; what matters for THIS message is whether it was
           // actually offline when the attempt was made.
-          setPreparing(false)
+          finishPreparing()
           setMessages((prev) => [
             ...prev,
             {
@@ -2373,7 +2417,7 @@ export function ChatPage() {
            instead of watching a progress indicator that was always going to
            end in a 402. */
         if (!mayGenerate) {
-          setPreparing(false)
+          finishPreparing()
           openPaywall()
           // Same split as the paywall dialog itself (BillingProvider.jsx) and
           // the server's own two AppErrors (entitlement.require_entitlement)
@@ -2397,12 +2441,12 @@ export function ChatPage() {
         }
 
         const firstPayload = [
-          ...historyMessages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
+          ...historyMessages.map(chatPayloadFromMessage),
           { role: 'user', content: selectedStandard ? modelQuery : chatUserContent },
         ]
 
         if (!planning && isClearlySpecifiedPlanRequest(promptText)) {
-          setPreparing(false)
+          finishPreparing()
           pendingActivityKindRef.current = 'plan'
           planBuildInFlightRef.current = true
           if (voiceOpen) voice.speak(VOICE_BUILDING)
@@ -2420,7 +2464,7 @@ export function ChatPage() {
           return
         }
 
-        setPreparing(false)
+        finishPreparing()
         if (chatMode === 'research') pendingActivityKindRef.current = 'research'
         liveMessageIdRef.current = nextId()
         const firstThinking = chatThinkingLabel(chatMode, { planning, prompt: promptText })
@@ -2439,6 +2483,7 @@ export function ChatPage() {
           mode: planning ? 'plan' : chatMode,
           weekNumber: effectiveWeek,
           referenceContext,
+          hasQuiz: Boolean(viewingQuiz?.id),
           requestId: options.requestId,
         })
 
@@ -2447,6 +2492,72 @@ export function ChatPage() {
         // until the teacher answers, which re-enters submit() as a normal
         // message and lands right back in this same branch.
         if (firstResult?.questions?.length) return
+
+        if (firstResult?.quizRequested) {
+          startWorkActivity(firstResult.requestId, 'quiz')
+          const requested = firstResult.quizRequested
+          const revisingQuizId = requested.revisesCurrent && viewingQuiz?.id ? viewingQuiz.id : null
+          if (!classId && !revisingQuizId) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: 'assistant',
+                content: 'Pick a class first — then I can build a quiz without a week.',
+              },
+            ])
+            finishWorkActivity(firstResult.requestId, { status: 'error', error: 'No class selected.' })
+            return
+          }
+          setQuizBuilding(true)
+          if (!firstResult.text?.trim()) {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: 'assistant',
+                content: revisingQuizId
+                  ? 'Updating the quiz now.'
+                  : `Building your quiz now — ${requested.numQuestions} ${questionTypesProse(requested.questionTypes)} questions.`,
+              },
+            ])
+          }
+          setViewKind('quiz')
+          setViewingQuiz(null)
+          if (!expanded && !isPhone) setExpanded(true)
+          if (isPhone) setRailOpen(false)
+          try {
+            const quiz = revisingQuizId
+              ? await api.reviseStandaloneQuiz(revisingQuizId, content)
+              : await api.createStandaloneQuiz(classId, standaloneQuizBody(
+                requested,
+                content || promptText || activeClass?.subject || activeClass?.name || '',
+              ))
+            showReadyNotice(revisingQuizId ? 'Quiz updated' : 'Quiz ready')
+            qc.invalidateQueries({ queryKey: qk.standaloneQuizzes(classId) })
+            setViewingQuiz(quiz)
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: nextId(),
+                role: 'assistant',
+                content: revisingQuizId
+                  ? `Updated "${quiz.title}." Download the Word document or QTI package from the panel.`
+                  : `Built "${quiz.title}." Download the Word document or QTI package from the panel.`,
+              },
+            ])
+            finishWorkActivity(firstResult.requestId, {
+              status: 'complete',
+              summary: revisingQuizId ? 'Quiz updated and saved.' : 'Quiz built and saved.',
+            })
+          } catch (err) {
+            finishWorkActivity(firstResult.requestId, { status: 'error', error: err.message })
+            toast.apiError(revisingQuizId ? 'Could not update the quiz' : 'Could not build the quiz', err)
+          } finally {
+            setQuizBuilding(false)
+          }
+          return
+        }
 
         if (!firstResult || !firstResult.toolCalled) {
           // The model just replied (a clarifying remark, not a question
@@ -2486,13 +2597,13 @@ export function ChatPage() {
       // the model to route, since a bare follow-up ("why Thursday?") shouldn't
       // silently rebuild the week.
       const payloadMessages = [
-        ...historyMessages.map((m) => ({ role: m.role, content: m.content || m.planLabel || m.weekLabel || '' })),
+        ...historyMessages.map(chatPayloadFromMessage),
         { role: 'user', content: chatUserContent },
       ]
       // Same handoff as above: chatStream.start() sets chatStream.isStreaming
       // synchronously, so busy stays continuously true across this call even
       // though we're about to `await` its whole run rather than fire-and-forget.
-      setPreparing(false)
+      finishPreparing()
       if (chatMode === 'research') pendingActivityKindRef.current = 'research'
       /* conversationWeek, not effectiveWeek — and no longer omitted. This
          used to send no week at all, because effectiveWeek had drifted to
@@ -2517,6 +2628,7 @@ export function ChatPage() {
         mode: planning ? 'plan' : chatMode,
         weekNumber: conversationWeek,
         referenceContext,
+        hasQuiz: Boolean(viewingQuiz?.id),
         requestId: options.requestId,
       })
       if (!chatResult) return
@@ -2527,47 +2639,22 @@ export function ChatPage() {
       // than falling into the revise-the-plan branch below.
       if (chatResult?.quizRequested) {
         startWorkActivity(chatResult.requestId, 'quiz')
-        if (!artifact?.planId) {
-          // The system prompt already tells the model not to call this
-          // tool with no plan built yet (see routes/generate.py's
-          // has_plan) — reaching here means that held anyway, from a race
-          // rather than the model ignoring the instruction, so this is a
-          // plain apology rather than a real error.
+        const requested = chatResult.quizRequested
+        const revisingQuizId = requested.revisesCurrent && viewingQuiz?.id ? viewingQuiz.id : null
+        const canStandalone = Boolean(classId)
+        if (!artifact?.planId && !revisingQuizId && !canStandalone) {
           setMessages((prev) => [
             ...prev,
             {
               id: nextId(),
               role: 'assistant',
-              content: "I need to build this week's plan before I can make a quiz for it.",
+              content: 'Pick a class first — then I can build a quiz without a week.',
             },
           ])
-          finishWorkActivity(chatResult.requestId, { status: 'error', error: "I need to build this week's plan first." })
+          finishWorkActivity(chatResult.requestId, { status: 'error', error: 'No class selected.' })
           return
         }
         setQuizBuilding(true)
-        // A fallback, not a second announcement: onDone already showed the
-        // model's own text above when it wrote any (a natural "Sure, I'll
-        // build that now" it just isn't required to write — see
-        // routes/generate.py's system prompt). Only fires when it said
-        // NOTHING, which is common: a real build takes several real
-        // seconds, and answer-two-taps-then-silence-until-a-finished-quiz-
-        // appears-out-of-nowhere reads as broken, not as "working on it."
-        // quizBuilding's own spinner in the rail already solves this for a
-        // teacher watching the rail, not one watching the chat — which is
-        // most of them, most of the time.
-        // Captured before setViewingQuiz(null) below clears it — this is
-        // "the quiz already open in this conversation," the same role
-        // artifact.planId already plays for plans. Iterating on a quiz used
-        // to always call createQuiz, which only ever inserts a new row
-        // (routes/plans.py), so every "make it harder" piled up a separate
-        // quiz next to the one just built instead of changing it. The model
-        // decides revise-vs-new (generate_quiz's revises_current, routed
-        // through llm.py's system prompt) since it has the conversational
-        // context to tell "make it harder" from "also make a matching
-        // quiz" — this only needs an existing quiz to revise.
-        const revisingQuizId =
-          chatResult.quizRequested.revisesCurrent && viewingQuiz?.id ? viewingQuiz.id : null
-
         if (!chatResult.text?.trim()) {
           setMessages((prev) => [
             ...prev,
@@ -2576,23 +2663,33 @@ export function ChatPage() {
               role: 'assistant',
               content: revisingQuizId
                 ? 'Updating the quiz now.'
-                : `Building your quiz now — ${chatResult.quizRequested.numQuestions} ${questionTypesProse(chatResult.quizRequested.questionTypes)} questions.`,
+                : `Building your quiz now — ${requested.numQuestions} ${questionTypesProse(requested.questionTypes)} questions.`,
             },
           ])
         }
 
-        // Show skeleton
         setViewKind('quiz')
         setViewingQuiz(null)
         if (!expanded && !isPhone) setExpanded(true)
         if (isPhone) setRailOpen(false)
 
         try {
-          const quiz = revisingQuizId
-            ? await api.reviseQuiz(artifact.planId, revisingQuizId, content)
-            : await api.createQuiz(artifact.planId, chatResult.quizRequested)
+          let quiz
+          if (revisingQuizId && artifact?.planId) {
+            quiz = await api.reviseQuiz(artifact.planId, revisingQuizId, content)
+          } else if (revisingQuizId) {
+            quiz = await api.reviseStandaloneQuiz(revisingQuizId, content)
+          } else if (artifact?.planId) {
+            quiz = await api.createQuiz(artifact.planId, requested)
+          } else {
+            quiz = await api.createStandaloneQuiz(classId, standaloneQuizBody(
+              requested,
+              content || activeClass?.subject || activeClass?.name || '',
+            ))
+          }
           showReadyNotice(revisingQuizId ? 'Quiz updated' : 'Quiz ready')
-          qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
+          if (artifact?.planId) qc.invalidateQueries({ queryKey: qk.quizzes(artifact.planId) })
+          else qc.invalidateQueries({ queryKey: qk.standaloneQuizzes(classId) })
           setViewingQuiz(quiz)
           setMessages((prev) => [
             ...prev,
@@ -2600,8 +2697,8 @@ export function ChatPage() {
               id: nextId(),
               role: 'assistant',
               content: revisingQuizId
-                ? `Updated "${quiz.title}." Download the Word document or QTI package from the plan panel.`
-                : `Built "${quiz.title}." Download the Word document or QTI package from the plan panel.`,
+                ? `Updated "${quiz.title}." Download the Word document or QTI package from the panel.`
+                : `Built "${quiz.title}." Download the Word document or QTI package from the panel.`,
             },
           ])
           finishWorkActivity(chatResult.requestId, {
@@ -2727,7 +2824,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -3102,6 +3199,25 @@ export function ChatPage() {
       void persistMessage(localFor.current, { role: 'assistant', content })
     }
   }, [chatStream, persistMessage, finalizeLiveMessage, finishWorkActivity, voice])
+
+  const stopPreparing = useCallback(() => {
+    if (!preparing || !pendingSubmissionRef.current) return
+    // The request may still finish creating a server-side chat, but its token
+    // no longer matches, so submit() will not navigate to it, save this turn,
+    // or start model work from it.
+    pendingSubmissionRef.current = null
+    setPreparing(false)
+    setMessages((prev) => [
+      ...prev,
+      { id: nextId(), role: 'assistant', isError: true, content: 'Stopped before generation began. Nothing was saved.' },
+    ])
+  }, [preparing])
+
+  const stopActiveGeneration = useCallback(() => {
+    if (stream.isStreaming) return stopGenerating()
+    if (chatStream.isStreaming) return stopChatting()
+    stopPreparing()
+  }, [stream.isStreaming, chatStream.isStreaming, stopGenerating, stopChatting, stopPreparing])
 
   /* Rebuild the last turn from the same prompt. Keep the original user row and
      remove only the terminal error row; retrying must not duplicate the prompt
@@ -3485,6 +3601,16 @@ export function ChatPage() {
       railAutoOpenedRef.current = true
     }
   }, [busy, hasArtifact, isLandscapePhone, isPhone, user?.read_only])
+
+  // A builder should feel underway in two places at once: the composer keeps
+  // Stop under the teacher's thumb, while Outputs opens to the live document
+  // row. Do this only for a lesson-plan build, never for ordinary chat or a
+  // revision, so an intentionally closed workspace stays closed otherwise.
+  useEffect(() => {
+    if (!isPhone && !isLandscapePhone && (preparing || stream.isStreaming) && !artifact?.planId) {
+      setRailOpen(true)
+    }
+  }, [artifact?.planId, isLandscapePhone, isPhone, preparing, stream.isStreaming])
 
   // Process autoPrompt from navigation (e.g. 5-Minute Sub Plan)
   useEffect(() => {
@@ -4072,6 +4198,15 @@ export function ChatPage() {
         style={isPhone && keyboardInset > 8 ? { paddingBottom: `${keyboardInset + 8}px` } : undefined}
       >
         <div className="relative mx-auto w-full max-w-4xl px-gutter">
+          {generationStatus ? (
+            <div className="composer-writing-status composer-generation-status mb-2" role="status" aria-live="polite">
+              <span className="composer-writing-status-mark" aria-hidden="true">
+                <Loader2 size={14} className="animate-spin" />
+              </span>
+              <strong className="composer-writing-status-label">{generationStatus.label}</strong>
+              <span className="composer-writing-status-status min-w-0 flex-1 truncate">{generationStatus.detail}</span>
+            </div>
+          ) : null}
           {artifact?.planId && (
             planSaveState === 'pending' ||
             planSaveState === 'error' ||
@@ -4285,11 +4420,12 @@ export function ChatPage() {
             value={query}
             onChange={setQuery}
             onSubmit={queueOrSubmit}
-            /* Only a real stream is abortable — see the Composer. Revising has
-               no AbortController yet, so `busy` without either flag correctly
-               falls through to the composer's "can't be interrupted" spinner. */
-            onStop={stream.isStreaming ? stopGenerating : chatStream.isStreaming ? stopChatting : undefined}
-            isStreaming={busy}
+            /* The send-button slot is always Stop while a turn is being
+               prepared or streamed. Revisions remain outside this state: the
+               revision API has no AbortController, so promising Stop there
+               would be misleading. */
+            onStop={generationBusy ? stopActiveGeneration : undefined}
+            isStreaming={generationBusy}
             attachments={attachments}
             setAttachments={setAttachments}
             selectedStandard={selectedStandard}

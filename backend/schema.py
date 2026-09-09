@@ -648,6 +648,20 @@ class QuizSchemaError(Exception):
     or silently produce a Canvas item with no right answer."""
 
 
+def quiz_from_generator(generate):
+    """Call generate(skip_cache), validate, and retry once on QuizSchemaError.
+
+    A cached first sample used to fail forever; generate() must pass
+    skip_cache=True on the second call so the retry is a new completion.
+    """
+    raw = generate(False)
+    try:
+        return raw, validate_quiz(raw)
+    except QuizSchemaError:
+        raw = generate(True)
+        return raw, validate_quiz(raw)
+
+
 def validate_quiz(quiz: dict) -> list[str]:
     """Returns warnings; raises QuizSchemaError only for a question qti_build.py
     could not render at all (grading a QTI item with no correct answer marked
@@ -692,7 +706,9 @@ def validate_quiz(quiz: dict) -> list[str]:
             if not isinstance(idx, int) or not (0 <= idx < len(choices)):
                 raise QuizSchemaError(f"{label}: correct_index {idx!r} doesn't point into choices.")
             if any(c.strip().lower() in ("all of the above", "none of the above") for c in choices):
-                warnings.append(f"{label}: uses 'all/none of the above', which is a weak distractor pattern.")
+                raise QuizSchemaError(
+                    f"{label}: 'all/none of the above' is not a usable Canvas choice — rewrite the options."
+                )
         elif qtype == "short_answer":
             if not (q.get("accepted_answers") or []):
                 raise QuizSchemaError(f"{label}: no accepted_answers.")
@@ -714,6 +730,37 @@ def validate_quiz(quiz: dict) -> list[str]:
         warnings.append("Quiz alignment: use at least two Bloom levels when four or more aligned items are present.")
     if len(aligned) >= 4 and len(doks) < 2:
         warnings.append("Quiz alignment: use at least two DOK levels when four or more aligned items are present.")
+    return warnings
+
+
+def plan_standard_blob(plan: dict) -> str:
+    """Standards + ACT cells from the week, the only codes a plan-backed quiz may cite."""
+    parts: list[str] = []
+    for day in plan.get("days") or []:
+        parts.append(str(day.get("standards") or ""))
+        parts.append(str(day.get("act_alignment") or ""))
+    return " ".join(parts)
+
+
+def audit_quiz_standards(quiz: dict, plan: dict) -> list[str]:
+    """Drop quiz standard_code values that do not appear in the week's own cells.
+
+    Empty codes stay empty (validate_quiz already warns). Invented codes are
+    stripped rather than failing the whole quiz — the item can still be graded.
+    """
+    blob = plan_standard_blob(plan).upper()
+    warnings: list[str] = []
+    for i, q in enumerate(quiz.get("questions") or [], 1):
+        if not isinstance(q, dict):
+            continue
+        code = (q.get("standard_code") or "").strip()
+        if not code:
+            continue
+        if code.upper() not in blob:
+            q["standard_code"] = ""
+            warnings.append(
+                f"Q{i} ({q.get('type')}): cited {code}, which is not in this week's plan; citation removed."
+            )
     return warnings
 
 

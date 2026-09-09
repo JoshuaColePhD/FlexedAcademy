@@ -39,6 +39,7 @@ from .schema import (
     BUILDER_RENDER_JUDGE_JSON_SCHEMA,
     CALENDAR_JSON_SCHEMA,
     DAY_NAMES,
+    QUESTION_TYPES,
     QUIZ_JSON_SCHEMA,
     REVISABLE_FIELDS,
     TEMPLATE_ANALYSIS_JSON_SCHEMA,
@@ -364,6 +365,7 @@ def class_custom_instructions_for(user_id: str, class_id: str | None) -> str | N
 
 def _cached_completion(user_id: str, kind: str, **kwargs):
     """Checks the database cache before calling OpenAI."""
+    skip_cache = bool(kwargs.pop("skip_cache", False))
     # We only cache if we have a stable way to hash the request
     messages = kwargs.get("messages", [])
     model = kwargs.get("model", "")
@@ -387,13 +389,16 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
     }
     hash_key = hashlib.sha256(json.dumps(data, sort_keys=True).encode("utf-8")).hexdigest()
     
-    try:
-        cached = db.get_llm_cache(hash_key, user_id)
-    except TypeError:  # compatibility with lightweight test doubles
-        cached = db.get_llm_cache(hash_key)
-    if cached is not None:
-        log.info("LLM cache hit for %s", kind)
-        return cached
+    if not skip_cache:
+        try:
+            cached = db.get_llm_cache(hash_key, user_id)
+        except TypeError:  # compatibility with lightweight test doubles
+            cached = db.get_llm_cache(hash_key)
+        if cached is not None:
+            log.info("LLM cache hit for %s", kind)
+            return cached
+    else:
+        log.info("LLM cache skip for %s retry", kind)
 
     started_at = time.perf_counter()
     resp = client().chat.completions.create(**kwargs)
@@ -427,9 +432,9 @@ def _prompt_subject_grade(user_id: str, class_id: str | None) -> tuple[str, str]
     if class_id:
         cls = db.get_class(user_id, class_id)
         if cls:
-            return str(cls.get("subject") or "AP Language & Composition"), str(cls.get("grade") or "11")
+            return str(cls.get("subject") or "").strip() or "this class", str(cls.get("grade") or "11")
     s = db.get_settings_row(user_id)
-    return str(s.get("subject") or "AP Language & Composition"), str(s.get("grade") or "11")
+    return str(s.get("subject") or "").strip() or "this class", str(s.get("grade") or "11")
 
 
 def _class_period_minutes(user_id: str, class_id: str | None) -> int | None:
@@ -627,6 +632,7 @@ def generate_quiz(
     passage_mode: str = "none",
     passage_text: str | None = None,
     passage_title: str | None = None,
+    skip_cache: bool = False,
 ) -> dict:
     """A short quiz over an ALREADY-BUILT plan — no retrieval call of its
     own. The plan's own plan_json is the ONLY source material handed to the
@@ -679,6 +685,7 @@ def generate_quiz(
     content = _cached_completion(
         user_id,
         "generate_quiz",
+        skip_cache=skip_cache,
         model=settings.openai_model,
         max_completion_tokens=3000,
         response_format=_response_format("weekly_quiz", QUIZ_JSON_SCHEMA),
@@ -690,8 +697,125 @@ def generate_quiz(
     return _randomize_mc_choice_order(loads_lenient(content or ""))
 
 
+def generate_passage_quiz(
+    user_id: str,
+    *,
+    subject: str,
+    grade: str,
+    question_types: list[str],
+    num_questions: int,
+    class_id: str | None = None,
+    passage_mode: str = "none",
+    passage_text: str | None = None,
+    passage_title: str | None = None,
+    topic: str | None = None,
+    skip_cache: bool = False,
+) -> dict:
+    """A standalone quiz with NO backing lesson plan.
+
+    The common case behind this is a teacher pasting a passage into chat and
+    asking for "multiple choice + a QTI" without first building a week. There
+    is no plan_json to constrain it, so the teacher's passage (or a named
+    topic) plus the class's subject/grade IS the source material.
+
+    Standards are deliberately NOT asserted here: a plan-free quiz has no
+    retrieval/grounding audit behind it the way generate_quiz's does, so the
+    prompt leaves standard_code empty rather than inventing a code. Returns
+    parsed (not yet validated — see schema.validate_quiz) JSON matching
+    QUIZ_JSON_SCHEMA.
+    """
+    types_wanted = ", ".join(_QUESTION_TYPE_PROMPT_NAMES.get(t, t) for t in question_types) or "multiple choice"
+    has_passage = passage_mode == "teacher_provided" and bool((passage_text or "").strip())
+    if has_passage:
+        source_instruction = (
+            "The teacher provided the passage below. It is the ONLY source for passage-based items; "
+            "do not rewrite it or add facts to it. Return it in `passages` with id `passage_1`, an "
+            "informative title, and source `teacher_provided`, and link passage-based multiple-choice "
+            "questions to it with passage_id `passage_1`.\n\n"
+            f"TEACHER-PROVIDED PASSAGE ({passage_title or 'Passage'}):\n{passage_text or ''}\n\n"
+        )
+    elif passage_mode == "ai_generated":
+        source_instruction = (
+            "Create one short, original, grade-appropriate passage on the topic below, and return it in "
+            "`passages` with id `passage_1`, an informative title, and source `ai_generated`. Write "
+            "passage-linked multiple-choice questions that require students to reason from that passage, "
+            "not from outside knowledge.\n\n"
+            f"TOPIC: {topic or subject}\n\n"
+        )
+    else:
+        source_instruction = (
+            "Return an empty `passages` array. Write questions on the topic below, appropriate for the "
+            "subject and grade.\n\n"
+            f"TOPIC: {topic or subject}\n\n"
+        )
+    system_prompt = (
+        f"You are an expert {subject} teacher writing a short, rigorous quiz for Grade {grade}. "
+        "Write self-contained questions a student can answer without seeing any lesson plan. "
+        "Because this quiz is not tied to a built week with a grounding audit, do NOT assert specific "
+        "standard codes: leave standard_code as an empty string.\n\n"
+        f"Write approximately {num_questions} questions, using ONLY these question type(s): {types_wanted}. "
+        "Each question must be self-contained.\n\n"
+        + source_instruction
+        + _ITEM_WRITING_GUIDELINES
+    )
+    custom_instructions = custom_instructions_for(user_id)
+    if custom_instructions:
+        system_prompt += (
+            "\n\nTEACHER'S GLOBAL CUSTOM INSTRUCTIONS — style/format preferences only:\n\n"
+            + custom_instructions
+        )
+    class_custom_instructions = class_custom_instructions_for(user_id, class_id)
+    if class_custom_instructions:
+        system_prompt += (
+            "\n\nTEACHER'S CUSTOM INSTRUCTIONS FOR THIS CLASS — on top of the account-wide ones above:\n\n"
+            + class_custom_instructions
+        )
+    content = _cached_completion(
+        user_id,
+        "generate_passage_quiz",
+        skip_cache=skip_cache,
+        model=settings.openai_model,
+        max_completion_tokens=3000,
+        response_format=_response_format("weekly_quiz", QUIZ_JSON_SCHEMA),
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": "Write the quiz now."},
+        ],
+    )
+    return _randomize_mc_choice_order(loads_lenient(content or ""))
+
+
+def generate_quiz_tool_payload(args: dict) -> dict:
+    """Normalize generate_quiz tool arguments into the SSE event ChatPage consumes.
+
+    Exists so the tool schema, stream_chat, and evals share one mapping —
+    especially revises_current, which used to be read from the model but was
+    missing from the tool parameters, so models omitted it and every
+    follow-up created a new quiz.
+
+    Missing question_types defaults to multiple choice — the tool
+    description already says that, and a 502 here is how a slightly
+    incomplete call used to look like the chat had crashed.
+    """
+    question_types = args.get("question_types") or ["multiple_choice"]
+    if isinstance(question_types, str):
+        question_types = [question_types]
+    known = [t for t in question_types if t in QUESTION_TYPES]
+    if not known:
+        known = ["multiple_choice"]
+    return {
+        "tool_call": "generate_quiz",
+        "question_types": known,
+        "num_questions": args.get("num_questions") or 10,
+        "passage_mode": args.get("passage_mode") or "none",
+        "passage_title": args.get("passage_title") or "",
+        "passage_text": args.get("passage_text") or "",
+        "revises_current": bool(args.get("revises_current")),
+    }
+
+
 def revise_quiz(
-    user_id: str, plan: dict, existing_quiz: dict, feedback: str, *, class_id: str | None = None
+    user_id: str, plan: dict | None, existing_quiz: dict, feedback: str, *, class_id: str | None = None, skip_cache: bool = False
 ) -> dict:
     """Revise a quiz that's already been built, on the teacher's own
     follow-up ("make it harder", "add two more questions") — the same
@@ -703,18 +827,29 @@ def revise_quiz(
     Exists because iterating on a quiz used to always call generate_quiz
     again, which only ever inserts a new row (routes/plans.py's create_quiz)
     — every "make it harder" produced a whole separate quiz sitting next to
-    the one just built, instead of changing it. Still grounded ONLY in the
-    plan's own content, same reasoning and same guard as generate_quiz.
+    the one just built, instead of changing it. Plan-backed quizzes stay
+    grounded ONLY in the plan's own content. Standalone quizzes (no week)
+    revise from the existing quiz plus the teacher's feedback only.
     """
+    if plan:
+        source_block = (
+            "Write ONLY using the content, standards, and vocabulary already present in the plan below — "
+            "never invent a standard code, term, or fact that isn't already in it.\n\n"
+            "THE WEEK'S PLAN (your only source material):\n\n" + json.dumps(plan, indent=2)
+        )
+    else:
+        source_block = (
+            "This quiz is not tied to a lesson plan. Revise using only the existing quiz content and "
+            "the teacher's feedback. Do not invent standard codes; leave standard_code empty unless it "
+            "was already set on an item and still applies."
+        )
     system_prompt = (
-        "You are revising a quiz you already wrote for a lesson plan a teacher built. "
-        "Write ONLY using the content, standards, and vocabulary already present in the plan below — "
-        "never invent a standard code, term, or fact that isn't already in it. Keep the same question "
-        "types and roughly the same number of questions as the quiz below unless the teacher's feedback "
-        "says otherwise. Preserve existing passages and passage_id links unless the teacher asks to change "
-        "the passage.\n\n"
+        "You are revising a quiz you already wrote. "
+        "Keep the same question types and roughly the same number of questions as the quiz below unless "
+        "the teacher's feedback says otherwise. Preserve existing passages and passage_id links unless "
+        "the teacher asks to change the passage.\n\n"
         + _ITEM_WRITING_GUIDELINES
-        + "THE WEEK'S PLAN (your only source material):\n\n" + json.dumps(plan, indent=2)
+        + source_block
         + "\n\nTHE QUIZ YOU ALREADY WROTE:\n\n" + json.dumps(existing_quiz, indent=2)
     )
     custom_instructions = custom_instructions_for(user_id)
@@ -732,6 +867,7 @@ def revise_quiz(
     content = _cached_completion(
         user_id,
         "revise_quiz",
+        skip_cache=skip_cache,
         model=settings.openai_model,
         max_completion_tokens=3000,
         response_format=_response_format("weekly_quiz", QUIZ_JSON_SCHEMA),
@@ -1711,16 +1847,21 @@ CHAT_TOOLS = [
             "name": "generate_quiz",
             # ONLY on explicit request, never volunteered — the teacher
             # asked for exactly this (a lesson plan, not a lesson plan
-            # PLUS a quiz they didn't ask for), and this tool only makes
-            # sense once a plan actually exists for it to test.
+            # PLUS a quiz they didn't ask for). Prefer a built week when one
+            # exists; a class-scoped standalone quiz is allowed when they
+            # clearly asked for a quiz with no week in this conversation.
             "description": (
                 "Call this ONLY when the teacher explicitly asks for a quiz, test, or assessment as a "
                 "downloadable file, AND their request already says which question type(s) they want and "
                 "roughly how many — never volunteer it alongside a lesson plan, and never guess type or "
-                "count silently: call ask_clarifying_questions instead when either is missing. Requires a "
-                "plan to already exist for this conversation; if none does yet, tell the teacher to build "
-                "the week first instead of calling this. The quiz is built over that plan's own content "
-                "and standards, not anything new."
+                "count silently: call ask_clarifying_questions instead when either is missing. If a week "
+                "already exists in this conversation, the quiz is built over that plan's own content and "
+                "standards. If no week exists yet, still call this for a class-scoped quiz when the "
+                "teacher clearly asked for one (optionally with a pasted passage); do not tell them to "
+                "build the week first. Never call this in the same turn as generate_lesson_plan. "
+                "Set revises_current true when they are changing the quiz already built in this "
+                "conversation ('make it harder', 'fix question 3'); leave it false for an additional, "
+                "distinct quiz."
             ),
             "parameters": {
                 "type": "object",
@@ -1754,6 +1895,13 @@ CHAT_TOOLS = [
                     "passage_text": {
                         "type": "string",
                         "description": "The teacher's supplied passage text when passage_mode is teacher_provided; copy it faithfully from the conversation.",
+                    },
+                    "revises_current": {
+                        "type": "boolean",
+                        "description": (
+                            "True when the teacher is iterating on the quiz already built in this "
+                            "conversation. False when they want an additional, distinct quiz."
+                        ),
                     },
                 },
                 "required": ["question_types"],
@@ -1998,24 +2146,8 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                     args = json.loads(tool_args)
                 except ValueError:
                     args = {}
-                question_types = args.get("question_types") or []
-                if not question_types:
-                    raise AppError(
-                        "malformed_tool_call",
-                        "The model tried to build a quiz but didn't send back which question types.",
-                        status=502,
-                        hint="Try asking for the quiz again.",
-                    )
                 yielded_anything = True
-                yield {
-                    "tool_call": "generate_quiz",
-                    "question_types": question_types,
-                    "num_questions": args.get("num_questions") or 10,
-                    "passage_mode": args.get("passage_mode") or "none",
-                    "passage_title": args.get("passage_title") or "",
-                    "passage_text": args.get("passage_text") or "",
-                    "revises_current": bool(args.get("revises_current")),
-                }
+                yield generate_quiz_tool_payload(args)
                 break
 
             # Same reasoning as generate_quiz just above — day/field/feedback
@@ -2029,13 +2161,14 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                 field = args.get("field")
                 feedback = args.get("feedback")
                 if day not in DAY_NAMES or field not in REVISABLE_FIELDS or not feedback:
-                    raise AppError(
-                        "malformed_tool_call",
-                        "The model tried to revise a day but didn't send back which day, "
-                        "field, and change.",
-                        status=502,
-                        hint="Try asking for that change again.",
+                    # Incomplete day-revise args used to 502 the whole turn,
+                    # including any coaching the model already streamed. Skip
+                    # the bad tool and keep whatever text arrived.
+                    log.warning(
+                        "Ignoring incomplete update_lesson_day (day=%r field=%r)",
+                        day, field,
                     )
+                    break
                 yielded_anything = True
                 yield {
                     "tool_call": "update_lesson_day",

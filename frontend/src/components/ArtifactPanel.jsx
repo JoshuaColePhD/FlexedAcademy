@@ -306,7 +306,29 @@ const location = useLocation()
         {plan?.days?.length ? (
           <div className="doc-sheet">
             {cls?.school === 'weeden-elementary-school' ? (
-              view === 'days' ? <WeedenPlanDayCards plan={plan} missingDays={missingDays} /> : <WeedenLessonPlanTable plan={plan} />
+              view === 'days' ? (
+                <WeedenPlanDayCards
+                  plan={plan}
+                  missingDays={missingDays}
+                  onReviseDay={planId ? onReviseDay : undefined}
+                  onEditDay={planId ? onEditDay : undefined}
+                  busy={busy}
+                  flashCells={flashCells}
+                  openTweak={openTweak}
+                  setOpenTweak={setOpenTweak}
+                />
+              ) : (
+                <WeedenLessonPlanTable
+                  plan={plan}
+                  missingDays={missingDays}
+                  onReviseDay={planId ? onReviseDay : undefined}
+                  onEditDay={planId ? onEditDay : undefined}
+                  busy={busy}
+                  flashCells={flashCells}
+                  openTweak={openTweak}
+                  setOpenTweak={setOpenTweak}
+                />
+              )
             ) : <LessonPlanTable
               plan={plan}
               planId={planId}

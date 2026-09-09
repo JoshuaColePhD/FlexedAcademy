@@ -56,6 +56,9 @@ export const FIELD_LABELS = {
   do_now: 'Do Now',
   during: 'During',
   assessment: 'Assessment',
+  vocabulary: 'Vocabulary',
+  reteach_small_groups: 'Reteach / Small Groups',
+  cross_curricular_connection: 'Cross-Curricular Connection',
 }
 
 /* Field order for a PHONE, which is a different question.
