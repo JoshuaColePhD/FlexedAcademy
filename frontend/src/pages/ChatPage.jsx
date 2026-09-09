@@ -813,6 +813,12 @@ export function ChatPage() {
      appeared, and then nothing: no spinner, no "Building…", nothing to show
      the app had even heard them. */
   const [preparing, setPreparing] = useState(false)
+  // Creating a brand-new chat happens before either SSE hook owns an
+  // AbortController. Keep a token for that small gap so the composer can
+  // still honor Stop instead of briefly replacing Send with a dead spinner.
+  // A token (rather than a boolean) also prevents a cancelled slow request
+  // from resuming after the teacher has already started another one.
+  const pendingSubmissionRef = useRef(null)
   // One inline activity per request. The key is the stream's request_id, while
   // anchorId keeps the completion receipt attached to the teacher message
   // that started it even when the request changes from chat routing to plan
@@ -1964,6 +1970,14 @@ export function ChatPage() {
   })
 
   const busy = stream.isStreaming || revising || chatStream.isStreaming || preparing
+  const generationBusy = preparing || stream.isStreaming || chatStream.isStreaming
+  const generationStatus = stream.isStreaming
+    ? { label: 'Building your lesson plan', detail: stream.status?.label || 'Matching standards and shaping the week.' }
+    : chatStream.isStreaming
+      ? { label: 'Working on your request', detail: 'Reading the context and preparing the next step.' }
+      : preparing
+        ? { label: 'Getting your request ready', detail: 'Starting a workspace for this conversation.' }
+        : null
   useEffect(() => {
     if (!isPhone) {
       planBuildStartedRef.current = false
@@ -2154,6 +2168,12 @@ export function ChatPage() {
       const voiceTurn = Boolean(options.voiceTurn)
       if (!content.trim() || (busy && !voiceTurn)) return
       perf.mark('turn:submit')
+      const submissionToken = nextId()
+      pendingSubmissionRef.current = submissionToken
+      const finishPreparing = () => {
+        if (pendingSubmissionRef.current === submissionToken) pendingSubmissionRef.current = null
+        setPreparing(false)
+      }
       setPreparing(true)
       setQuery('')
       // A sent message shouldn't leave a stale draft behind to reappear on
@@ -2215,6 +2235,9 @@ export function ChatPage() {
             }
           }
           if (!created) throw lastCreateErr
+          // Stop may have been pressed while the new chat was being created.
+          // Do not navigate, persist the turn, or begin a stream afterward.
+          if (pendingSubmissionRef.current !== submissionToken) return
           activeChatId = created.id
           localFor.current = created.id
           qc.invalidateQueries({ queryKey: ['chats'] })
@@ -2244,6 +2267,7 @@ export function ChatPage() {
               .catch(() => {})
           }
         } catch (err) {
+          if (pendingSubmissionRef.current !== submissionToken) return
           // Silently continuing here used to mean a failed chat creation left
           // the message sitting on screen with no reply and no explanation —
           // indistinguishable from the app having simply not heard the teacher.
@@ -2253,7 +2277,7 @@ export function ChatPage() {
           // already spent ~1s, and by then the device may have reconnected
           // on its own; what matters for THIS message is whether it was
           // actually offline when the attempt was made.
-          setPreparing(false)
+          finishPreparing()
           setMessages((prev) => [
             ...prev,
             {
@@ -2318,7 +2342,7 @@ export function ChatPage() {
            instead of watching a progress indicator that was always going to
            end in a 402. */
         if (!mayGenerate) {
-          setPreparing(false)
+          finishPreparing()
           openPaywall()
           // Same split as the paywall dialog itself (BillingProvider.jsx) and
           // the server's own two AppErrors (entitlement.require_entitlement)
@@ -2347,7 +2371,7 @@ export function ChatPage() {
         ]
 
         if (!planning && isClearlySpecifiedPlanRequest(promptText)) {
-          setPreparing(false)
+          finishPreparing()
           pendingActivityKindRef.current = 'plan'
           if (voiceOpen) voice.speak(VOICE_BUILDING)
           // No chat placeholder is needed here: the activity line attached to
@@ -2364,7 +2388,7 @@ export function ChatPage() {
           return
         }
 
-        setPreparing(false)
+        finishPreparing()
         if (chatMode === 'research') pendingActivityKindRef.current = 'research'
         liveMessageIdRef.current = nextId()
         setMessages((prev) => [
@@ -2500,7 +2524,7 @@ export function ChatPage() {
       // Same handoff as above: chatStream.start() sets chatStream.isStreaming
       // synchronously, so busy stays continuously true across this call even
       // though we're about to `await` its whole run rather than fire-and-forget.
-      setPreparing(false)
+      finishPreparing()
       if (chatMode === 'research') pendingActivityKindRef.current = 'research'
       /* conversationWeek, not effectiveWeek — and no longer omitted. This
          used to send no week at all, because effectiveWeek had drifted to
@@ -3092,6 +3116,25 @@ export function ChatPage() {
     }
   }, [chatStream, persistMessage, finalizeLiveMessage, finishWorkActivity])
 
+  const stopPreparing = useCallback(() => {
+    if (!preparing || !pendingSubmissionRef.current) return
+    // The request may still finish creating a server-side chat, but its token
+    // no longer matches, so submit() will not navigate to it, save this turn,
+    // or start model work from it.
+    pendingSubmissionRef.current = null
+    setPreparing(false)
+    setMessages((prev) => [
+      ...prev,
+      { id: nextId(), role: 'assistant', isError: true, content: 'Stopped before generation began. Nothing was saved.' },
+    ])
+  }, [preparing])
+
+  const stopActiveGeneration = useCallback(() => {
+    if (stream.isStreaming) return stopGenerating()
+    if (chatStream.isStreaming) return stopChatting()
+    stopPreparing()
+  }, [stream.isStreaming, chatStream.isStreaming, stopGenerating, stopChatting, stopPreparing])
+
   /* Rebuild the last turn from the same prompt. Keep the original user row and
      remove only the terminal error row; retrying must not duplicate the prompt
      in the transcript or in the model's history. */
@@ -3470,6 +3513,16 @@ export function ChatPage() {
       railAutoOpenedRef.current = true
     }
   }, [busy, hasArtifact, isLandscapePhone, isPhone, user?.read_only])
+
+  // A builder should feel underway in two places at once: the composer keeps
+  // Stop under the teacher's thumb, while Outputs opens to the live document
+  // row. Do this only for a lesson-plan build, never for ordinary chat or a
+  // revision, so an intentionally closed workspace stays closed otherwise.
+  useEffect(() => {
+    if (!isPhone && !isLandscapePhone && (preparing || stream.isStreaming) && !artifact?.planId) {
+      setRailOpen(true)
+    }
+  }, [artifact?.planId, isLandscapePhone, isPhone, preparing, stream.isStreaming])
 
   // Process autoPrompt from navigation (e.g. 5-Minute Sub Plan)
   useEffect(() => {
@@ -4049,6 +4102,15 @@ export function ChatPage() {
           fixed-shape input shell. Only the wrapper's className may change. */}
       <div className={`composer-dock-surface shrink-0 bg-transparent pb-5 pt-3${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-open' : ''}`}>
         <div className="relative mx-auto w-full max-w-4xl px-gutter">
+          {generationStatus ? (
+            <div className="composer-writing-status composer-generation-status mb-2" role="status" aria-live="polite">
+              <span className="composer-writing-status-mark" aria-hidden="true">
+                <Loader2 size={14} className="animate-spin" />
+              </span>
+              <strong className="composer-writing-status-label">{generationStatus.label}</strong>
+              <span className="composer-writing-status-status min-w-0 flex-1 truncate">{generationStatus.detail}</span>
+            </div>
+          ) : null}
           {artifact?.planId && (
             planSaveState === 'pending' ||
             planSaveState === 'error' ||
@@ -4261,11 +4323,12 @@ export function ChatPage() {
             value={query}
             onChange={setQuery}
             onSubmit={queueOrSubmit}
-            /* Only a real stream is abortable — see the Composer. Revising has
-               no AbortController yet, so `busy` without either flag correctly
-               falls through to the composer's "can't be interrupted" spinner. */
-            onStop={stream.isStreaming ? stopGenerating : chatStream.isStreaming ? stopChatting : undefined}
-            isStreaming={busy}
+            /* The send-button slot is always Stop while a turn is being
+               prepared or streamed. Revisions remain outside this state: the
+               revision API has no AbortController, so promising Stop there
+               would be misleading. */
+            onStop={generationBusy ? stopActiveGeneration : undefined}
+            isStreaming={generationBusy}
             attachments={attachments}
             setAttachments={setAttachments}
             selectedStandard={selectedStandard}
