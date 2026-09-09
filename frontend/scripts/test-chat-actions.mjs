@@ -148,22 +148,20 @@ test('typed chat recovers quiz arguments dumped as plain text', async () => {
   assert.equal(dispatched, 1)
 })
 
-test('action can start from a mid-stream tool event without dispatching twice', async () => {
-  const actions = []
-  let dispatched = 0
+test('artifact action waits until the chat reply has landed', async () => {
+  const order = []
   const { hook } = await harness([[
     { chunk: 'I’ll make a 5-question multiple-choice check.' },
     action,
     done,
   ]], {
-    onAction: (payload) => actions.push(payload),
-    onGeneratePlan: () => dispatched++,
+    onAction: (payload) => order.push(`action:${payload.planAction.action}`),
+    onDone: () => order.push('done'),
+    onGeneratePlan: () => order.push('generate'),
   })
   const result = await hook.start([], { requestId: 'r-overlap' })
-  assert.equal(actions.length, 1)
-  assert.equal(actions[0].planAction.action, 'create')
+  assert.deepEqual(order, ['generate', 'done', 'action:create'])
   assert.match(result.text, /5-question/)
-  assert.equal(dispatched, 1)
 })
 
 test('truncated tool streams still emit onAction only once', async () => {
@@ -173,4 +171,17 @@ test('truncated tool streams still emit onAction only once', async () => {
   })
   await hook.start([], { requestId: 'r-once' })
   assert.equal(actions.length, 1)
+})
+
+test('also_quiz on a plan action requests the quiz in the same turn', async () => {
+  const actions = []
+  const { hook } = await harness([[{ ...action, also_quiz: true }, done]], {
+    onAction: (payload) => actions.push(payload),
+  })
+  const result = await hook.start([], { requestId: 'r-both' })
+  assert.equal(actions.length, 1)
+  assert.equal(result.planAction.also_quiz, true)
+  assert.equal(result.quizRequested.numQuestions, 5)
+  assert.equal(result.quizRequested.questionTypes[0], 'multiple_choice')
+  assert.equal(result.quizRequested.instruction, action.instruction)
 })

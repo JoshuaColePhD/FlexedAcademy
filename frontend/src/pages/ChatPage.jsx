@@ -818,6 +818,8 @@ export function ChatPage() {
   const pendingActivityKindRef = useRef(null)
   const planBuildInFlightRef = useRef(false)
   const startedActionRef = useRef(null)
+  const pendingQuizRef = useRef(null)
+  const beginQuizFromRequestRef = useRef(null)
   const chatTurnRef = useRef({})
   const actionHandlerRef = useRef(null)
   const quizCancelRef = useRef(null)
@@ -1783,8 +1785,17 @@ export function ChatPage() {
       qc.invalidateQueries({ queryKey: ['chats'] })
       // A week was just used. Re-read the entitlement so the next submit knows.
       refreshAuth()
+      const pendingQuiz = pendingQuizRef.current
+      pendingQuizRef.current = null
+      if (pendingQuiz && done.plan_id) {
+        void beginQuizFromRequestRef.current?.(
+          { ...pendingQuiz.requested, sourcePlanId: done.plan_id },
+          pendingQuiz.result,
+        )
+      }
     },
     onError: (err) => {
+      pendingQuizRef.current = null
       planBuildInFlightRef.current = false
       const dropped = isDroppedConnectionError(err)
       const copy = dropped ? droppedConnectionCopy(true) : null
@@ -1869,14 +1880,10 @@ export function ChatPage() {
           updateActiveWorkActivity(event)
           return
         }
-        const kind = event.tool === 'generate_quiz'
-          ? 'quiz'
-          : event.tool === 'update_lesson_day'
-            ? 'revision'
-            : event.tool === 'generate_lesson_plan'
-              ? 'plan'
-              : null
-        if (kind) startWorkActivity(event.requestId, kind)
+        // The week or quiz starts after this reply lands. Starting the
+        // activity card here put a generation checklist on the first
+        // conversational turn while the model was still talking.
+        return
       }
       // The chat stream's "complete" means the model finished talking, not
       // that a week was saved. Forwarding it used to flash "Plan ready"
@@ -2271,19 +2278,26 @@ export function ChatPage() {
     }
   }
 
+  beginQuizFromRequestRef.current = beginQuizFromRequest
+
   const beginPlanFromResult = async (result) => {
     const ctx = chatTurnRef.current
     let action
     try {
       action = planOperation(result, ctx.artifact?.planId || null, { voice: ctx.voiceOpen })
     } catch (err) {
+      pendingQuizRef.current = null
       finishWorkActivity(result.requestId, { status: 'error', error: err.message })
       setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', isError: true, content: err.message }])
       return
     }
     if (!ctx.artifact?.planId || action.action === 'create') {
       if (ctx.voiceOpen) voice.speak(VOICE_BUILDING)
-      fillLiveIfEmpty('I’ll build that week now.')
+      fillLiveIfEmpty(
+        pendingQuizRef.current
+          ? 'I’ll build the week, then a short 5-question check.'
+          : 'I’ll build that week now.',
+      )
       if (!expanded && !isPhone) setExpanded(true)
       if (isPhone) setRailOpen(false)
       pendingActivityKindRef.current = 'plan'
@@ -2341,7 +2355,16 @@ export function ChatPage() {
       }
       recordRevision('Lesson plan update', previousPlan)
       finishWorkActivity(result.requestId, { status: 'complete', summary: 'The lesson plan was updated and saved.' })
+      const pendingQuiz = pendingQuizRef.current
+      pendingQuizRef.current = null
+      if (pendingQuiz && row.id) {
+        void beginQuizFromRequest(
+          { ...pendingQuiz.requested, sourcePlanId: row.id },
+          pendingQuiz.result,
+        )
+      }
     } catch (err) {
+      pendingQuizRef.current = null
       if (quizCancelRef.current === result.requestId) return
       finishWorkActivity(result.requestId, { status: 'error', error: err.message })
       setPlanSaveState('error')
@@ -2385,22 +2408,26 @@ export function ChatPage() {
   actionHandlerRef.current = (result) => {
     if (!result || startedActionRef.current === result.requestId) return true
     if (result.questions?.length) return true
-    if (result.quizRequested) {
-      startedActionRef.current = result.requestId
-      void beginQuizFromRequest(result.quizRequested, result)
-      return true
-    }
-    if (result.dayRevisionRequested) {
-      startedActionRef.current = result.requestId
+    const wantsPlan = Boolean(result.toolCalled && (result.planAction || (!result.quizRequested && !result.dayRevisionRequested)))
+    const wantsQuiz = Boolean(result.quizRequested)
+    const wantsDay = Boolean(result.dayRevisionRequested)
+    if (!wantsPlan && !wantsQuiz && !wantsDay) return false
+    startedActionRef.current = result.requestId
+    if (wantsDay) {
       void beginDayRevision(result.dayRevisionRequested, result)
       return true
     }
-    if (result.toolCalled) {
-      startedActionRef.current = result.requestId
+    if (wantsPlan && wantsQuiz) {
+      pendingQuizRef.current = { requested: result.quizRequested, result }
       void beginPlanFromResult(result)
       return true
     }
-    return false
+    if (wantsQuiz) {
+      void beginQuizFromRequest(result.quizRequested, result)
+      return true
+    }
+    void beginPlanFromResult(result)
+    return true
   }
 
   /* ── the one submit path ──────────────────────────────────────────────── */
@@ -3167,6 +3194,7 @@ export function ChatPage() {
      with no indication anything had happened. */
   const stopGenerating = useCallback(() => {
     planBuildInFlightRef.current = false
+    pendingQuizRef.current = null
     quizCancelRef.current = startedActionRef.current
     startedActionRef.current = null
     stream.stop()
@@ -3186,6 +3214,7 @@ export function ChatPage() {
      interrupted" — was therefore lying specifically about the conversational
      reply, which is interruptible and just wasn't wired. */
   const stopChatting = useCallback(() => {
+    pendingQuizRef.current = null
     quizCancelRef.current = startedActionRef.current
     startedActionRef.current = null
     planBuildInFlightRef.current = false

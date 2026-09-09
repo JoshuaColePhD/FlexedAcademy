@@ -412,14 +412,15 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
           if (event.tool_call === 'generate_lesson_plan') {
             toolCalled = true
             planAction = event.action ? event : null
-            emitAction?.({
-              requestId,
-              text: accumulated,
-              toolCalled,
-              planAction,
-              quizRequested,
-              dayRevisionRequested,
-            })
+            if (event.also_quiz && !quizRequested) {
+              quizRequested = quizRequestedFromEvent({
+                question_types: ['multiple_choice'],
+                num_questions: 5,
+                instruction: event.instruction || accumulated,
+                source_plan_id: event.target_plan_id || null,
+                revises_current: false,
+              })
+            }
           }
 
           // The clarifying-questions alternative — see backend/llm.py's
@@ -451,14 +452,6 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
           if (event.tool_call === 'generate_quiz') {
             toolCalled = true
             quizRequested = quizRequestedFromEvent(event)
-            emitAction?.({
-              requestId,
-              text: accumulated,
-              toolCalled,
-              planAction,
-              quizRequested,
-              dayRevisionRequested,
-            })
           }
 
           // The targeted, one-field alternative to generate_lesson_plan —
@@ -472,14 +465,6 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
               field: event.field,
               feedback: event.feedback,
             }
-            emitAction?.({
-              requestId,
-              text: accumulated,
-              toolCalled,
-              planAction,
-              quizRequested,
-              dayRevisionRequested,
-            })
           }
 
           if (event.chunk) {
@@ -549,16 +534,6 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
       dayRevisionRequested = recovered.dayRevisionRequested
     }
     if (questions) questions = voice ? sanitizeClarifyingQuestions(questions) : sanitizeClarifyingQuestions(questions).slice(0, 1)
-    if (!questions && (quizRequested || dayRevisionRequested || planAction)) {
-      emitAction?.({
-        requestId,
-        text: accumulated,
-        toolCalled,
-        planAction,
-        quizRequested,
-        dayRevisionRequested,
-      })
-    }
 
     // Whatever tail never earned a sentence boundary of its own — a reply
     // that ends without punctuation, or one short enough to have none at all.
@@ -646,6 +621,9 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
             })
             if (!result || activeRequestRef.current !== requestId || controller.signal.aborted) return null
             onDoneRef.current?.(result)
+            if (!result.questions?.length && (result.quizRequested || result.dayRevisionRequested || result.planAction || result.toolCalled)) {
+              emitAction(result)
+            }
             setStatus({ code: 'complete', label: 'Ready', requestId })
             return result
           } catch (err) {

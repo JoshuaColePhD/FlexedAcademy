@@ -96,7 +96,9 @@ def main() -> int:
         prompt = str(captured.get("system_prompt", ""))
         check("names the real calendar week", schoolcal.label_for(real_week) in prompt)
         check("names the pacing guide's own unit for that week", "Unit 2 — Voice and Tone" in prompt)
-        check("tells the model to treat week AND unit as settled", "week and unit" in prompt)
+        check("treats the pacing-guide unit as context, not a confirmed focus", "conversational context" in prompt)
+        check("does not treat the unit as already settled", "week and unit as already settled" not in prompt)
+        check("an opener still has to confirm the focus", "let's build a plan" in prompt)
         check(
             "the ask-rather-than-build rule never re-asks the named week",
             "never ask which week" in prompt.lower(),
@@ -113,7 +115,7 @@ def main() -> int:
         state["subject"] = "AP Language & Composition"
         check("still names the calendar week", schoolcal.label_for(real_week) in prompt)
         check("never fabricates a unit with nothing to source it from", "pacing guide names as" not in prompt)
-        check("settles only the week, not the unit, when there's no unit to report", "Treat the week as already settled" in prompt)
+        check("settles only the week, not the unit, when there's no unit to report", "The calendar week is already settled" in prompt)
 
         print("\n3. No week_number at all (calendar not loaded, or every week already planned)")
         captured.clear()

@@ -75,6 +75,10 @@ def main() -> int:
         "unspecified quizzes are not type/count interviews",
         "Do not interview for type or count" in standalone,
     )
+    check(
+        "a week and a quiz in one turn uses also_quiz instead of refusing the pair",
+        "also_quiz: true" in standalone,
+    )
 
     print("\n4. clarifying-round cap uses kind/marker, not a canned intro")
     m = lambda **kw: ChatMessage(**kw)

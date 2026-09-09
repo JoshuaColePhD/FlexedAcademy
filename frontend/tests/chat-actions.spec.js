@@ -102,6 +102,15 @@ test('failed day revision never reports saved or a missing chat reply', async ({
   await expect(page.getByText("Didn't get a reply back.", { exact: true })).toHaveCount(0)
 })
 
+test('an opening plan request talks first and does not start writing the week', async ({ page }) => {
+  await openChat(page, true)
+  await events(page, [{ tool_call: 'ask_clarifying_questions', questions: [{ id: 'text', text: 'What are you teaching this week?', options: ['A text we’re reading', 'A skill, no text yet', 'Test/exam prep'] }] }, done])
+  await send(page, "let's build a plan")
+  await expect(page.getByText('What are you teaching this week?', { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'create'))).toEqual([])
+  await expect(page.getByText('Building your lesson plan')).toHaveCount(0)
+})
+
 test('initial clarification through creation retains earlier constraints', async ({ page }) => {
   await openChat(page, true)
   await events(page, [{ tool_call: 'ask_clarifying_questions', questions: [{ id: 'goal', text: 'Which skill should students practice?', options: ['Evidence', 'Organization'] }] }, done])
@@ -180,6 +189,26 @@ test('standalone quiz with a plan open preserves the plan and carries constraint
   expect(revise.body.feedback).toContain('five minutes and accessible wording')
   expect(await page.evaluate(() => window.__mock.state.standaloneQuizzes.c1.length)).toBe(1)
   expect(await page.evaluate(() => window.__mock.state.plans.plan1)).toEqual(before)
+})
+
+test('a week and a quiz in one turn builds the plan then the quiz', async ({ page }) => {
+  await openChat(page, true)
+  await page.evaluate(() => {
+    const original = window.fetch
+    window.fetch = async (input, init = {}) => {
+      const url = typeof input === 'string' ? input : input.url
+      if (init.method === 'POST' && /\/plans\/[^/]+\/quiz$/.test(url)) {
+        window.chatCalls.push({ path: 'plan-quiz', url, body: JSON.parse(init.body) })
+      }
+      return original(input, init)
+    }
+  })
+  await events(page, [planAction('create', { also_quiz: true }), done])
+  await send(page, 'Plan a week on Gatsby and make a quiz.')
+  await expect.poll(() => page.evaluate(() => window.chatCalls.filter((c) => c.path === 'create').length)).toBe(1)
+  await expect.poll(() => page.evaluate(() => window.chatCalls.filter((c) => c.path === 'plan-quiz').length)).toBe(1)
+  const quiz = await page.evaluate(() => window.chatCalls.find((c) => c.path === 'plan-quiz'))
+  expect(quiz.url).toMatch(/\/plans\/[^/]+\/quiz$/)
 })
 
 test('optional suggestions can be skipped or typed past without starting work', async ({ page }) => {

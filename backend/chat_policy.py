@@ -29,7 +29,11 @@ requires an affirmative answer or a clear directive; an unrelated next message i
 not agreement. A reply to clarification continues the original requested task.
 
 When creation or revision is requested, act as soon as the consequential details
-are known. Ask ONE focused question only if a missing goal, content, requested
+are known. A pacing guide, calendar week, or class default is context, not a
+completed request. An opening like "let's build a plan", "help me plan", or
+"make a lesson plan" without a named text, skill, or change in this conversation
+gets one confirming question — do not assume the week's unit and start generating.
+Ask ONE focused question only if a missing goal, content, requested
 change, or target would materially change the result. Read prior answers first;
 never repeat a settled question, force generation after a number of questions, or
 require a planning interview merely because Plan mode is selected. Use existing
@@ -70,7 +74,9 @@ a 5-question multiple-choice default). Do not say it is saved, built, or updated
 the app confirms completion after success.
 Never volunteer extra artifacts. Generate a quiz only when requested; a plan is
 preferred, but a class-scoped standalone quiz is allowed when they clearly asked
-for one with no week yet. Use source_plan_id=null for a standalone topic or supplied
+for one with no week yet. When they ask for a week and a quiz in the same message,
+call generate_lesson_plan with also_quiz true so this turn produces both — do not
+wait for a second prompt, and do not call generate_quiz separately. Use source_plan_id=null for a standalone topic or supplied
 passage, even with a plan open; otherwise use the active plan ID for a quiz about
 that plan. For revisions copy active target_quiz_id exactly. Set question_numbers to
 the one-based question numbers for a targeted edit, or [] for a whole-quiz revision
@@ -91,7 +97,8 @@ def typed_chat_tools(legacy_tools):
             fn["description"] = (
                 "Execute an explicitly requested plan creation or revision. Advice uses no tool. "
                 "Use create for a separate plan, revise_days for selected days or fields, "
-                "and revise_week only for a whole-plan change. Preserve prior constraints."
+                "and revise_week only for a whole-plan change. Preserve prior constraints. "
+                "Set also_quiz true when this same message also asks for a quiz or test."
             )
             fn["parameters"] = {
                 "type": "object",
@@ -107,6 +114,7 @@ def typed_chat_tools(legacy_tools):
                     },
                     "field": {"type": ["string", "null"], "enum": [*REVISABLE_FIELDS, None]},
                     "week_number": {"type": ["integer", "null"], "minimum": 1},
+                    "also_quiz": {"type": "boolean"},
                 },
                 "required": ["action"],
                 "additionalProperties": False,
@@ -211,6 +219,7 @@ def validate_plan_action(args):
         "days": days,
         "field": field,
         "week_number": week,
+        "also_quiz": bool(args.get("also_quiz")),
     }
 
 

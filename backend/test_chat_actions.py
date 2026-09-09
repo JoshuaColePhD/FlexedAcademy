@@ -19,6 +19,7 @@ def action(**overrides):
         days=[],
         field=None,
         week_number=3,
+        also_quiz=False,
         **overrides,
     )
 
@@ -80,6 +81,7 @@ def test_voice_tools_unchanged_and_typed_questions_are_single():
     )
     assert "action" in typed["generate_lesson_plan"]["parameters"]["required"]
     assert typed["generate_lesson_plan"]["parameters"]["required"] == ["action"]
+    assert "also_quiz" in typed["generate_lesson_plan"]["parameters"]["properties"]
     quiz_required = typed["generate_quiz"]["parameters"].get("required") or []
     assert "instruction" not in quiz_required
     assert "target_quiz_id" not in quiz_required
@@ -372,6 +374,9 @@ def test_quiz_contract_preserves_constraints_and_scope():
     create = validate_plan_action({"action": "create"})
     assert create["target_plan_id"] is None
     assert create["instruction"] == ""
+    with_quiz = validate_plan_action({"action": "create", "also_quiz": True, "instruction": "Week on Gatsby and a quiz."})
+    assert with_quiz["also_quiz"] is True
+    assert validate_plan_action({"action": "create"})["also_quiz"] is False
 
 
 def test_chat_grounds_advice_in_active_standalone_quiz(chat_client, monkeypatch):

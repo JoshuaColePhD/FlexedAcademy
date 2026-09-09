@@ -1475,7 +1475,13 @@ export function installMockApi() {
       // to drive the ask_clarifying_questions branch in the mock harness.
       const isVague = wantsPlan && last.trim().split(/\s+/).length <= 8 && !/\d|ch\.|chapter/i.test(last)
       return sse(
-        wantsQuiz
+        wantsQuiz && wantsPlan
+          ? [
+              [{ chunk: 'I’ll build the week, then a short 5-question multiple-choice check.' }, 120],
+              [{ tool_call: 'generate_lesson_plan', action: body.active_plan_id ? 'revise_week' : 'create', target_plan_id: body.active_plan_id || null, instruction: last, days: [], field: null, week_number: body.week_number, also_quiz: true }, 120],
+              [{ done: true }, 60],
+            ]
+          : wantsQuiz
           ? [
               [{ chunk: quizTypeNamed || countMatch ? 'Sure — building that quiz now.' : 'I’ll make a short 5-question multiple-choice check.' }, 120],
               [{ tool_call: 'generate_quiz', source_plan_id: body.active_plan_id || null, target_quiz_id: /\b(harder|easier|fix question|add two more)\b/i.test(last) ? body.active_quiz_id || null : null, instruction: last, question_types: questionTypes, num_questions: quizCount, passage_mode: passageMode, revises_current: /\b(harder|easier|fix question|add two more)\b/i.test(last) }, 120],

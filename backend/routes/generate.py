@@ -232,7 +232,8 @@ def quiz_tool_policy(*, has_plan: bool, has_quiz: bool) -> str:
         "assumption in 1–3 sentences before the tool. Do not interview for type or count. Ask "
         "`ask_clarifying_questions` only when a missing goal, text/passage, or revision target would "
         "materially change the result — one question, never type/count. Never call `generate_quiz` "
-        "unasked, and never alongside `generate_lesson_plan` in the same turn.\n\n"
+        "unasked. If this same message also asks for a week, call `generate_lesson_plan` with "
+        "`also_quiz: true` instead of `generate_quiz`.\n\n"
     )
     revise = (
         "A quiz already exists for this conversation. If the teacher's message is asking "
@@ -251,8 +252,8 @@ def quiz_tool_policy(*, has_plan: bool, has_quiz: bool) -> str:
         "No lesson plan exists yet for this conversation. You MAY still call `generate_quiz` "
         "when the teacher clearly asked for a quiz/test (and optionally a pasted passage) — "
         "that builds a class-scoped quiz without a week. Do not tell them to "
-        "build the week first. If they asked to plan a week in the same turn, call "
-        "`generate_lesson_plan` only and do not also volunteer a quiz.\n\n"
+        "build the week first. If they asked to plan a week and make a quiz in the same turn, "
+        "call `generate_lesson_plan` with `also_quiz: true` so this turn produces both.\n\n"
         + types_and_count
         + revise
     )
@@ -822,12 +823,16 @@ def _build_chat_system_prompt(
         if unit_row:
             system_prompt += f", which their own pacing guide names as {unit_row['unit']}"
         system_prompt += (
-            ". Treat the week"
-            + (" and unit" if unit_row else "")
-            + " as already settled — never ask which week this is. The app header "
+            ". The calendar week is already settled — never ask which week this is. The app header "
             "already named it. Only ask if the teacher's own message clearly "
             "means a different week."
         )
+        if unit_row:
+            system_prompt += (
+                " The pacing-guide unit is conversational context, not a confirmed focus. "
+                "An opener like 'let's build a plan' or 'help me plan' still needs one question "
+                "to confirm the text, skill, or throughline before generate_lesson_plan."
+            )
 
     map_context = llm.map_context_for(user_id, subject, last_user, class_id=cls["id"] if cls else None) if last_user else ""
     if map_context:
