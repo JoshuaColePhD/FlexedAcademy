@@ -288,6 +288,24 @@ def test_route_uses_active_plan_and_prior_answers_without_forcing_build(chat_cli
     assert captured[0][1:] == messages
 
 
+def test_open_plan_uses_command_surface(chat_client):
+    client, captured, _ = chat_client
+    response = client.post(
+        "/api/chat_stream",
+        json={
+            "messages": [{"role": "user", "content": "Ask questions"}],
+            "chat_id": "chat1",
+            "class_id": "c1",
+            "active_plan_id": "p1",
+            "plan_open": True,
+        },
+    )
+    assert response.status_code == 200
+    system = captured[0][0]["content"]
+    assert "Terse instructions are edits to apply now" in system
+    assert "interview the teacher" in system
+
+
 def test_route_rejects_foreign_plan_before_model_call(chat_client):
     client, captured, _ = chat_client
     response = client.post(

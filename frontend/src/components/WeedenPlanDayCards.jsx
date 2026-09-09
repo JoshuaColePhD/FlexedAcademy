@@ -21,7 +21,12 @@ function Field({ label, field, dayName, dayIndex, kit, color, textColor, childre
     <section className="weeden-day-field" style={{ '--weeden-label': color, '--weeden-text': textColor }}>
       <h3>{label}</h3>
       <div {...(isEditing ? {} : editableProps)} className={editableProps.className}>
-        {isEditing ? kit.tweakBody(dayIndex, field, dayName) : children}
+        {isEditing ? kit.tweakBody(dayIndex, field, dayName) : (
+          <>
+            {kit.workingLabel?.(dayIndex, field)}
+            {children}
+          </>
+        )}
       </div>
     </section>
   )
@@ -66,6 +71,7 @@ export function WeedenPlanDayCards({
   onEditDay,
   busy,
   flashCells,
+  workingCells,
   openTweak,
   setOpenTweak,
 }) {
@@ -89,6 +95,7 @@ export function WeedenPlanDayCards({
   }
   const kit = canTweak ? cellKit({
     flashCells,
+    workingCells,
     canTweak: canTweak && !busy,
     openTweak,
     openCell,

@@ -45,7 +45,12 @@ function Field({ label, field, dayName, dayIndex, kit, children }) {
         {...(isEditing ? {} : editableProps)}
         className={valueClass}
       >
-        {isEditing ? kit.tweakBody(dayIndex, field, dayName) : children}
+        {isEditing ? kit.tweakBody(dayIndex, field, dayName) : (
+          <>
+            {kit.workingLabel?.(dayIndex, field)}
+            {children}
+          </>
+        )}
       </div>
     </div>
   )
@@ -89,7 +94,7 @@ function PlanDayCard({ day, index, groundedCodes, subject, usState, kit }) {
         <span className="font-mono text-2xs tabular-nums opacity-80">{index + 1} of 5</span>
       </header>
 
-      {day.learning_targets ? (
+      {day.learning_targets || kit?.working?.(index, 'learning_targets') ? (
         <Field
           label="Learning target"
           field="learning_targets"
@@ -104,7 +109,7 @@ function PlanDayCard({ day, index, groundedCodes, subject, usState, kit }) {
       {/* The lesson leads. The table renders it fifth; that is the document's
           order, not a teacher's. See CARD_SECONDARY in lib/planShape.js. */}
       {LESSON_PARTS.map(([label, key]) =>
-        day[key] ? (
+        day[key] || kit?.working?.(index, key) ? (
           <Field
             key={key}
             label={label}
@@ -118,7 +123,7 @@ function PlanDayCard({ day, index, groundedCodes, subject, usState, kit }) {
         ) : null
       )}
 
-      {day.standards ? (
+      {day.standards || kit?.working?.(index, 'standards') ? (
         <Field
           label="Standards"
           field="standards"
@@ -130,12 +135,12 @@ function PlanDayCard({ day, index, groundedCodes, subject, usState, kit }) {
         </Field>
       ) : null}
 
-      {CARD_SECONDARY.some(({ key }) => day[key]) ? (
-        <details>
+      {CARD_SECONDARY.some(({ key }) => day[key] || kit?.working?.(index, key)) ? (
+        <details open={CARD_SECONDARY.some(({ key }) => kit?.working?.(index, key)) || undefined}>
           <summary>ACT alignment &amp; engagement</summary>
           <div className="flex flex-col gap-3 pt-3">
             {CARD_SECONDARY.map(({ label, key, cited, tags }) => {
-              if (!day[key]) return null
+              if (!day[key] && !kit?.working?.(index, key)) return null
               const list = tags
                 ? (Array.isArray(day[key]) ? day[key] : [day[key]]).filter(Boolean).slice(0, 2)
                 : []
@@ -173,6 +178,7 @@ export function PlanDayCards({
   missingDays,
   busy,
   flashCells,
+  workingCells,
   canTweak,
   openTweak,
   openCell,
@@ -194,6 +200,7 @@ export function PlanDayCards({
   const kit = cellKit({
     busy,
     flashCells,
+    workingCells,
     canTweak,
     openTweak,
     openCell,
@@ -245,6 +252,13 @@ export function PlanDayCards({
     }
     if (nearest !== active) setActive(nearest)
   }
+
+  useEffect(() => {
+    if (!workingCells?.size) return
+    const [dayIndex] = String([...workingCells][0]).split(':')
+    const index = Number(dayIndex)
+    if (Number.isInteger(index) && index >= 0 && index !== active) goTo(index)
+  }, [workingCells, active, goTo])
 
   return (
     <div className="plan-deck">

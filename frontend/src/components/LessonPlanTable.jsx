@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
@@ -50,6 +50,7 @@ export const LessonPlanTable = memo(function LessonPlanTable({
      to switch between them. */
   view = 'print',
   flashCells,
+  workingCells,
   openTweak,
   setOpenTweak,
 }) {
@@ -237,6 +238,7 @@ export const LessonPlanTable = memo(function LessonPlanTable({
             missingDays={missingDays}
             busy={busy}
             flashCells={flashCells}
+            workingCells={workingCells}
             canTweak={canTweak}
             openTweak={canTweak ? openTweak : null}
             openCell={openCell}
@@ -254,6 +256,7 @@ export const LessonPlanTable = memo(function LessonPlanTable({
             state={state}
             busy={busy}
             flashCells={flashCells}
+            workingCells={workingCells}
             canTweak={canTweak}
             openTweak={canTweak ? openTweak : null}
             openCell={openCell}
@@ -279,6 +282,7 @@ function PlanTable({
   state,
   busy,
   flashCells,
+  workingCells,
   canTweak,
   openTweak,
   openCell,
@@ -287,9 +291,10 @@ function PlanTable({
   draft,
   setDraft,
 }) {
-  const { isOpen, flashed, editableProps, tweakBody } = cellKit({
+  const { isOpen, flashed, working, workingLabel, editableProps, tweakBody } = cellKit({
     busy,
     flashCells,
+    workingCells,
     canTweak,
     openTweak,
     openCell,
@@ -298,6 +303,11 @@ function PlanTable({
     draft,
     setDraft,
   })
+
+  useEffect(() => {
+    if (!workingCells?.size) return
+    document.querySelector('.plan-table .is-working')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [workingCells])
 
   return (
     /* tabIndex + role + label are not polish: a scroll container that only
@@ -385,13 +395,14 @@ function PlanTable({
                     return (
                       <td key={day.name} className={openPart ? 'is-tweaking' : undefined}>
                         {LESSON_PARTS.map(([label, key]) => {
-                          if (!day[key]) return null
+                          const isWorking = working(dayIndex, key)
+                          if (!day[key] && !isWorking) return null
                           const editing = isOpen(dayIndex, key)
                           return (
                             <div
                               className={`plan-lesson-part${
                                 canTweak && !editing ? ' is-editable' : ''
-                              }${flashed(dayIndex, key) ? ' fa-flash' : ''}${editing ? ' is-selected' : ''}`}
+                              }${flashed(dayIndex, key) ? ' fa-flash' : ''}${isWorking ? ' is-working' : ''}${editing ? ' is-selected' : ''}`}
                               key={key}
                               onClick={canTweak && !editing ? () => openCell(dayIndex, key) : undefined}
                               onKeyDown={canTweak && !editing ? (event) => {
@@ -402,10 +413,12 @@ function PlanTable({
                               } : undefined}
                               tabIndex={canTweak && !editing ? 0 : undefined}
                               role={canTweak && !editing ? 'button' : undefined}
+                              aria-busy={isWorking || undefined}
                               aria-label={canTweak && !editing ? `Edit ${day.name} ${label}` : undefined}
                             >
+                              {workingLabel(dayIndex, key)}
                               <b>{label}:</b>
-                              {editing ? tweakBody(dayIndex, key, day.name) : day[key]}
+                              {editing ? tweakBody(dayIndex, key, day.name) : (day[key] || '')}
                             </div>
                           )
                         })}
@@ -428,13 +441,16 @@ function PlanTable({
                         className={`${editing ? 'is-selected' : cellProps.className || ''}`}
                       >
                         {editing ? tweakBody(dayIndex, row.key, day.name) : (
-                          <div className="strategy-tags">
+                          <>
+                            {workingLabel(dayIndex, row.key)}
+                            <div className="strategy-tags">
                             {list.slice(0, 2).map((s) => (
                               <span className="strategy-tag" key={s}>
                                 {s}
                               </span>
                             ))}
-                          </div>
+                            </div>
+                          </>
                         )}
                       </td>
                     )
@@ -448,10 +464,15 @@ function PlanTable({
                       {...(editing ? {} : cellProps)}
                       className={`${editing ? 'is-selected' : cellProps.className || ''}`}
                     >
-                      {editing ? tweakBody(dayIndex, row.key, day.name) : row.cited ? (
-                        <CitedText text={day[row.key]} groundedCodes={groundedCodes} subject={subject} state={state} />
-                      ) : (
-                        day[row.key]
+                      {editing ? tweakBody(dayIndex, row.key, day.name) : (
+                        <>
+                          {workingLabel(dayIndex, row.key)}
+                          {row.cited ? (
+                            <CitedText text={day[row.key]} groundedCodes={groundedCodes} subject={subject} state={state} />
+                          ) : (
+                            day[row.key]
+                          )}
+                        </>
                       )}
                     </td>
                   )

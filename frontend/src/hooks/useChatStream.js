@@ -233,7 +233,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, activePlanId, activeQuizId, referenceContext, hasQuiz, controller, requestId, attempt, onProgress, emitAction }) => {
+  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, activePlanId, activeQuizId, referenceContext, hasQuiz, planOpen, controller, requestId, attempt, onProgress, emitAction }) => {
     let accumulated = ''
     cancelQueuedText()
     setText('')
@@ -254,6 +254,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
           voice: Boolean(voice),
           week_number: weekNumber ?? null,
           has_quiz: Boolean(hasQuiz),
+          plan_open: Boolean(planOpen),
           request_id: requestId,
           attempt,
         }),
@@ -558,7 +559,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
   }, [cancelQueuedText, queueText, flushText])
 
   const start = useCallback(
-    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber, activePlanId, activeQuizId, referenceContext = '', hasQuiz = false, requestId: requestedRequestId } = {}) => {
+    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber, activePlanId, activeQuizId, referenceContext = '', hasQuiz = false, planOpen = false, requestId: requestedRequestId } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -613,6 +614,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
               activeQuizId,
               referenceContext,
               hasQuiz,
+              planOpen,
               controller: attemptController,
               requestId,
               attempt: tryNum,

@@ -9679,6 +9679,29 @@
   .fa-flash {
     animation: fa-flash 2.2s ease-out both;
   }
+  .plan-table td.is-working,
+  .plan-lesson-part.is-working,
+  .plan-field-value.is-working,
+  .weeden-day-field .is-working {
+    position: relative;
+    padding-top: 1.55rem;
+    animation: fa-cell-working 1.2s ease-in-out infinite;
+    box-shadow: inset 3px 0 0 rgb(var(--accent-rgb));
+  }
+  .plan-cell-writing {
+    position: absolute;
+    top: 0.35rem;
+    right: 0.4rem;
+    z-index: 1;
+    border-radius: 999px;
+    padding: 0.1rem 0.4rem;
+    background: rgb(var(--accent-rgb) / 0.16);
+    color: rgb(var(--accent-rgb));
+    font-size: 0.625rem;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
   /* A confirmation icon (Copy → Check) arriving with a touch of overshoot
      rather than just replacing the glyph in place — the same "settling into
      view" idea fa-card-drop carries, scaled down to icon size for a state
@@ -9987,6 +10010,10 @@
   100% {
     background: transparent;
   }
+}
+@keyframes fa-cell-working {
+  0%, 100% { background-color: rgb(var(--accent-rgb) / 0.08); }
+  50% { background-color: rgb(var(--accent-rgb) / 0.16); }
 }
 @keyframes fa-pop {
   from {

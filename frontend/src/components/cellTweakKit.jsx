@@ -6,6 +6,7 @@ import { CellTweak } from './CellTweak'
  * reloads during development. */
 export function cellKit({
   flashCells,
+  workingCells,
   canTweak,
   openTweak,
   openCell,
@@ -15,11 +16,25 @@ export function cellKit({
   const isOpen = (dayIndex, field) =>
     openTweak?.dayIndex === dayIndex && openTweak?.field === field
   const flashed = (dayIndex, field) => flashCells?.has(cellKey(dayIndex, field))
+  const working = (dayIndex, field) => workingCells?.has(cellKey(dayIndex, field))
+
+  const classNames = (dayIndex, field, extra = '') =>
+    [extra, canTweak ? 'is-editable' : '', flashed(dayIndex, field) ? 'fa-flash' : '', working(dayIndex, field) ? 'is-working' : '']
+      .filter(Boolean)
+      .join(' ')
+
+  const workingLabel = (dayIndex, field) =>
+    working(dayIndex, field) ? (
+      <>
+        <span className="plan-cell-writing" aria-hidden="true">Writing</span>
+        <span className="visually-hidden">Updating this cell</span>
+      </>
+    ) : null
 
   const editableProps = (dayIndex, field) =>
     canTweak
       ? {
-          className: `is-editable${flashed(dayIndex, field) ? ' fa-flash' : ''}`,
+          className: classNames(dayIndex, field),
           onClick: () => openCell(dayIndex, field),
           onKeyDown: (event) => {
             if (event.key === 'Enter' || event.key === ' ') {
@@ -30,8 +45,12 @@ export function cellKit({
           tabIndex: 0,
           role: 'button',
           'aria-label': `Edit ${field.replaceAll('_', ' ')}`,
+          ...(working(dayIndex, field) ? { 'aria-busy': true } : {}),
         }
-      : { className: flashed(dayIndex, field) ? 'fa-flash' : undefined }
+      : {
+          className: classNames(dayIndex, field) || undefined,
+          ...(working(dayIndex, field) ? { 'aria-busy': true } : {}),
+        }
 
   const tweakBody = (dayIndex, field, dayName) => (
     <CellTweak
@@ -43,5 +62,5 @@ export function cellKit({
     />
   )
 
-  return { canTweak, isOpen, flashed, editableProps, tweakBody }
+  return { canTweak, isOpen, flashed, working, workingLabel, editableProps, tweakBody }
 }

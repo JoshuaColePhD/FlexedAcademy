@@ -1,6 +1,6 @@
 import { chatMessageText, completionSuggestions, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, revisionDayIndices } from '../lib/chatActions'
 import { chatAvatarColor } from '../lib/chatPresentation'
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -71,6 +71,11 @@ function standaloneQuizBody(requested, topicFallback) {
 // sit evenly between the navigation rail and the materials inspector.
 
 const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
+const DAY_SCOPE_FIELDS = ['learning_targets', 'standards', 'act_alignment', 'engagement_strategy', 'do_now', 'during', 'assessment']
+function revisionWorkingKeys(dayIndices, field) {
+  const fields = field ? [field] : DAY_SCOPE_FIELDS
+  return dayIndices.flatMap((index) => fields.map((name) => cellKey(index, name)))
+}
 
 // Revision snapshots are deliberately plain JSON: plan_json is the API's
 // persisted shape, and keeping a detached copy prevents a later React state
@@ -903,6 +908,7 @@ export function ChatPage() {
      changed?" without anyone having to build a diff view. */
   const [openTweak, setOpenTweak] = useState(null)
   const [flashCells, setFlashCells] = useState(() => new Set())
+  const [revisionWorkingCells, setRevisionWorkingCells] = useState(() => new Set())
   // Whichever viewer is open (ArtifactPanel or ArtifactDetailPanel) reports
   // its own "maximize" click here — see either one's onFullscreenChange
   // effect for why the class actually has to land on .artifact-overlay
@@ -936,6 +942,8 @@ export function ChatPage() {
      overlayAnchorRef's rect (see the effect below) instead of switching
      containers. */
   const overlayAnchorRef = useRef(null)
+  const documentStageRef = useRef(null)
+  const documentComposerAnchorRef = useRef(null)
   const overlayHostReadyRef = useRef(false)
   const [overlayPortalHost] = useState(() => {
     const el = document.createElement('div')
@@ -968,7 +976,8 @@ export function ChatPage() {
   // does the rest, unchanged, now measured explicitly instead of inherited
   // by accident.
   useEffect(() => {
-    const anchor = overlayAnchorRef.current
+    const anchor = (desktopInspectorOpen && !artifactFullscreen && documentStageRef.current)
+      || overlayAnchorRef.current
     const transition = 'top 420ms var(--ease-glide), left 420ms var(--ease-glide), width 420ms var(--ease-glide), height 420ms var(--ease-glide)'
     const sync = ({ animate = false } = {}) => {
       if (animate) {
@@ -1002,12 +1011,14 @@ export function ChatPage() {
     }
     const ro = new ResizeObserver(() => sync())
     if (anchor) ro.observe(anchor)
+    const panes = overlayAnchorRef.current
+    if (panes && panes !== anchor) ro.observe(panes)
     window.addEventListener('resize', sync)
     return () => {
       ro.disconnect()
       window.removeEventListener('resize', sync)
     }
-  }, [artifactFullscreen, overlayPortalHost])
+  }, [artifactFullscreen, overlayPortalHost, desktopInspectorOpen])
   /* The composer dock is portaled to document.body — see composerAnchorRef's
      own comment near chatPane's return for why — which needs two pieces of
      plumbing: an invisible ANCHOR left in the dock's normal flow position
@@ -1057,7 +1068,7 @@ export function ChatPage() {
   // changes height (attachments, the autosizing textarea, a banner) — anything
   // that changes the anchor's box needs the host to follow.
   useEffect(() => {
-    const anchor = composerAnchorRef.current
+    const anchor = (desktopInspectorOpen && documentComposerAnchorRef.current) || composerAnchorRef.current
     if (!anchor) return
     const sync = () => {
       const r = anchor.getBoundingClientRect()
@@ -1092,7 +1103,7 @@ export function ChatPage() {
   // first render when the browser reports its real viewport. The composer
   // then moves between normal flow and the portal, so the anchor and portal
   // geometry must be rebound instead of retaining the boot-time bounds.
-  }, [composerDockH, portalHost, isPhone, railOpen])
+  }, [composerDockH, portalHost, isPhone, railOpen, desktopInspectorOpen])
   // The portaled dock's OWN rendered height, fed back to the anchor (below)
   // so the anchor reserves exactly the space the floating dock actually
   // needs — otherwise the transcript would sit a fixed guess-height short of
@@ -2341,6 +2352,8 @@ export function ChatPage() {
     const previousPlan = clonePlan(ctx.artifact.plan)
     setRevising(true)
     setPlanSaveState('saving')
+    const dayIndices = revisionDayIndices(ctx.artifact.plan, action.days)
+    setRevisionWorkingCells(new Set(revisionWorkingKeys(dayIndices, action.field)))
     const revisionProgress = window.setTimeout(() => {
       updateActiveWorkActivity({
         requestId: result.requestId,
@@ -2351,7 +2364,7 @@ export function ChatPage() {
     try {
       const row = await api.reviseDays({
         plan_id: ctx.artifact.planId,
-        day_indices: revisionDayIndices(ctx.artifact.plan, action.days),
+        day_indices: dayIndices,
         feedback: revisionFeedback,
         field: action.field,
       })
@@ -2418,6 +2431,7 @@ export function ChatPage() {
     } finally {
       window.clearTimeout(revisionProgress)
       setRevising(false)
+      setRevisionWorkingCells(new Set())
     }
   }
 
@@ -2831,9 +2845,11 @@ export function ChatPage() {
       }
 
       // A plan already exists, so this message is ambiguous between "just
-      // talking about it" and "revise it" — that's the one case worth asking
-      // the model to route, since a bare follow-up ("why Thursday?") shouldn't
-      // silently rebuild the week.
+      // talking about it" and "revise it" unless the week itself is open —
+      // then the composer is a command surface for that document.
+      const planCommandSurface = Boolean(
+        expanded && viewKind === 'plan' && artifact?.planId && chatMode !== 'research'
+      )
       const payloadMessages = [
         ...historyMessages.map(chatPayloadFromMessage),
         { role: 'user', content: chatUserContent },
@@ -2886,13 +2902,14 @@ export function ChatPage() {
         referenceContext,
         hasQuiz: Boolean(viewingQuiz?.id),
           activeQuizId: viewingQuiz?.id,
+        planOpen: planCommandSurface,
         requestId: options.requestId,
       })
       if (!chatResult) return
       if (chatResult.questions?.length) return
       actionHandlerRef.current?.(chatResult)
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, viewKind, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -2969,6 +2986,7 @@ export function ChatPage() {
       const previousPlan = clonePlan(artifact.plan)
       setRevising(true)
       setPlanSaveState('saving')
+      setRevisionWorkingCells(new Set(revisionWorkingKeys([dayIndex], field)))
       try {
         const row = await api.reviseDay({
           plan_id: artifact.planId,
@@ -3019,6 +3037,7 @@ export function ChatPage() {
         return { ok: false, error: err.message }
       } finally {
         setRevising(false)
+        setRevisionWorkingCells(new Set())
       }
     },
     [artifact, toast, flash, persistMessage, recordRevision]
@@ -3121,10 +3140,11 @@ export function ChatPage() {
       const previousPlan = clonePlan(artifact.plan)
       setRevising(true)
       setPlanSaveState('saving')
+      setRevisionWorkingCells(new Set(revisionWorkingKeys(dayIndices, field)))
       try {
         const row = await api.reviseDays({
-          plan_id: artifact.planId,
-          day_indices: dayIndices,
+        plan_id: artifact.planId,
+        day_indices: dayIndices,
           feedback,
           field,
         })
@@ -3163,6 +3183,7 @@ export function ChatPage() {
         setPlanSaveState('error')
       } finally {
         setRevising(false)
+        setRevisionWorkingCells(new Set())
       }
     },
     [artifact, toast, flash, persistMessage, recordRevision]
@@ -3558,7 +3579,13 @@ export function ChatPage() {
     return last.spokenContent || last.content || null
   }, [messages])
 
-  const livePlan = artifact?.plan || stream.preview
+  const livePlan = stream.isStreaming
+    ? (stream.preview || artifact?.plan)
+    : (artifact?.plan || stream.preview)
+  const workingCells = useMemo(() => {
+    if (stream.workingCell) return new Set([stream.workingCell])
+    return revisionWorkingCells
+  }, [stream.workingCell, revisionWorkingCells])
   const liveArtifact = useMemo(
     () =>
       artifact ||
@@ -3588,6 +3615,15 @@ export function ChatPage() {
   // landscape the plan earns a stable pane beside the conversation.
   const tabletLandscapePlanOpen = isTablet && !tabletPortrait && overlayOpen && viewKind === 'plan'
   const desktopInspectorOpen = desktopInspector && overlayExit.mounted
+  const setDocumentReading = workspaceRail.setDocumentReading
+  useLayoutEffect(() => {
+    document.documentElement.classList.toggle('is-document-reading', Boolean(desktopInspectorOpen))
+    setDocumentReading?.(Boolean(desktopInspectorOpen))
+    return () => {
+      document.documentElement.classList.remove('is-document-reading')
+      setDocumentReading?.(false)
+    }
+  }, [desktopInspectorOpen, setDocumentReading])
   // Keep the composer above the document in both docked and fullscreen
   // reading modes. Fullscreen expands the lesson plan's reading surface, but
   // it should not take away the command surface the teacher is actively using.
@@ -3908,6 +3944,7 @@ export function ChatPage() {
         openTweak={openTweak}
         setOpenTweak={setOpenTweak}
         flashCells={flashCells}
+        workingCells={workingCells}
         onFullscreenChange={handleArtifactFullscreenChange}
         mobileReader={isPhone && viewKind === 'plan'}
         readerMode={tabletLandscapePlanOpen || desktopInspectorOpen}
@@ -3959,7 +3996,7 @@ export function ChatPage() {
           it, not floating apart from the rest of the pane's own left
           margin. */}
       <div className="workspace-topbar flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10">
-        {!isPhone && !isLandscapePhone && workspaceRail.toggle ? (
+        {!isPhone && !isLandscapePhone && workspaceRail.toggle && !workspaceRail.documentReading ? (
           <button
             type="button"
             className="workspace-sidebar-toggle shrink-0"
@@ -4266,7 +4303,7 @@ export function ChatPage() {
           host positioned over it, so the dock still tracks the chat
           column's left edge and width (e.g. when the plans rail toggles)
           exactly as if it had never left. */}
-      {!isPhone ? <div ref={composerAnchorRef} className="shrink-0" style={{ height: composerDockH || undefined }} aria-hidden="true" /> : null}
+      {!isPhone ? <div ref={composerAnchorRef} className="shrink-0" style={{ height: desktopInspectorOpen ? 0 : (composerDockH || undefined) }} aria-hidden="true" /> : null}
       {renderComposerDock(
         <div ref={composerDockRef} className="relative shrink-0 z-10" style={{ pointerEvents: 'auto' }}>
       {/* While a plan is still being written, retain the compact progress row.
@@ -4513,6 +4550,7 @@ export function ChatPage() {
                 openTweak={openTweak}
                 setOpenTweak={setOpenTweak}
                 flashCells={flashCells}
+                workingCells={workingCells}
                 onFullscreenChange={() => {}}
                 mobileReader
               />
@@ -4622,12 +4660,14 @@ export function ChatPage() {
                phone — the textarea is one row, so the second line of a wrapped
                placeholder is simply cut off mid-word. */
             placeholder={
-              chatMode === 'research' ? 'What should I look up?'
+              expanded && viewKind === 'plan' && artifact?.planId
+                ? (displayWeek ? `Change Week ${displayWeek.week}…` : 'Change this week…')
+              : chatMode === 'research' ? 'What should I look up?'
                 : chatMode === 'build' || chatMode === 'sub_plan'
                   ? (displayWeek ? `Week ${displayWeek.week} — what’s the focus?` : 'What’s the focus this week?')
                 : (displayWeek ? `Ask about Week ${displayWeek.week}…` : 'Ask about this week…')
             }
-            sendLabel="Send message"
+            sendLabel={expanded && viewKind === 'plan' && artifact?.planId ? 'Apply change' : 'Send message'}
           />
           </div>
         </div>
@@ -4703,6 +4743,11 @@ export function ChatPage() {
           {chatPane}
         </div>
       </div>
+      {desktopInspectorOpen ? (
+        <div ref={documentStageRef} className="document-stage" aria-hidden="true">
+          <div ref={documentComposerAnchorRef} className="document-stage-composer" style={{ height: composerDockH || undefined }} />
+        </div>
+      ) : null}
 
       {/* The rail floats from 768 up. Below 768 it is the bar inside chatPane
           instead (the isPhone-only ArtifactRail "bar" variant above the
@@ -4756,7 +4801,7 @@ export function ChatPage() {
                 onClick={collapse}
               /> : null}
               <div
-                className={`artifact-overlay${desktopComposerOverlay ? ' is-composer-overlay' : ''}${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}${artifactFullscreenReturning ? ' is-fullscreen-returning' : ''}${isTablet && tabletPortrait ? ' is-tablet-side-sheet' : ''}`}
+                className={`artifact-overlay${desktopComposerOverlay ? ' is-composer-overlay is-chat-docked' : ''}${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}${artifactFullscreenReturning ? ' is-fullscreen-returning' : ''}${isTablet && tabletPortrait ? ' is-tablet-side-sheet' : ''}`}
                 style={{ '--composer-h': `${composerDockH}px` }}
               >
                 {artifactEl}

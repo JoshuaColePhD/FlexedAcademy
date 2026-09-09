@@ -143,6 +143,24 @@ export function applyPlanPatch(plan, patch) {
   return applied ? next : null
 }
 
+/** Cell keys (`dayIndex:field`) named in a streamed revision patch, in order. */
+export function workingCellKeys(plan, patch) {
+  if (!plan?.days?.length || !Array.isArray(patch?.updates)) return []
+  const keys = []
+  for (const update of patch.updates) {
+    const dayIndex = plan.days.findIndex((day) => day.name === update?.day)
+    if (dayIndex < 0 || typeof update?.field !== 'string' || !update.field) continue
+    keys.push(`${dayIndex}:${update.field}`)
+  }
+  return keys
+}
+
+/** The cell the model is writing right now — the last named update in the patch. */
+export function activeWorkingCellKey(plan, patch) {
+  const keys = workingCellKeys(plan, patch)
+  return keys.length ? keys[keys.length - 1] : null
+}
+
 /** True only when this column is the actual calendar date, not merely the
  *  same weekday name as today (Week 18 in November is not "today" in September). */
 export function isPlanDayToday(day, weekOf) {

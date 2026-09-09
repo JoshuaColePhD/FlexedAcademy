@@ -27,6 +27,7 @@ export function WeedenLessonPlanTable({
   onEditDay,
   busy,
   flashCells,
+  workingCells,
   openTweak,
   setOpenTweak,
 }) {
@@ -56,6 +57,7 @@ export function WeedenLessonPlanTable({
 
   const kit = cellKit({
     flashCells,
+    workingCells,
     canTweak: canTweak && !busy,
     openTweak,
     openCell,
@@ -97,7 +99,12 @@ export function WeedenLessonPlanTable({
                     {...(isEditing || day?.no_school ? {} : extra)}
                     className={extra.className}
                   >
-                    {isEditing ? kit.tweakBody(dayIndex, field, name) : value}
+                    {isEditing ? kit.tweakBody(dayIndex, field, name) : (
+                      <>
+                        {kit.workingLabel(dayIndex, field)}
+                        {value}
+                      </>
+                    )}
                   </td>
                 )
               })}

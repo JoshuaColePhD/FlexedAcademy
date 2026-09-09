@@ -90,6 +90,27 @@ choices one at a time. When revising an existing quiz use revises_current=true; 
 distinct quiz uses false.
 """
 
+PLAN_COMMAND_SURFACE = """
+The teacher is looking at the open lesson plan. These overlay instructions
+override the rule that an open plan is only context. This composer is the
+command surface for that document. Terse instructions are edits to apply now.
+Call generate_lesson_plan with revise_week or revise_days, or update_lesson_day
+for one day and one field. Do not call ask_clarifying_questions when they already
+named the change. Never create a second week for a change to this open plan.
+
+"Ask questions", "add questions", "more checks", "CFUs", or "discussion prompts"
+means write student questions into the lesson cells (do_now, during, and/or
+assessment). It is not a request that you interview the teacher.
+
+Infer the field from context: an activity means during, a warm-up means do_now,
+an exit ticket or evidence of learning means assessment, a goal means
+learning_targets, a named routine means engagement_strategy, a course standard
+means standards, and an ACT alignment means act_alignment.
+
+Answer in prose without a tool only when they clearly ask why something already
+on the page is there, or for advice they have not asked you to apply.
+"""
+
 
 def typed_chat_tools(legacy_tools):
     tools = deepcopy(legacy_tools)

@@ -77,6 +77,7 @@ export function ArtifactPanel({
   streamingText,
   missingDays,
   flashCells,
+  workingCells,
   openTweak,
   setOpenTweak,
   mobileReader = false,
@@ -314,6 +315,7 @@ const location = useLocation()
                   onEditDay={planId ? onEditDay : undefined}
                   busy={busy}
                   flashCells={flashCells}
+                  workingCells={workingCells}
                   openTweak={openTweak}
                   setOpenTweak={setOpenTweak}
                 />
@@ -325,6 +327,7 @@ const location = useLocation()
                   onEditDay={planId ? onEditDay : undefined}
                   busy={busy}
                   flashCells={flashCells}
+                  workingCells={workingCells}
                   openTweak={openTweak}
                   setOpenTweak={setOpenTweak}
                 />
@@ -344,6 +347,7 @@ const location = useLocation()
               missingDays={missingDays}
               view={view}
               flashCells={flashCells}
+              workingCells={workingCells}
               openTweak={openTweak}
               setOpenTweak={setOpenTweak}
             />}

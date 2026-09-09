@@ -54,8 +54,18 @@ for (const prompt of ['Why use this approach?', 'Could a debate help students ex
     await expect(page.getByText('Try a short modeled example, then check an independent response.', { exact: true })).toBeVisible()
     expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path !== 'chat'))).toEqual([])
     expect(await page.evaluate(() => window.chatCalls[0].body.active_plan_id)).toBe('plan1')
+    expect(await page.evaluate(() => window.chatCalls[0].body.plan_open)).toBe(false)
   })
 }
+
+test('commands from the open week apply to that plan', async ({ page }) => {
+  await openChat(page)
+  await page.getByRole('button', { name: /View lesson plan/ }).click()
+  await events(page, [planAction('revise_week'), done])
+  await send(page, 'Ask questions')
+  expect(await page.evaluate(() => window.chatCalls[0].body.plan_open)).toBe(true)
+  await expect.poll(() => page.evaluate(() => window.chatCalls.filter((c) => c.path === 'week').length)).toBe(1)
+})
 
 test('explicit new plan preserves the old plan and creates once after a dropped stream', async ({ page }) => {
   await openChat(page)

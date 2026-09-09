@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api, apiErrorFromBody } from '../lib/api'
 import { droppedConnectionCopy, isDroppedConnectionError } from '../lib/streamTransport'
 import { parsePartialJson, usablePlan } from '../lib/partialJson'
-import { applyPlanPatch } from '../lib/planShape'
+import { applyPlanPatch, activeWorkingCellKey } from '../lib/planShape'
 import * as perf from '../lib/performanceMetrics'
 
 /* All the streaming logic, in one place.
@@ -90,6 +90,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
   const [preview, setPreview] = useState(null)
   const [grounding, setGrounding] = useState(null)
   const [dayNames, setDayNames] = useState(null)
+  const [workingCell, setWorkingCell] = useState(null)
   const abortRef = useRef(null)
   const paramsRef = useRef(null)
   const stoppedRef = useRef(false)
@@ -116,6 +117,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
     const parsed = parsePartialJson(value)
     if (!parsed) return null
     if (basePlanRef.current && Array.isArray(parsed.updates)) {
+      setWorkingCell(activeWorkingCellKey(basePlanRef.current, parsed))
       return applyPlanPatch(basePlanRef.current, parsed)
     }
     return usablePlan(parsed)
@@ -211,6 +213,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
     setPreview(null)
     setGrounding(null)
     setDayNames(null)
+    setWorkingCell(null)
     groundingRef.current = null
   }, [cancelQueuedPlan])
 
@@ -220,6 +223,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
     setPreview(null)
     setGrounding(null)
     setDayNames(null)
+    setWorkingCell(null)
     groundingRef.current = null
     setStatus(null)
   }, [cancelQueuedPlan])
@@ -233,6 +237,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
     setPreview(basePlanRef.current)
     setGrounding(null)
     setDayNames(null)
+    setWorkingCell(null)
     groundingRef.current = null
     setStatus({ phase: 'accepted', label: 'Accepted', requestId })
     perf.mark('lesson-stream:start')
@@ -545,10 +550,11 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
         wakeLockRef.current = null
         if (abortRef.current === controller) abortRef.current = null
         setIsStreaming(false)
+        setWorkingCell(null)
       }
     },
     [attempt]
   )
 
-  return { start, stop, reset, isStreaming, text, preview, grounding, status, dayNames }
+  return { start, stop, reset, isStreaming, text, preview, grounding, status, dayNames, workingCell }
 }

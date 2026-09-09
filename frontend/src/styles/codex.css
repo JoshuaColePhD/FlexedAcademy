@@ -860,7 +860,40 @@
   }
 }
 
-.workspace-chat { min-width: 0; container-type: inline-size; }
+@media (min-width: 900px) {
+  html.is-document-reading .app-shell-frame {
+    gap: 0 !important;
+  }
+  html.is-document-reading .app-rail {
+    width: 0 !important;
+    transition-duration: 420ms;
+    transition-timing-function: var(--ease-glide);
+  }
+  .chat-workspace-main {
+    transition: flex-basis 420ms var(--ease-glide), width 420ms var(--ease-glide), max-width 420ms var(--ease-glide);
+  }
+  html.is-document-reading .chat-workspace-main,
+  .workspace-panes:has(.document-stage) .chat-workspace-main {
+    flex: 0 0 var(--sidebar-w);
+    width: var(--sidebar-w);
+    max-width: var(--sidebar-w);
+  }
+  .document-stage {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+  .artifact-overlay.is-composer-overlay.is-chat-docked:not(.is-overlay-fullscreen) {
+    inset: 10px 0 10px 10px !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chat-workspace-main {
+    transition-duration: 0.01ms !important;
+  }
+}
 
 /* Shared conversation navigation. */
 .chat-workspace-main { min-width: 0; min-height: 0; background: var(--paper); }

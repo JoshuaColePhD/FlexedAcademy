@@ -73,6 +73,14 @@ test('a truncated action still starts work once without retrying chat', async ()
   assert.equal(dispatched, 1)
   assert.deepEqual(calls.map((c) => c.attempt), [0])
   assert.ok(calls.every((c) => c.request_id === 'r1' && c.active_plan_id === 'old-plan'))
+  assert.equal(calls[0].plan_open, false)
+})
+
+test('plan overlay flag reaches the chat stream', async () => {
+  const { hook, calls } = await harness([[{ chunk: 'Updating the week.' }, done]])
+  await hook.start([{ role: 'user', content: 'Ask questions' }], { activePlanId: 'p1', planOpen: true })
+  assert.equal(calls[0].plan_open, true)
+  assert.equal(calls[0].active_plan_id, 'p1')
 })
 
 test('exhausted truncated streams never dispatch or complete', async () => {

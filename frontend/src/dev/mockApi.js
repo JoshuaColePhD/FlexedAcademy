@@ -1492,6 +1492,8 @@ export function installMockApi() {
             : ['multiple_choice']
       const passageMode = /\bpassage\b/i.test(last) ? 'ai_generated' : 'none'
       const wantsPlan = /\b(plan|week|build|unit|lesson)\b/i.test(last)
+      const editOpenPlan = Boolean(body?.plan_open && body?.active_plan_id)
+        && /\b(ask questions|add questions|cfu|check for understanding|discussion prompt|change|rewrite|make |add |fix |replace |shorter|longer)\b/i.test(last)
       // Vague, on purpose: enough words to want a plan at all, but nothing
       // naming what the week is actually about — no text/topic, no skill, no
       // chapter/unit number. Real routing is the model's own judgment call
@@ -1511,6 +1513,12 @@ export function installMockApi() {
               [{ tool_call: 'generate_quiz', source_plan_id: body.active_plan_id || null, target_quiz_id: /\b(harder|easier|fix question|add two more)\b/i.test(last) ? body.active_quiz_id || null : null, instruction: last, question_types: questionTypes, num_questions: quizCount, passage_mode: passageMode, revises_current: /\b(harder|easier|fix question|add two more)\b/i.test(last) }, 120],
               [{ done: true }, 60],
             ]
+          : editOpenPlan
+            ? [
+                [{ chunk: 'Updating the week with that change now.' }, 120],
+                [{ tool_call: 'generate_lesson_plan', action: 'revise_week', target_plan_id: body.active_plan_id, instruction: last, days: [], field: null, week_number: body.week_number }, 120],
+                [{ done: true }, 60],
+              ]
           : isVague
           ? [
               [{ tool_call: 'ask_clarifying_questions', questions: [

@@ -1,5 +1,5 @@
 import { chatAvatarColor, chatPreview, formatChatListTime } from '../lib/chatPresentation'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -656,10 +656,15 @@ export function AppShell({ children }) {
     })
   }
 
-  const effectiveRailCollapsed = railCollapsed || routeCollapsesRail
+  const [documentReading, setDocumentReading] = useState(false)
+  const effectiveRailCollapsed = railCollapsed || routeCollapsesRail || documentReading
+  const workspaceRailValue = useMemo(
+    () => ({ collapsed: effectiveRailCollapsed, documentReading, toggle: toggleRailCollapsed, setDocumentReading }),
+    [effectiveRailCollapsed, documentReading],
+  )
 
   return (
-    <WorkspaceRailContext.Provider value={{ collapsed: effectiveRailCollapsed, toggle: toggleRailCollapsed }}>
+    <WorkspaceRailContext.Provider value={workspaceRailValue}>
       <div className={`app-shell-frame flex h-full w-full overflow-hidden p-2 gap-2 relative z-10${effectiveRailCollapsed ? ' is-rail-collapsed' : ''}`}>
       <div className="app-blob" aria-hidden="true" />
       <a
@@ -675,8 +680,8 @@ export function AppShell({ children }) {
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
             width: effectiveRailCollapsed ? '0px' : 'var(--sidebar-w)',
-            transitionDuration: 'var(--t-base)',
-            transitionTimingFunction: 'var(--ease-out)',
+            transitionDuration: documentReading ? '420ms' : 'var(--t-base)',
+            transitionTimingFunction: documentReading ? 'var(--ease-glide)' : 'var(--ease-out)',
           }}
         >
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">

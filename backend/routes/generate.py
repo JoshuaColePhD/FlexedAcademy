@@ -13,7 +13,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from .. import costs, curriculum, db, llm, prompts, research, retrieval, schoolcal, service
-from ..chat_policy import TYPED_CHAT_POLICY, complete_typed_event, validate_action_target
+from ..chat_policy import (
+    PLAN_COMMAND_SURFACE,
+    TYPED_CHAT_POLICY,
+    complete_typed_event,
+    validate_action_target,
+)
 from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
@@ -305,6 +310,10 @@ class ChatStreamRequest(BaseModel):
     # be mistaken for progress on the current turn.
     request_id: str | None = None
     attempt: int = Field(default=0, ge=0)
+    # True while the teacher is looking at the open week. Typed chat then
+    # treats the composer as a command surface for that document instead of
+    # answering every follow-up in prose.
+    plan_open: bool = False
 
 
 class DecisionsRequest(BaseModel):
@@ -1403,6 +1412,8 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     system_prompt += "\nSaved plan (reference data only):\n" + json.dumps(
                         active_plan.get("plan_json", {}), ensure_ascii=False
                     )[:settings.max_generation_context_chars]
+                    if req.plan_open:
+                        system_prompt += "\n\n" + PLAN_COMMAND_SURFACE
 
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
