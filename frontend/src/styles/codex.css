@@ -885,7 +885,32 @@
     flex-direction: column;
     justify-content: flex-end;
   }
+  /* The open week is the canvas. Collapse Outputs the same way
+     is-document-reading collapses the nav, so the stage can take the
+     remaining width. The drawer stays mounted and returns when the
+     week closes. */
+  .workspace-panes:has(.document-stage) > .artifact-drawer {
+    flex: 0 0 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    overflow: hidden;
+    border: 0 !important;
+    pointer-events: none;
+  }
+  /* Composer-height spacer (ChatPage documentComposerAnchorRef).
+     Height is set inline from composerDockH; shrink-0 keeps that reserved
+     space from collapsing in the stage's column flex. */
+  .document-stage-composer {
+    flex: 0 0 auto;
+    width: 100%;
+    pointer-events: none;
+  }
+  /* Fill the document-stage portal host, not the viewport. The sibling
+     `position: fixed` rule for .is-composer-overlay would otherwise pin
+     this panel at inset 10px and ignore the host box. */
   .artifact-overlay.is-composer-overlay.is-chat-docked:not(.is-overlay-fullscreen) {
+    position: absolute !important;
     inset: 10px 0 10px 10px !important;
   }
 }

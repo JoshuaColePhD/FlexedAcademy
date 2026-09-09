@@ -96,6 +96,7 @@ test('desktop document spans most of the workspace under the composer and fullsc
   await expect(panel).toHaveCount(0)
   await page.getByRole('button', { name: /Week 03 Quiz — Voice & Tone Quiz/ }).click()
   await expect(panel).toBeVisible()
+  await page.waitForTimeout(450)
   await composer.fill('Quiz and chat remain independent.')
   await expect(composer).toBeFocused()
   await assertComposerOverlay()
