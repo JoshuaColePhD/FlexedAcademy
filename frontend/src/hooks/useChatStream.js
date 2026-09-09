@@ -119,7 +119,22 @@ function openerCut(s) {
   return -1
 }
 
-export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onRetry, onStatus, onStart } = {}) {
+function quizRequestedFromEvent(event) {
+  return {
+    questionTypes: event.question_types || [],
+    numQuestions: event.num_questions || 5,
+    passageMode: event.passage_mode || 'none',
+    passageTitle: event.passage_title || '',
+    passageText: event.passage_text || '',
+    revisesCurrent: !!event.revises_current,
+    sourcePlanId: event.source_plan_id,
+    targetQuizId: event.target_quiz_id,
+    instruction: event.instruction,
+    questionIndices: (event.question_numbers || []).map((n) => n - 1),
+  }
+}
+
+export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSentence, onRetry, onStatus, onStart } = {}) {
   const [isStreaming, setIsStreaming] = useState(false)
   const [text, setText] = useState('')
   const [status, setStatus] = useState(null)
@@ -184,6 +199,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   const onDoneRef = useRef(onDone)
   const onErrorRef = useRef(onError)
   const onGeneratePlanRef = useRef(onGeneratePlan)
+  const onActionRef = useRef(onAction)
   const onSentenceRef = useRef(onSentence)
   const onRetryRef = useRef(onRetry)
   const onStatusRef = useRef(onStatus)
@@ -191,6 +207,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   onDoneRef.current = onDone
   onErrorRef.current = onError
   onGeneratePlanRef.current = onGeneratePlan
+  onActionRef.current = onAction
   onSentenceRef.current = onSentence
   onRetryRef.current = onRetry
   onStatusRef.current = onStatus
@@ -216,7 +233,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, activePlanId, activeQuizId, referenceContext, hasQuiz, controller, requestId, attempt, onProgress }) => {
+  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, activePlanId, activeQuizId, referenceContext, hasQuiz, controller, requestId, attempt, onProgress, emitAction }) => {
     let accumulated = ''
     cancelQueuedText()
     setText('')
@@ -395,6 +412,14 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
           if (event.tool_call === 'generate_lesson_plan') {
             toolCalled = true
             planAction = event.action ? event : null
+            emitAction?.({
+              requestId,
+              text: accumulated,
+              toolCalled,
+              planAction,
+              quizRequested,
+              dayRevisionRequested,
+            })
           }
 
           // The clarifying-questions alternative — see backend/llm.py's
@@ -425,18 +450,15 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
           // ask_clarifying_questions just above.
           if (event.tool_call === 'generate_quiz') {
             toolCalled = true
-            quizRequested = {
-              questionTypes: event.question_types || [],
-              numQuestions: event.num_questions || 5,
-              passageMode: event.passage_mode || 'none',
-              passageTitle: event.passage_title || '',
-              passageText: event.passage_text || '',
-              revisesCurrent: !!event.revises_current,
-              sourcePlanId: event.source_plan_id,
-              targetQuizId: event.target_quiz_id,
-              instruction: event.instruction,
-              questionIndices: (event.question_numbers || []).map((n) => n - 1),
-            }
+            quizRequested = quizRequestedFromEvent(event)
+            emitAction?.({
+              requestId,
+              text: accumulated,
+              toolCalled,
+              planAction,
+              quizRequested,
+              dayRevisionRequested,
+            })
           }
 
           // The targeted, one-field alternative to generate_lesson_plan —
@@ -450,6 +472,14 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
               field: event.field,
               feedback: event.feedback,
             }
+            emitAction?.({
+              requestId,
+              text: accumulated,
+              toolCalled,
+              planAction,
+              quizRequested,
+              dayRevisionRequested,
+            })
           }
 
           if (event.chunk) {
@@ -483,10 +513,23 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
     perf.measure('chat-stream:duration', 'chat-stream:start', 'chat-stream:end')
 
     if (!finished) {
-      throw new ApiError('The connection closed unexpectedly.', {
-        code: 'stream_truncated',
-        hint: 'Nothing was saved. Try again.',
-      })
+      if (quizRequested || dayRevisionRequested || planAction) {
+        // The artifact action already arrived; retrying chat would only delay
+        // a build that onAction has already started.
+        emitAction?.({
+          requestId,
+          text: accumulated,
+          toolCalled,
+          planAction,
+          quizRequested,
+          dayRevisionRequested,
+        })
+      } else {
+        throw new ApiError('The connection closed unexpectedly.', {
+          code: 'stream_truncated',
+          hint: 'Nothing was saved. Try again.',
+        })
+      }
     }
 
     const recovered = recoverDumpedToolsFromText(accumulated, {
@@ -506,6 +549,16 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       dayRevisionRequested = recovered.dayRevisionRequested
     }
     if (questions) questions = voice ? sanitizeClarifyingQuestions(questions) : sanitizeClarifyingQuestions(questions).slice(0, 1)
+    if (!questions && (quizRequested || dayRevisionRequested || planAction)) {
+      emitAction?.({
+        requestId,
+        text: accumulated,
+        toolCalled,
+        planAction,
+        quizRequested,
+        dayRevisionRequested,
+      })
+    }
 
     // Whatever tail never earned a sentence boundary of its own — a reply
     // that ends without punctuation, or one short enough to have none at all.
@@ -538,6 +591,12 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
       activeRequestRef.current = requestId
+      let actionEmitted = false
+      const emitAction = (payload) => {
+        if (actionEmitted || !payload) return
+        actionEmitted = true
+        onActionRef.current?.(payload)
+      }
       onStartRef.current?.({ requestId, attempt: 0 })
       window.clearTimeout(slowTimerRef.current)
 
@@ -583,6 +642,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
               requestId,
               attempt: tryNum,
               onProgress: bumpIdleTimeout,
+              emitAction,
             })
             if (!result || activeRequestRef.current !== requestId || controller.signal.aborted) return null
             onDoneRef.current?.(result)

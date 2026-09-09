@@ -227,15 +227,12 @@ def quiz_tool_policy(*, has_plan: bool, has_quiz: bool) -> str:
     """When chat may call generate_quiz, including class-scoped standalone quizzes."""
     types_and_count = (
         "If the teacher explicitly asks for a quiz, test, or assessment as a "
-        "downloadable file: when their request ALREADY names which question type(s) they want "
-        "(multiple choice, true/false, short answer, matching) AND roughly how many questions, "
-        "call `generate_quiz` with those values directly. Otherwise call `ask_clarifying_questions` "
-        "INSTEAD — two short questions, each with a few tappable options, e.g. 'What kind of "
-        "questions?' (Multiple choice / True or false / Short answer / Matching / A mix) and "
-        "'About how many?' (5 / 10 / 15 / 20). Only ask about whichever of the two the teacher didn't "
-        "already specify — if they said '10 multiple choice questions' that's already both answered, "
-        "build immediately. Never call `generate_quiz` unasked, and never alongside "
-        "`generate_lesson_plan` in the same turn.\n\n"
+        "downloadable file, call `generate_quiz`. Use the named question type(s) and count when they "
+        "gave them; otherwise default to a short 5-question multiple-choice check and state that "
+        "assumption in 1–3 sentences before the tool. Do not interview for type or count. Ask "
+        "`ask_clarifying_questions` only when a missing goal, text/passage, or revision target would "
+        "materially change the result — one question, never type/count. Never call `generate_quiz` "
+        "unasked, and never alongside `generate_lesson_plan` in the same turn.\n\n"
     )
     revise = (
         "A quiz already exists for this conversation. If the teacher's message is asking "
@@ -252,8 +249,8 @@ def quiz_tool_policy(*, has_plan: bool, has_quiz: bool) -> str:
         return "A plan already exists for this conversation. " + types_and_count + revise
     return (
         "No lesson plan exists yet for this conversation. You MAY still call `generate_quiz` "
-        "when the teacher clearly asked for a quiz/test with types and count (and optionally a "
-        "pasted passage) — that builds a class-scoped quiz without a week. Do not tell them to "
+        "when the teacher clearly asked for a quiz/test (and optionally a pasted passage) — "
+        "that builds a class-scoped quiz without a week. Do not tell them to "
         "build the week first. If they asked to plan a week in the same turn, call "
         "`generate_lesson_plan` only and do not also volunteer a quiz.\n\n"
         + types_and_count

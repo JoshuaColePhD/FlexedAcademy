@@ -817,6 +817,10 @@ export function ChatPage() {
   const activeActivityRequestRef = useRef(null)
   const pendingActivityKindRef = useRef(null)
   const planBuildInFlightRef = useRef(false)
+  const startedActionRef = useRef(null)
+  const chatTurnRef = useRef({})
+  const actionHandlerRef = useRef(null)
+  const quizCancelRef = useRef(null)
 
   const activityTitle = useCallback((kind) => ({
     plan: 'Building your lesson plan',
@@ -1858,6 +1862,7 @@ export function ChatPage() {
         pendingActivityKindRef.current = null
       }
     },
+    onAction: (payload) => actionHandlerRef.current?.(payload),
     onStatus: (event) => {
       if (event.code === 'tool_call') {
         if (event.tool === 'ask_clarifying_questions') {
@@ -2013,14 +2018,19 @@ export function ChatPage() {
           hint: 'Tap Try again.',
         })
       } else if (liveId) {
-        // A tool call with nothing said first — drop the now-empty
-        // placeholder; submit()'s own dedicated follow-up ("Building your
-        // quiz now…", "Updating the week now…") is the message that shows.
-        setMessages((prev) => prev.filter((m) => m.id !== liveId))
+        // Keep a streamed intent line (or one filled when the tool fired).
+        // Drop only a still-empty placeholder; the artifact job owns the rest.
+        setMessages((prev) => {
+          const live = prev.find((m) => m.id === liveId)
+          if (live && String(live.content || '').trim()) {
+            return prev.map((m) => (m.id === liveId ? { ...m, streaming: false } : m))
+          }
+          return prev.filter((m) => m.id !== liveId)
+        })
       }
     },
     onError: (err) => {
-      if (planBuildInFlightRef.current) {
+      if (planBuildInFlightRef.current || startedActionRef.current) {
         liveMessageIdRef.current = null
         return
       }
@@ -2056,7 +2066,7 @@ export function ChatPage() {
   })
 
   const busy = stream.isStreaming || revising || quizBuilding || chatStream.isStreaming || preparing
-  const generationBusy = preparing || stream.isStreaming || chatStream.isStreaming
+  const generationBusy = preparing || stream.isStreaming || chatStream.isStreaming || quizBuilding
   const generationStatus = stream.isStreaming
     ? { label: 'Building your lesson plan', detail: stream.status?.label || 'Matching standards and shaping the week.' }
     : chatStream.isStreaming
@@ -2173,6 +2183,225 @@ export function ChatPage() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [voiceOpen, openVoice, closeVoice])
+
+  const fillLiveIfEmpty = (content) => {
+    const liveId = liveMessageIdRef.current
+    if (!liveId || !content) return
+    setMessages((prev) => prev.map((m) => {
+      if (m.id !== liveId || String(m.content || '').trim()) return m
+      return { ...m, content, streaming: true }
+    }))
+  }
+
+  const beginQuizFromRequest = async (requested, result) => {
+    const ctx = chatTurnRef.current
+    const viewingQuiz = ctx.viewingQuiz
+    const artifact = ctx.artifact
+    const classId = ctx.classId
+    const voiceOpen = ctx.voiceOpen
+    const revisingQuizId = quizRevisionId(requested, viewingQuiz)
+    const canStandalone = Boolean(classId)
+    startWorkActivity(result.requestId, 'quiz')
+    if (!artifact?.planId && !revisingQuizId && !canStandalone) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'assistant',
+          content: 'Pick a class first — then I can build a quiz without a week.',
+        },
+      ])
+      finishWorkActivity(result.requestId, { status: 'error', error: 'No class selected.' })
+      return
+    }
+    setQuizBuilding(true)
+    fillLiveIfEmpty(
+      revisingQuizId
+        ? 'Updating the quiz now.'
+        : `Building your quiz now — ${requested.numQuestions || 5} ${questionTypesProse(requested.questionTypes || ['multiple_choice'])} questions.`
+    )
+    setViewKind('quiz')
+    if (!expanded && !isPhone) setExpanded(true)
+    if (isPhone) setRailOpen(false)
+    try {
+      let quiz
+      if (revisingQuizId && viewingQuiz?.plan_id) {
+        quiz = await api.reviseQuiz(viewingQuiz.plan_id || artifact.planId, revisingQuizId, requested.instruction || ctx.content, requested.questionIndices)
+      } else if (revisingQuizId) {
+        quiz = await api.reviseStandaloneQuiz(revisingQuizId, requested.instruction || ctx.content, requested.questionIndices)
+      } else if (voiceOpen ? artifact?.planId : requested.sourcePlanId) {
+        quiz = await api.createQuiz(requested.sourcePlanId || artifact.planId, {
+          ...requested,
+          instruction: requested.instruction || ctx.content,
+        })
+      } else {
+        quiz = await api.createStandaloneQuiz(classId, standaloneQuizBody(
+          requested,
+          ctx.content || ctx.promptText || ctx.activeClassSubject || '',
+        ))
+      }
+      if (quizCancelRef.current === result.requestId) return
+      showReadyNotice(revisingQuizId ? 'Quiz updated' : 'Quiz ready')
+      if (quiz.plan_id) qc.invalidateQueries({ queryKey: qk.quizzes(quiz.plan_id) })
+      else qc.invalidateQueries({ queryKey: qk.standaloneQuizzes(classId) })
+      setViewingQuiz(quiz)
+      if (ctx.activeChatId) void persistMessage(ctx.activeChatId, { role: 'assistant', content: quizReceipt(quiz,
+        `${revisingQuizId ? 'Updated' : 'Built'} "${quiz.title}." The quiz is saved.`) })
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'assistant',
+          ...(!voiceOpen && !revisingQuizId ? { questions: completionSuggestions('quiz', quiz), questionPurpose: 'optional' } : {}),
+          content: revisingQuizId
+            ? `Updated "${quiz.title}." Download the Word document or QTI package from the panel.`
+            : `Built "${quiz.title}." Download the Word document or QTI package from the panel.`,
+        },
+      ])
+      finishWorkActivity(result.requestId, {
+        status: 'complete',
+        summary: revisingQuizId ? 'Quiz updated and saved.' : 'Quiz built and saved.',
+      })
+    } catch (err) {
+      if (quizCancelRef.current === result.requestId) return
+      finishWorkActivity(result.requestId, { status: 'error', error: err.message })
+      toast.apiError(revisingQuizId ? 'Could not update the quiz' : 'Could not build the quiz', err)
+    } finally {
+      setQuizBuilding(false)
+    }
+  }
+
+  const beginPlanFromResult = async (result) => {
+    const ctx = chatTurnRef.current
+    let action
+    try {
+      action = planOperation(result, ctx.artifact?.planId || null, { voice: ctx.voiceOpen })
+    } catch (err) {
+      finishWorkActivity(result.requestId, { status: 'error', error: err.message })
+      setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', isError: true, content: err.message }])
+      return
+    }
+    if (!ctx.artifact?.planId || action.action === 'create') {
+      if (ctx.voiceOpen) voice.speak(VOICE_BUILDING)
+      fillLiveIfEmpty('I’ll build that week now.')
+      if (!expanded && !isPhone) setExpanded(true)
+      if (isPhone) setRailOpen(false)
+      pendingActivityKindRef.current = 'plan'
+      planBuildInFlightRef.current = true
+      let history = ctx.priorConversation || ''
+      if (action?.instruction) history += `\n\nRequest summary and prior constraints: ${action.instruction}`
+      if (result.text?.trim()) history += `\n\nASSISTANT: ${result.text}`
+      stream.start(ctx.modelQuery, {
+        chatId: ctx.activeChatId,
+        weekNumber: action?.week_number ?? ctx.conversationWeek ?? ctx.effectiveWeek,
+        classId: ctx.classId,
+        conversationContext: history,
+        referenceContext: ctx.referenceContext,
+        requestId: result.requestId,
+      }).catch(() => {})
+      return
+    }
+    const revisionFeedback = action.instruction || ctx.promptText || 'Use the attached documents as reference for this revision.'
+    if (ctx.voiceOpen) voice.speak(VOICE_REVISING)
+    fillLiveIfEmpty(action.action === 'revise_days' ? 'Updating the requested days now — one moment.' : 'Reworking the week now — one moment.')
+    const previousPlan = clonePlan(ctx.artifact.plan)
+    setRevising(true)
+    setPlanSaveState('saving')
+    try {
+      const row = action.action === 'revise_days'
+        ? await api.reviseDays({
+          plan_id: ctx.artifact.planId,
+          day_indices: revisionDayIndices(ctx.artifact.plan, action.days),
+          feedback: revisionFeedback,
+          field: action.field,
+        })
+        : await api.revisePlan(ctx.artifact.planId, revisionFeedback, { timeoutMs: 60000 })
+      if (quizCancelRef.current === result.requestId) return
+      setArtifact((a) => ({
+        ...a,
+        plan: row.plan_json,
+        warnings: row.warnings,
+        retrievedIds: row.retrieved_ids,
+      }))
+      const reply = {
+        id: nextId(),
+        role: 'assistant',
+        content: `Done — ${row.week_label || 'the week'} is updated${unitSuffix(
+          row.unit,
+          ', still centered on '
+        )}. Let me know if anything else needs adjusting.`,
+        planId: row.id,
+        weekLabel: row.week_label,
+        plan: row.plan_json,
+        retrievedCodes: row.retrieved_ids,
+      }
+      setMessages((prev) => [...prev, reply])
+      if (ctx.activeChatId) {
+        void persistMessage(ctx.activeChatId, { role: 'assistant', content: reply.content, plan_id: row.id })
+      }
+      recordRevision('Lesson plan update', previousPlan)
+      finishWorkActivity(result.requestId, { status: 'complete', summary: 'The lesson plan was updated and saved.' })
+    } catch (err) {
+      if (quizCancelRef.current === result.requestId) return
+      finishWorkActivity(result.requestId, { status: 'error', error: err.message })
+      setPlanSaveState('error')
+      setMessages((prev) => [
+        ...prev,
+        { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
+      ])
+      toast.apiError("Couldn't revise that", err)
+    } finally {
+      setRevising(false)
+    }
+  }
+
+  const beginDayRevision = async (requested, result) => {
+    const ctx = chatTurnRef.current
+    startWorkActivity(result.requestId, 'revision')
+    const { day: dayName, field, feedback } = requested
+    const targetPlanId = requested.targetPlanId || ctx.artifact?.planId
+    const dayIndex = ctx.artifact?.plan?.days?.findIndex((day) => day.name === dayName) ?? -1
+    const days = (ctx.artifact?.plan || stream.preview)?.days || []
+    const day = dayIndex >= 0 ? days[dayIndex] : null
+    if (!ctx.artifact?.planId || !day || (!ctx.voiceOpen && targetPlanId !== ctx.artifact.planId)) {
+      finishWorkActivity(result.requestId, { status: 'error', error: 'The requested day or plan is no longer active.' })
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextId(),
+          role: 'assistant',
+          isError: true,
+          content: "The requested day or plan is no longer active. Open the intended plan and try again.",
+        },
+      ])
+      return
+    }
+    const outcome = await reviseDayRef.current?.(dayIndex, day, feedback, field)
+    finishWorkActivity(result.requestId, outcome?.ok
+      ? { status: 'complete', summary: `${dayName} was updated and saved.` }
+      : { status: 'error', error: outcome?.error || 'The revision was not saved.' })
+  }
+
+  actionHandlerRef.current = (result) => {
+    if (!result || startedActionRef.current === result.requestId) return true
+    if (result.questions?.length) return true
+    if (result.quizRequested) {
+      startedActionRef.current = result.requestId
+      void beginQuizFromRequest(result.quizRequested, result)
+      return true
+    }
+    if (result.dayRevisionRequested) {
+      startedActionRef.current = result.requestId
+      void beginDayRevision(result.dayRevisionRequested, result)
+      return true
+    }
+    if (result.toolCalled) {
+      startedActionRef.current = result.requestId
+      void beginPlanFromResult(result)
+      return true
+    }
+    return false
+  }
 
   /* ── the one submit path ──────────────────────────────────────────────── */
   const submit = useCallback(
@@ -2488,6 +2717,23 @@ export function ChatPage() {
           { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: firstThinking },
         ])
         if (voiceOpen) voice.speak(`${firstThinking}.`)
+        startedActionRef.current = null
+        quizCancelRef.current = null
+        chatTurnRef.current = {
+          classId,
+          viewingQuiz,
+          artifact,
+          voiceOpen,
+          promptText,
+          content,
+          activeChatId,
+          effectiveWeek,
+          conversationWeek,
+          referenceContext,
+          priorConversation,
+          modelQuery,
+          activeClassSubject: activeClass?.subject || activeClass?.name || '',
+        }
         // The same value just pinned onto the chat by createChat above, so
         // this first turn and every later one (see the second
         // chatStream.start below) name the identical week.
@@ -2503,119 +2749,10 @@ export function ChatPage() {
           requestId: options.requestId,
         })
 
-        // Asked instead of building — onDone (above) already rendered the
-        // question cards as their own message. Nothing left to do here
-        // until the teacher answers, which re-enters submit() as a normal
-        // message and lands right back in this same branch.
+        // onAction starts quiz/plan as soon as the tool event arrives.
+        // If it already did, or this was questions/advice, nothing left here.
         if (firstResult?.questions?.length) return
-
-        if (firstResult?.quizRequested) {
-          startWorkActivity(firstResult.requestId, 'quiz')
-          const requested = firstResult.quizRequested
-          const revisingQuizId = quizRevisionId(requested, viewingQuiz)
-          if (!classId && !revisingQuizId) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: nextId(),
-                role: 'assistant',
-                content: 'Pick a class first — then I can build a quiz without a week.',
-              },
-            ])
-            finishWorkActivity(firstResult.requestId, { status: 'error', error: 'No class selected.' })
-            return
-          }
-          setQuizBuilding(true)
-          if (!firstResult.text?.trim()) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: nextId(),
-                role: 'assistant',
-                content: revisingQuizId
-                  ? 'Updating the quiz now.'
-                  : `Building your quiz now — ${requested.numQuestions} ${questionTypesProse(requested.questionTypes)} questions.`,
-              },
-            ])
-          }
-          setViewKind('quiz')
-          if (!expanded && !isPhone) setExpanded(true)
-          if (isPhone) setRailOpen(false)
-          try {
-            const quiz = revisingQuizId
-              ? await api.reviseStandaloneQuiz(revisingQuizId, requested.instruction || content, requested.questionIndices)
-              : await api.createStandaloneQuiz(classId, standaloneQuizBody(
-                requested,
-                content || promptText || activeClass?.subject || activeClass?.name || '',
-              ))
-            showReadyNotice(revisingQuizId ? 'Quiz updated' : 'Quiz ready')
-            qc.invalidateQueries({ queryKey: qk.standaloneQuizzes(classId) })
-            setViewingQuiz(quiz)
-            if (activeChatId) void persistMessage(activeChatId, { role: 'assistant', content: quizReceipt(quiz,
-              `${revisingQuizId ? 'Updated' : 'Built'} "${quiz.title}." The quiz is saved.`) })
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: nextId(),
-                role: 'assistant',
-                ...(!voiceOpen && !revisingQuizId ? { questions: completionSuggestions('quiz', quiz), questionPurpose: 'optional' } : {}),
-                content: revisingQuizId
-                  ? `Updated "${quiz.title}." Download the Word document or QTI package from the panel.`
-                  : `Built "${quiz.title}." Download the Word document or QTI package from the panel.`,
-              },
-            ])
-            finishWorkActivity(firstResult.requestId, {
-              status: 'complete',
-              summary: revisingQuizId ? 'Quiz updated and saved.' : 'Quiz built and saved.',
-            })
-          } catch (err) {
-            finishWorkActivity(firstResult.requestId, { status: 'error', error: err.message })
-            toast.apiError(revisingQuizId ? 'Could not update the quiz' : 'Could not build the quiz', err)
-          } finally {
-            setQuizBuilding(false)
-          }
-          return
-        }
-
-        if (!firstResult || !firstResult.toolCalled) {
-          // The model just replied (a clarifying remark, not a question
-          // card) with no tool call at all — onDone already rendered that
-          // text. Nothing to build yet.
-          return
-        }
-
-        let firstAction
-        try {
-          firstAction = planOperation(firstResult, null, { voice: voiceOpen })
-        } catch (err) {
-          finishWorkActivity(firstResult.requestId, { status: 'error', error: err.message })
-          setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', isError: true, content: err.message }])
-          return
-        }
-        let firstHistory = priorConversation
-        if (firstAction?.instruction) firstHistory += `\n\nRequest summary and prior constraints: ${firstAction.instruction}`
-        if (firstResult.text?.trim()) {
-          firstHistory += `\n\nASSISTANT: ${firstResult.text}`
-        }
-        /* Say something before disappearing for half a minute. When the
-           model decides to build, it emits a tool call and NO text — fine
-           in the text chat, where the week strip fills in visibly, but in a
-           spoken conversation it lands as the assistant simply going silent
-           mid-exchange, which is indistinguishable from it having broken. */
-        if (voiceOpen) {
-      voice.speak(VOICE_BUILDING)
-        }
-        planBuildInFlightRef.current = true
-        // stream.start() flips stream.isStreaming synchronously before its
-        // first await, so busy is already covered by the time preparing drops.
-        stream.start(modelQuery, {
-          chatId: activeChatId,
-          weekNumber: firstAction?.week_number ?? effectiveWeek,
-          classId,
-          conversationContext: firstHistory,
-          referenceContext,
-          requestId: firstResult.requestId,
-        }).catch(() => {})
+        actionHandlerRef.current?.(firstResult)
         return
       }
 
@@ -2648,6 +2785,23 @@ export function ChatPage() {
         { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: laterThinking },
       ])
       if (voiceOpen) voice.speak(`${laterThinking}.`)
+      startedActionRef.current = null
+      quizCancelRef.current = null
+      chatTurnRef.current = {
+        classId,
+        viewingQuiz,
+        artifact,
+        voiceOpen,
+        promptText,
+        content,
+        activeChatId,
+        effectiveWeek,
+        conversationWeek,
+        referenceContext,
+        priorConversation,
+        modelQuery,
+        activeClassSubject: activeClass?.subject || activeClass?.name || '',
+      }
       const chatResult = await chatStream.start(payloadMessages, {
         chatId: activeChatId,
         classId,
@@ -2661,230 +2815,8 @@ export function ChatPage() {
         requestId: options.requestId,
       })
       if (!chatResult) return
-
-      // The generate_quiz alternative — a distinct request from
-      // generate_lesson_plan (see quizRequested's own comment in
-      // useChatStream), handled and returned from here entirely rather
-      // than falling into the revise-the-plan branch below.
-      if (chatResult?.quizRequested) {
-        startWorkActivity(chatResult.requestId, 'quiz')
-        const requested = chatResult.quizRequested
-        const revisingQuizId = quizRevisionId(requested, viewingQuiz)
-        const canStandalone = Boolean(classId)
-        if (!artifact?.planId && !revisingQuizId && !canStandalone) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: nextId(),
-              role: 'assistant',
-              content: 'Pick a class first — then I can build a quiz without a week.',
-            },
-          ])
-          finishWorkActivity(chatResult.requestId, { status: 'error', error: 'No class selected.' })
-          return
-        }
-        setQuizBuilding(true)
-        if (!chatResult.text?.trim()) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: nextId(),
-              role: 'assistant',
-              content: revisingQuizId
-                ? 'Updating the quiz now.'
-                : `Building your quiz now — ${requested.numQuestions} ${questionTypesProse(requested.questionTypes)} questions.`,
-            },
-          ])
-        }
-
-        setViewKind('quiz')
-        if (!expanded && !isPhone) setExpanded(true)
-        if (isPhone) setRailOpen(false)
-
-        try {
-          let quiz
-          if (revisingQuizId && viewingQuiz?.plan_id) {
-            quiz = await api.reviseQuiz(viewingQuiz.plan_id || artifact.planId, revisingQuizId, requested.instruction || content, requested.questionIndices)
-          } else if (revisingQuizId) {
-            quiz = await api.reviseStandaloneQuiz(revisingQuizId, requested.instruction || content, requested.questionIndices)
-          } else if (voiceOpen ? artifact?.planId : requested.sourcePlanId) {
-            quiz = await api.createQuiz(requested.sourcePlanId || artifact.planId, {
-              ...requested,
-              instruction: requested.instruction || content,
-            })
-          } else {
-            quiz = await api.createStandaloneQuiz(classId, standaloneQuizBody(
-              requested,
-              content || activeClass?.subject || activeClass?.name || '',
-            ))
-          }
-          showReadyNotice(revisingQuizId ? 'Quiz updated' : 'Quiz ready')
-          if (quiz.plan_id) qc.invalidateQueries({ queryKey: qk.quizzes(quiz.plan_id) })
-          else qc.invalidateQueries({ queryKey: qk.standaloneQuizzes(classId) })
-          setViewingQuiz(quiz)
-          if (activeChatId) void persistMessage(activeChatId, { role: 'assistant', content: quizReceipt(quiz,
-            `${revisingQuizId ? 'Updated' : 'Built'} "${quiz.title}." The quiz is saved.`) })
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: nextId(),
-              role: 'assistant',
-              ...(!voiceOpen && !revisingQuizId ? { questions: completionSuggestions('quiz', quiz), questionPurpose: 'optional' } : {}),
-              content: revisingQuizId
-                ? `Updated "${quiz.title}." Download the Word document or QTI package from the panel.`
-                : `Built "${quiz.title}." Download the Word document or QTI package from the panel.`,
-            },
-          ])
-          finishWorkActivity(chatResult.requestId, {
-            status: 'complete',
-            summary: revisingQuizId ? 'Quiz updated and saved.' : 'Quiz built and saved.',
-          })
-        } catch (err) {
-          finishWorkActivity(chatResult.requestId, { status: 'error', error: err.message })
-          toast.apiError(revisingQuizId ? 'Could not update the quiz' : 'Could not build the quiz', err)
-        } finally {
-          setQuizBuilding(false)
-        }
-        return
-      }
-
-      // The update_lesson_day alternative — a targeted, one-field change
-      // instead of generate_lesson_plan's whole-week rebuild (see
-      // backend/llm.py's tool declaration). Handled by handing off to the
-      // SAME reviseDay() a teacher's own click on a document cell already
-      // uses, rather than inventing a second revision path — one surgical
-      // rewrite, two ways to ask for it.
-      if (chatResult?.dayRevisionRequested) {
-        startWorkActivity(chatResult.requestId, 'revision')
-        const { day: dayName, field, feedback } = chatResult.dayRevisionRequested
-        const targetPlanId = chatResult.dayRevisionRequested.targetPlanId || artifact?.planId
-        const dayIndex = artifact?.plan?.days?.findIndex((day) => day.name === dayName) ?? -1
-        // Recomputed here rather than closing over the top-level `livePlan`
-        // const, same reasoning as reviseDayRef just below: that const is
-        // declared further down this component, and referencing it from
-        // this earlier-declared callback would be a temporal-dead-zone
-        // crash on every render, not just a staleness risk. `artifact` and
-        // `stream` are already this callback's own dependencies, so this
-        // stays exactly as fresh as `livePlan` itself is.
-        const days = (artifact?.plan || stream.preview)?.days || []
-        const day = dayIndex >= 0 ? days[dayIndex] : null
-        if (!artifact?.planId || !day || (!voiceOpen && targetPlanId !== artifact.planId)) {
-          finishWorkActivity(chatResult.requestId, { status: 'error', error: 'The requested day or plan is no longer active.' })
-          // The system prompt already tells the model not to call this
-          // tool with no plan built yet — same race-not-a-drifted-model
-          // reasoning as the equivalent guard on generate_quiz above.
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: nextId(),
-              role: 'assistant',
-              isError: true,
-              content: "The requested day or plan is no longer active. Open the intended plan and try again.",
-            },
-          ])
-          return
-        }
-        const outcome = await reviseDayRef.current?.(dayIndex, day, feedback, field)
-        finishWorkActivity(chatResult.requestId, outcome?.ok
-          ? { status: 'complete', summary: `${dayName} was updated and saved.` }
-          : { status: 'error', error: outcome?.error || 'The revision was not saved.' })
-        return
-      }
-
-      if (!chatResult || !chatResult.toolCalled) {
-        // AI decided to just converse, no revision needed.
-        return
-      }
-
-      let action
-      try {
-        action = planOperation(chatResult, artifact?.planId, { voice: voiceOpen })
-      } catch (err) {
-        finishWorkActivity(chatResult.requestId, { status: 'error', error: err.message })
-        setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', isError: true, content: err.message }])
-        return
-      }
-      if (action.action === 'create') {
-        pendingActivityKindRef.current = 'plan'
-        stream.start(modelQuery, {
-          chatId: activeChatId,
-          classId,
-          weekNumber: action.week_number ?? conversationWeek,
-          conversationContext: `${priorConversation}\n\nRequest summary and prior constraints: ${action.instruction || ''}`,
-          referenceContext,
-          requestId: chatResult.requestId,
-        }).catch(() => {})
-        return
-      }
-      const revisionFeedback = action.instruction || promptText || 'Use the attached documents as reference for this revision.'
-
-      // Same silence problem as a first build — see VOICE_BUILDING's use above.
-      if (voiceOpen) {
-        voice.speak(VOICE_REVISING)
-      }
-      // Same fallback as the quiz-build path below, and the same reason: the
-      // model isn't REQUIRED to say anything before calling generate_lesson_plan
-      // (chatResult.text is what onDone already showed, above, when it did),
-      // and a revision is a real model call — answer-then-silence-then-a-
-      // sudden "Updated the week" reads as broken. Voice mode already speaks
-      // VOICE_REVISING, but that's audio, not a line in the transcript, so
-      // this isn't gated on voiceOpen.
-      if (!chatResult.text?.trim()) {
-        setMessages((prev) => [
-          ...prev,
-          { id: nextId(), role: 'assistant', content: action.action === 'revise_days' ? 'Updating the requested days now — one moment.' : 'Reworking the week now — one moment.' },
-        ])
-      }
-      const previousPlan = clonePlan(artifact.plan)
-      setRevising(true)
-      setPlanSaveState('saving')
-      try {
-        const row = action.action === 'revise_days'
-          ? await api.reviseDays({
-            plan_id: artifact.planId,
-            day_indices: revisionDayIndices(artifact.plan, action.days),
-            feedback: revisionFeedback,
-            field: action.field,
-          })
-          : await api.revisePlan(artifact.planId, revisionFeedback, { timeoutMs: 60000 })
-        setArtifact((a) => ({
-          ...a,
-          plan: row.plan_json,
-          warnings: row.warnings,
-          retrievedIds: row.retrieved_ids,
-        }))
-        // Same "reference what's actually there" treatment as the fresh-
-        // build confirmation above, not the old flat "Updated the week and
-        // rebuilt the document." every revision produced verbatim.
-        const reply = {
-          id: nextId(),
-          role: 'assistant',
-          content: `Done — ${row.week_label || 'the week'} is updated${unitSuffix(
-            row.unit,
-            ', still centered on '
-          )}. Let me know if anything else needs adjusting.`,
-          planId: row.id,
-          weekLabel: row.week_label,
-          plan: row.plan_json,
-          retrievedCodes: row.retrieved_ids,
-        }
-        setMessages((prev) => [...prev, reply])
-        if (activeChatId) {
-          void persistMessage(activeChatId, { role: 'assistant', content: reply.content, plan_id: row.id })
-        }
-        recordRevision('Lesson plan update', previousPlan)
-        finishWorkActivity(chatResult.requestId, { status: 'complete', summary: 'The lesson plan was updated and saved.' })
-      } catch (err) {
-        finishWorkActivity(chatResult.requestId, { status: 'error', error: err.message })
-        setPlanSaveState('error')
-        setMessages((prev) => [
-          ...prev,
-          { id: nextId(), role: 'assistant', isError: true, content: err.message, hint: err.hint },
-        ])
-        toast.apiError("Couldn't revise that", err)
-      } finally {
-        setRevising(false)
-      }
+      if (chatResult.questions?.length) return
+      actionHandlerRef.current?.(chatResult)
     },
     [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass]
   )
@@ -3235,34 +3167,40 @@ export function ChatPage() {
      with no indication anything had happened. */
   const stopGenerating = useCallback(() => {
     planBuildInFlightRef.current = false
+    quizCancelRef.current = startedActionRef.current
+    startedActionRef.current = null
     stream.stop()
-    finishWorkActivity(null, { status: 'cancelled', summary: 'Paused — send whenever you’re ready.' })
-    const content = 'Paused — send whenever you’re ready.'
-    setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content }])
-    if (localFor.current) {
-      void persistMessage(localFor.current, { role: 'assistant', content })
-    }
-  }, [stream, persistMessage, finishWorkActivity])
-
-  /* useChatStream.stop() has worked since it was written; nothing ever called
-     it. The composer's own fallback — a spinner captioned "this can't be
-     interrupted" — was therefore lying specifically about the conversational
-     reply, which is interruptible and just wasn't wired. */
-  const stopChatting = useCallback(() => {
     chatStream.stop()
-    voice.cancelSpeech()
     finishWorkActivity(null, { status: 'cancelled', summary: 'Paused — send whenever you’re ready.' })
-    // Aborting never reaches onDone/onError, so the live placeholder (see
-    // liveMessageIdRef) would otherwise sit there permanently mid-stream —
-    // settle it (or drop it, if nothing had streamed yet) before adding the
-    // "Stopped" message below.
     finalizeLiveMessage()
     const content = 'Paused — send whenever you’re ready.'
     setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content }])
     if (localFor.current) {
       void persistMessage(localFor.current, { role: 'assistant', content })
     }
-  }, [chatStream, persistMessage, finalizeLiveMessage, finishWorkActivity, voice])
+    setQuizBuilding(false)
+  }, [stream, chatStream, persistMessage, finishWorkActivity, finalizeLiveMessage])
+
+  /* useChatStream.stop() has worked since it was written; nothing ever called
+     it. The composer's own fallback — a spinner captioned "this can't be
+     interrupted" — was therefore lying specifically about the conversational
+     reply, which is interruptible and just wasn't wired. */
+  const stopChatting = useCallback(() => {
+    quizCancelRef.current = startedActionRef.current
+    startedActionRef.current = null
+    planBuildInFlightRef.current = false
+    chatStream.stop()
+    stream.stop()
+    voice.cancelSpeech()
+    finishWorkActivity(null, { status: 'cancelled', summary: 'Paused — send whenever you’re ready.' })
+    finalizeLiveMessage()
+    const content = 'Paused — send whenever you’re ready.'
+    setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', content }])
+    if (localFor.current) {
+      void persistMessage(localFor.current, { role: 'assistant', content })
+    }
+    setQuizBuilding(false)
+  }, [chatStream, stream, persistMessage, finalizeLiveMessage, finishWorkActivity, voice])
 
   const stopPreparing = useCallback(() => {
     if (!preparing || !pendingSubmissionRef.current) return
@@ -3278,10 +3216,10 @@ export function ChatPage() {
   }, [preparing])
 
   const stopActiveGeneration = useCallback(() => {
-    if (stream.isStreaming) return stopGenerating()
-    if (chatStream.isStreaming) return stopChatting()
-    stopPreparing()
-  }, [stream.isStreaming, chatStream.isStreaming, stopGenerating, stopChatting, stopPreparing])
+    if (stream.isStreaming || chatStream.isStreaming || quizBuilding) return stopGenerating()
+    if (preparing) return stopPreparing()
+    return stopChatting()
+  }, [stream.isStreaming, chatStream.isStreaming, quizBuilding, preparing, stopGenerating, stopChatting, stopPreparing])
 
   /* Rebuild the last turn from the same prompt. Keep the original user row and
      remove only the terminal error row; retrying must not duplicate the prompt
@@ -4154,7 +4092,7 @@ export function ChatPage() {
                         <WorkActivityCard
                           activity={activity}
                           compact={isLive && activity.kind !== 'plan'}
-                          onStop={activity.status === 'active' ? (stream.isStreaming ? stopGenerating : chatStream.isStreaming ? stopChatting : undefined) : undefined}
+                          onStop={activity.status === 'active' ? stopActiveGeneration : undefined}
                           onRetry={activity.status === 'error' && !busy ? () => retryLast(activity.requestId) : undefined}
                           onViewPlan={activity.status === 'complete' && artifact?.planId ? () => openDocument() : undefined}
                           onViewSources={activity.status === 'complete' && artifact?.planId ? openStandards : undefined}

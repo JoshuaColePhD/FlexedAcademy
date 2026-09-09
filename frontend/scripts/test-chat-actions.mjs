@@ -59,24 +59,26 @@ test('mismatched targets and missing days never become whole-plan revisions', ()
   assert.throws(() => revisionDayIndices(plan, ['Monday']), /no Monday/)
 })
 
-test('a truncated action retries but dispatches exactly once after completion', async () => {
+test('a truncated action still starts work once without retrying chat', async () => {
   let completed = 0
   let dispatched = 0
+  const actions = []
   const { hook, calls } = await harness([[action], [action, done]], {
-    onDone: () => completed++, onGeneratePlan: () => dispatched++,
+    onDone: () => completed++, onGeneratePlan: () => dispatched++, onAction: (payload) => actions.push(payload),
   })
   const result = await hook.start([{ role: 'user', content: 'Build a separate plan' }], { activePlanId: 'old-plan', requestId: 'r1' })
   assert.equal(result.planAction.action, 'create')
+  assert.equal(actions.length, 1)
   assert.equal(completed, 1)
   assert.equal(dispatched, 1)
-  assert.deepEqual(calls.map((c) => c.attempt), [0, 1])
+  assert.deepEqual(calls.map((c) => c.attempt), [0])
   assert.ok(calls.every((c) => c.request_id === 'r1' && c.active_plan_id === 'old-plan'))
 })
 
 test('exhausted truncated streams never dispatch or complete', async () => {
   let completed = 0
   let dispatched = 0
-  const { hook } = await harness([[action], [action], [action], [action]], {
+  const { hook } = await harness([[{ chunk: 'Still thinking' }], [{ chunk: 'Still thinking' }], [{ chunk: 'Still thinking' }], [{ chunk: 'Still thinking' }]], {
     onDone: () => completed++, onGeneratePlan: () => dispatched++,
   })
   await assert.rejects(hook.start([], { requestId: 'r2' }), /closed unexpectedly/)
@@ -144,4 +146,31 @@ test('typed chat recovers quiz arguments dumped as plain text', async () => {
   assert.equal(result.quizRequested.numQuestions, 5)
   assert.equal(result.quizRequested.instruction, 'Five inference items')
   assert.equal(dispatched, 1)
+})
+
+test('action can start from a mid-stream tool event without dispatching twice', async () => {
+  const actions = []
+  let dispatched = 0
+  const { hook } = await harness([[
+    { chunk: 'I’ll make a 5-question multiple-choice check.' },
+    action,
+    done,
+  ]], {
+    onAction: (payload) => actions.push(payload),
+    onGeneratePlan: () => dispatched++,
+  })
+  const result = await hook.start([], { requestId: 'r-overlap' })
+  assert.equal(actions.length, 1)
+  assert.equal(actions[0].planAction.action, 'create')
+  assert.match(result.text, /5-question/)
+  assert.equal(dispatched, 1)
+})
+
+test('truncated tool streams still emit onAction only once', async () => {
+  const actions = []
+  const { hook } = await harness([[action], [action, done]], {
+    onAction: (payload) => actions.push(payload),
+  })
+  await hook.start([], { requestId: 'r-once' })
+  assert.equal(actions.length, 1)
 })

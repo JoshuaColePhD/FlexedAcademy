@@ -1871,10 +1871,10 @@ CHAT_TOOLS = [
             # clearly asked for a quiz with no week in this conversation.
             "description": (
                 "Call this ONLY when the teacher explicitly asks for a quiz, test, or assessment as a "
-                "downloadable file, AND their request already says which question type(s) they want and "
-                "roughly how many — never volunteer it alongside a lesson plan, and never guess type or "
-                "count silently: call ask_clarifying_questions instead when either is missing. If a week "
-                "already exists in this conversation, the quiz is built over that plan's own content and "
+                "downloadable file. Never volunteer it alongside a lesson plan. Use named question "
+                "type(s) and count when given; otherwise default to 5 multiple-choice questions and say "
+                "so in 1–3 sentences before this call. Do not ask type or count. If a week already "
+                "exists in this conversation, the quiz is built over that plan's own content and "
                 "standards. If no week exists yet, still call this for a class-scoped quiz when the "
                 "teacher clearly asked for one (optionally with a pasted passage); do not tell them to "
                 "build the week first. Never call this in the same turn as generate_lesson_plan. "
@@ -1900,7 +1900,7 @@ CHAT_TOOLS = [
                     },
                     "num_questions": {
                         "type": "integer",
-                        "description": "How many questions, if the teacher named a number. Default 10.",
+                        "description": "How many questions, if the teacher named a number. Default 5.",
                     },
                     "passage_mode": {
                         "type": "string",
@@ -1935,23 +1935,17 @@ CHAT_TOOLS = [
             # not before either — these are alternatives, not a required
             # first step. A request that already names a text/topic and a
             # rough shape ("plan a week on Gatsby ch 3-4, rhetorical
-            # analysis"), or a quiz request that already names its
-            # type(s) and count ("10 multiple choice questions"), has
-            # enough to build from immediately. Not limited to the first
-            # message of a request — any turn where the teacher's last
-            # message is too vague to act on is fair game, tapping
-            # through options beats typing a paragraph either way.
+            # analysis"), or a quiz request ("make a quiz", "5 multiple
+            # choice questions"), has enough to build from immediately.
+            # Quiz type and count are never consequential; default them.
             "description": (
-                "Call this INSTEAD of generate_lesson_plan or generate_quiz when the teacher's most recent "
-                "message is too vague to act on directly — a plan request with no text/topic named, a "
-                "revision ask with no specifics ('can you change Thursday?' with no hint of how), or a "
-                "quiz request that doesn't already say which question type(s) and roughly how many. Ask "
-                "2-4 short, concrete questions, each with a few clickable options, so the teacher can tap "
-                "through rather than type a paragraph. Don't ask again about something they already "
-                "answered or already specified. For a new weekly lesson plan, the week is already a "
-                "complete structure from the selected school's template, so never ask "
-                "how many days or what duration; use questions to narrow the topic, text, skill, or "
-                "student task instead."
+                "Call this INSTEAD of generate_lesson_plan or generate_quiz when a missing goal, "
+                "text/passage, or revision target would materially change the result. Ask ONE short "
+                "question with a few clickable options. Do not ask quiz type or count — default those. "
+                "Don't ask again about something they already answered. For a new weekly lesson plan, "
+                "the week is already a complete structure from the selected school's template, so never "
+                "ask how many days or what duration; use the question to narrow the topic, text, skill, "
+                "or student task instead."
             ),
             "parameters": {
                 "type": "object",

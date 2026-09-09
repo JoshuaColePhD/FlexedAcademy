@@ -64,8 +64,10 @@ checklist or demand an interview before helping.
 
 Use only supplied standards and source evidence for specific codes or research
 claims. Distinguish sourced evidence from professional suggestions; never invent
-citations or claim personal classroom experience. Say what you are about to do,
-not that it is saved, built, or updated: the app confirms completion after success.
+citations or claim personal classroom experience. Before any artifact tool, write
+1–3 sentences of what you are about to do and any material assumption (for example,
+a 5-question multiple-choice default). Do not say it is saved, built, or updated:
+the app confirms completion after success.
 Never volunteer extra artifacts. Generate a quiz only when requested; a plan is
 preferred, but a class-scoped standalone quiz is allowed when they clearly asked
 for one with no week yet. Use source_plan_id=null for a standalone topic or supplied
@@ -96,7 +98,7 @@ def typed_chat_tools(legacy_tools):
                 "properties": {
                     "action": {"type": "string", "enum": ["create", "revise_week", "revise_days"]},
                     "target_plan_id": {"type": ["string", "null"]},
-                    "instruction": {"type": "string", "minLength": 1, "maxLength": 4000},
+                    "instruction": {"type": "string", "maxLength": 4000},
                     "days": {
                         "type": "array",
                         "items": {"type": "string", "enum": list(DAY_NAMES)},
@@ -106,14 +108,7 @@ def typed_chat_tools(legacy_tools):
                     "field": {"type": ["string", "null"], "enum": [*REVISABLE_FIELDS, None]},
                     "week_number": {"type": ["integer", "null"], "minimum": 1},
                 },
-                "required": [
-                    "action",
-                    "target_plan_id",
-                    "instruction",
-                    "days",
-                    "field",
-                    "week_number",
-                ],
+                "required": ["action"],
                 "additionalProperties": False,
             }
         elif fn["name"] == "ask_clarifying_questions":
@@ -122,8 +117,10 @@ def typed_chat_tools(legacy_tools):
             )
             fn["parameters"]["properties"]["questions"]["maxItems"] = 1
         elif fn["name"] == "update_lesson_day":
-            fn["parameters"]["properties"]["target_plan_id"] = {"type": "string"}
-            fn["parameters"]["required"].append("target_plan_id")
+            fn["parameters"]["properties"]["target_plan_id"] = {"type": ["string", "null"]}
+            required = fn["parameters"].setdefault("required", [])
+            if "target_plan_id" in required:
+                required.remove("target_plan_id")
         elif fn["name"] == "generate_quiz":
             fn["description"] = (
                 "Create a requested quiz or revise the explicitly targeted quiz. No lesson plan is required. "
@@ -136,9 +133,11 @@ def typed_chat_tools(legacy_tools):
                 "source_plan_id": {"type": ["string", "null"]},
                 "question_numbers": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 50}, "uniqueItems": True},
                 "target_quiz_id": {"type": ["string", "null"]},
-                "instruction": {"type": "string", "minLength": 1, "maxLength": 4000},
+                "instruction": {"type": "string", "maxLength": 4000},
             })
-            fn["parameters"]["required"] = ["question_types", "num_questions", "revises_current", "source_plan_id", "target_quiz_id", "instruction", "question_numbers"]
+            fn["parameters"]["required"] = []
+            if not fn["parameters"]["required"]:
+                fn["parameters"].pop("required", None)
     return tools
 
 

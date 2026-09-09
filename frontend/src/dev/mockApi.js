@@ -1456,13 +1456,17 @@ export function installMockApi() {
     if (path === '/api/chat_stream') {
       const last = [...(body?.messages || [])].reverse().find((m) => m.role === 'user')?.content || ''
       const wantsQuiz = /\bquiz\b/i.test(last)
-      // Mirrors backend/llm.py's real rule: generate_quiz only fires once the
-      // teacher's own message already names a type AND a count — otherwise
-      // ask_clarifying_questions asks the two things missing.
       const quizTypeNamed = /\b(multiple.choice|true.false|short.answer|matching|a mix)\b/i.test(last)
-      const quizCountNamed = /\b\d+\b/.test(last)
+      const countMatch = last.match(/\b(\d+)\b/)
+      const quizCount = countMatch ? Math.min(40, Math.max(1, Number(countMatch[1]))) : 5
+      const questionTypes = /\btrue.false\b/i.test(last)
+        ? ['true_false']
+        : /\bshort.answer\b/i.test(last)
+          ? ['short_answer']
+          : /\bmatching\b/i.test(last)
+            ? ['matching']
+            : ['multiple_choice']
       const passageMode = /\bpassage\b/i.test(last) ? 'ai_generated' : 'none'
-      const quizNeedsClarify = wantsQuiz && !(quizTypeNamed && quizCountNamed)
       const wantsPlan = /\b(plan|week|build|unit|lesson)\b/i.test(last)
       // Vague, on purpose: enough words to want a plan at all, but nothing
       // naming what the week is actually about — no text/topic, no skill, no
@@ -1471,18 +1475,10 @@ export function installMockApi() {
       // to drive the ask_clarifying_questions branch in the mock harness.
       const isVague = wantsPlan && last.trim().split(/\s+/).length <= 8 && !/\d|ch\.|chapter/i.test(last)
       return sse(
-        quizNeedsClarify
+        wantsQuiz
           ? [
-              [{ tool_call: 'ask_clarifying_questions', questions: [
-                { id: 'quiz_type', text: 'What kind of questions?', options: ['Multiple choice', 'True or false', 'Short answer', 'Matching', 'A mix'] },
-                { id: 'quiz_count', text: 'About how many?', options: ['5', '10', '15', '20'] },
-              ] }, 300],
-              [{ done: true }, 60],
-            ]
-          : wantsQuiz
-          ? [
-              [{ chunk: 'Sure — building a multiple choice quiz over this week now.' }, 120],
-              [{ tool_call: 'generate_quiz', source_plan_id: body.active_plan_id || null, target_quiz_id: /\b(harder|easier|fix question|add two more)\b/i.test(last) ? body.active_quiz_id || null : null, instruction: last, question_types: ['multiple_choice', 'true_false'], num_questions: 6, passage_mode: passageMode, revises_current: /\b(harder|easier|fix question|add two more)\b/i.test(last) }, 120],
+              [{ chunk: quizTypeNamed || countMatch ? 'Sure — building that quiz now.' : 'I’ll make a short 5-question multiple-choice check.' }, 120],
+              [{ tool_call: 'generate_quiz', source_plan_id: body.active_plan_id || null, target_quiz_id: /\b(harder|easier|fix question|add two more)\b/i.test(last) ? body.active_quiz_id || null : null, instruction: last, question_types: questionTypes, num_questions: quizCount, passage_mode: passageMode, revises_current: /\b(harder|easier|fix question|add two more)\b/i.test(last) }, 120],
               [{ done: true }, 60],
             ]
           : isVague

@@ -71,6 +71,10 @@ def main() -> int:
     check("standalone does not tell them to build the week first as a refusal", "cannot be called" not in standalone)
     standalone_revise = quiz_tool_policy(has_plan=False, has_quiz=True)
     check("standalone revise still names revises_current", "revises_current: true" in standalone_revise)
+    check(
+        "unspecified quizzes are not type/count interviews",
+        "Do not interview for type or count" in standalone,
+    )
 
     print("\n4. clarifying-round cap uses kind/marker, not a canned intro")
     m = lambda **kw: ChatMessage(**kw)

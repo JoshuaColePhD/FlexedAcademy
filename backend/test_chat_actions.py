@@ -79,6 +79,10 @@ def test_voice_tools_unchanged_and_typed_questions_are_single():
         typed["ask_clarifying_questions"]["parameters"]["properties"]["questions"]["maxItems"] == 1
     )
     assert "action" in typed["generate_lesson_plan"]["parameters"]["required"]
+    assert typed["generate_lesson_plan"]["parameters"]["required"] == ["action"]
+    quiz_required = typed["generate_quiz"]["parameters"].get("required") or []
+    assert "instruction" not in quiz_required
+    assert "target_quiz_id" not in quiz_required
 
 
 def fake_stream(monkeypatch, payload, *, truncated=False):
@@ -361,6 +365,13 @@ def test_quiz_contract_preserves_constraints_and_scope():
     complete_typed_event(revision, active_plan={"id": "p1"}, last_user="Shorten Thursday.")
     assert revision["target_plan_id"] == "p1"
     assert revision["instruction"] == "Shorten Thursday."
+    omitted = validate_quiz_action({})
+    assert omitted["num_questions"] == 5
+    assert omitted["target_quiz_id"] is None
+    assert omitted["revises_current"] is False
+    create = validate_plan_action({"action": "create"})
+    assert create["target_plan_id"] is None
+    assert create["instruction"] == ""
 
 
 def test_chat_grounds_advice_in_active_standalone_quiz(chat_client, monkeypatch):
