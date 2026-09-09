@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test'
 
 const seed = '/preview.html?fresh=0&at=/c/c1/chat/seed1'
-const weekPlanName = 'Open Week 03 — Aug 17-21, 2026'
 
 /* Seeded chats already have a week, so Outputs should already be open.
    Keep this helper for tests that run before the artifact fetch lands, or
