@@ -1257,6 +1257,7 @@ export function installMockApi() {
     }
 
     const standaloneQuizCreate = path.match(/^\/api\/classes\/([^/]+)\/quizzes$/)
+    if (standaloneQuizCreate && method === 'GET') return json(state.standaloneQuizzes?.[standaloneQuizCreate[1]] || [])
     if (standaloneQuizCreate && method === 'POST') {
       await wait(800)
       const classId = standaloneQuizCreate[1]
@@ -1481,7 +1482,7 @@ export function installMockApi() {
           : wantsQuiz
           ? [
               [{ chunk: 'Sure — building a multiple choice quiz over this week now.' }, 120],
-              [{ tool_call: 'generate_quiz', question_types: ['multiple_choice', 'true_false'], num_questions: 6, passage_mode: passageMode, revises_current: /\b(harder|easier|fix question|add two more)\b/i.test(last) }, 120],
+              [{ tool_call: 'generate_quiz', source_plan_id: body.active_plan_id || null, target_quiz_id: /\b(harder|easier|fix question|add two more)\b/i.test(last) ? body.active_quiz_id || null : null, instruction: last, question_types: ['multiple_choice', 'true_false'], num_questions: 6, passage_mode: passageMode, revises_current: /\b(harder|easier|fix question|add two more)\b/i.test(last) }, 120],
               [{ done: true }, 60],
             ]
           : isVague

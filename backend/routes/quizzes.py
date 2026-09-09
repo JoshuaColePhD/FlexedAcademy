@@ -34,6 +34,7 @@ _DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.doc
 
 
 class StandaloneQuizRequest(BaseModel):
+    instruction: str = Field(default="", max_length=4000)
     question_types: list[str] = Field(default_factory=lambda: ["multiple_choice"])
     num_questions: int = Field(default=10, ge=1, le=50)
     passage_mode: str = "none"
@@ -43,6 +44,7 @@ class StandaloneQuizRequest(BaseModel):
 
 
 class StandaloneQuizReviseBody(BaseModel):
+    question_indices: list[int] | None = Field(default=None, max_length=50)
     feedback: str = Field(min_length=1, max_length=4000)
 
 
@@ -88,8 +90,7 @@ def create_standalone_quiz(
     if body.passage_mode not in PASSAGE_MODES:
         raise AppError("bad_passage_mode", f"Unknown passage_mode {body.passage_mode!r}.", status=400)
     if body.passage_mode == "teacher_provided" and not (body.passage_text or "").strip():
-        # Chat often sets teacher_provided without copying the passage; treat as topic quiz.
-        body.passage_mode = "none"
+        raise AppError("passage_text_required", "Please supply the passage for this quiz.", status=400)
     if body.passage_mode != "teacher_provided" and not (body.topic or "").strip():
         body.topic = (cls.get("subject") or cls.get("name") or "this week's content")[:500]
 
@@ -109,6 +110,7 @@ def create_standalone_quiz(
                     passage_mode=body.passage_mode,
                     passage_text=body.passage_text,
                     passage_title=body.passage_title,
+                    instruction=body.instruction,
                     topic=body.topic,
                     skip_cache=skip,
                 )
@@ -164,7 +166,7 @@ def revise_standalone_quiz(
             quiz_raw, warnings = schema.quiz_from_generator(
                 lambda skip: llm.revise_quiz(
                     user_id, plan, row["quiz_json"], body.feedback,
-                    class_id=row.get("class_id"), skip_cache=skip,
+                    class_id=row.get("class_id"), skip_cache=skip, question_indices=body.question_indices,
                 )
             )
         except schema.QuizSchemaError as e:

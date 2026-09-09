@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import test from 'node:test'
-import { chatMessageText, planOperation, revisionDayIndices } from '../src/lib/chatActions.js'
+import { recoverDumpedToolsFromText } from '../src/lib/chatToolRecovery.js'
+import { chatMessageText, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, revisionDayIndices } from '../src/lib/chatActions.js'
 
 // Run the actual hook's streaming code without a DOM. Only React state storage,
 // timing instrumentation, and the API URL are stubbed; fetch uses real Responses.
@@ -30,6 +31,7 @@ async function harness(responses, callbacks = {}) {
     react: { useCallback: (fn) => fn, useEffect: noop, useRef: (current) => ({ current }), useState: (initial) => [initial, noop] },
     '../lib/api': { ApiError, api: { chatStreamUrl: () => '/api/chat_stream' }, apiErrorFromBody: (body) => new ApiError(body.error.message, body.error) },
     '../lib/voiceMetrics': { firstToken: noop },
+    '../lib/chatToolRecovery': { recoverDumpedToolsFromText },
     '../lib/performanceMetrics': { mark: noop, measure: noop },
   }
   const source = await readFile(new URL('../src/hooks/useChatStream.js', import.meta.url), 'utf8')
@@ -74,7 +76,7 @@ test('a truncated action retries but dispatches exactly once after completion', 
 test('exhausted truncated streams never dispatch or complete', async () => {
   let completed = 0
   let dispatched = 0
-  const { hook } = await harness([[action], [action]], {
+  const { hook } = await harness([[action], [action], [action], [action]], {
     onDone: () => completed++, onGeneratePlan: () => dispatched++,
   })
   await assert.rejects(hook.start([], { requestId: 'r2' }), /closed unexpectedly/)
@@ -93,7 +95,7 @@ test('single-day actions retain target metadata and do not become plan creation'
   const event = { tool_call: 'update_lesson_day', day: 'Wednesday', field: 'assessment', feedback: 'Use an exit ticket', target_plan_id: 'p1' }
   const { hook } = await harness([[event, done]])
   const result = await hook.start([])
-  assert.equal(result.toolCalled, false)
+  assert.equal(result.toolCalled, true)
   assert.equal(result.dayRevisionRequested.targetPlanId, 'p1')
   assert.equal(result.dayRevisionRequested.field, 'assessment')
 })
@@ -120,6 +122,26 @@ test('stopping a delayed response suppresses completion and mutation', async () 
   assert.equal(dispatched, 0)
 })
 
-test('question cards remain meaningful in the next conversation turn', () => {
-  assert.equal(chatMessageText({ content: 'One detail:', questions: [{ text: 'Which skill?', options: ['Evidence', 'Organization'] }] }), 'One detail:\nWhich skill? (Evidence / Organization)')
+test('quiz revision uses the open quiz when the model omits the id', () => {
+  assert.equal(quizRevisionId({ revisesCurrent: true, targetQuizId: 'q1' }, { id: 'q1' }), 'q1')
+  assert.equal(quizRevisionId({ revisesCurrent: true }, { id: 'q1' }), 'q1')
+  assert.equal(quizRevisionId({ revisesCurrent: false, targetQuizId: 'q1' }, { id: 'q1' }), null)
+})
+
+
+test('saved quiz metadata survives different completion wording without guessing a plan', () => {
+  const quiz = { id: 'quiz-123', plan_id: null }
+  const receipt = quizReceipt(quiz, 'Ready whenever you are.')
+  assert.deepEqual(readQuizReceipt(receipt), { content: 'Ready whenever you are.', quiz: { id: quiz.id, planId: null } })
+  assert.equal(readQuizReceipt('Built a quiz.').quiz, null)
+})
+
+test('typed chat recovers quiz arguments dumped as plain text', async () => {
+  const dumped = { chunk: JSON.stringify({ question_types: ['multiple_choice'], num_questions: 5, instruction: 'Five inference items' }) }
+  let dispatched = 0
+  const { hook } = await harness([[dumped, done]], { onGeneratePlan: () => dispatched++ })
+  const result = await hook.start([])
+  assert.equal(result.quizRequested.numQuestions, 5)
+  assert.equal(result.quizRequested.instruction, 'Five inference items')
+  assert.equal(dispatched, 1)
 })

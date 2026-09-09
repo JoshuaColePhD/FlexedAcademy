@@ -435,22 +435,24 @@ export const api = {
    *  earlier one. `questionTypes` is a real array (['multiple_choice']),
    *  not a single string, since a request can name more than one type. */
   listQuizzes: (planId, { signal } = {}) => request(`/api/plans/${planId}/quizzes`, { signal }),
-  createQuiz: (planId, { questionTypes, numQuestions, passageMode = 'none', passageText, passageTitle } = {}) =>
+  createQuiz: (planId, { questionTypes, numQuestions, passageMode = 'none', passageText, passageTitle, instruction } = {}) =>
     request(`/api/plans/${planId}/quiz`, {
       method: 'POST',
       body: {
         question_types: questionTypes,
+        ...(instruction ? { instruction } : {}),
         num_questions: numQuestions,
         passage_mode: passageMode,
         ...(passageText ? { passage_text: passageText } : {}),
         ...(passageTitle ? { passage_title: passageTitle } : {}),
       },
     }),
-  createStandaloneQuiz: (classId, { questionTypes, numQuestions, passageMode = 'none', passageText, passageTitle, topic } = {}) =>
+  createStandaloneQuiz: (classId, { questionTypes, numQuestions, passageMode = 'none', passageText, passageTitle, topic, instruction } = {}) =>
     request(`/api/classes/${encodeURIComponent(classId)}/quizzes`, {
       method: 'POST',
       body: {
         question_types: questionTypes,
+        ...(instruction ? { instruction } : {}),
         num_questions: numQuestions,
         passage_mode: passageMode,
         ...(passageText ? { passage_text: passageText } : {}),
@@ -468,15 +470,15 @@ export const api = {
    * createQuiz would otherwise always do on every iteration. `feedback` is
    * the teacher's own message verbatim; the model already decided this was
    * a revision (generate_quiz's revises_current), not a new quiz. */
-  reviseQuiz: (planId, quizId, feedback) =>
+  reviseQuiz: (planId, quizId, feedback, questionIndices) =>
     request(`/api/plans/${planId}/quizzes/${quizId}/revise`, {
       method: 'POST',
-      body: { feedback },
+      body: { feedback, ...(questionIndices?.length ? { question_indices: questionIndices } : {}) },
     }),
-  reviseStandaloneQuiz: (quizId, feedback) =>
+  reviseStandaloneQuiz: (quizId, feedback, questionIndices) =>
     request(`/api/quizzes/${encodeURIComponent(quizId)}/revise`, {
       method: 'POST',
-      body: { feedback },
+      body: { feedback, ...(questionIndices?.length ? { question_indices: questionIndices } : {}) },
     }),
   updateStandaloneQuiz: (quizId, quizJson) =>
     request(`/api/quizzes/${encodeURIComponent(quizId)}`, { method: 'PUT', body: { quiz_json: quizJson } }),

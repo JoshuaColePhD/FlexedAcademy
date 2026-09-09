@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api, apiErrorFromBody } from '../lib/api'
 import * as metrics from '../lib/voiceMetrics'
 import * as perf from '../lib/performanceMetrics'
+import { recoverDumpedToolsFromText } from '../lib/chatToolRecovery'
 
 const SSE_PREFIX = 'data:'
 
@@ -26,8 +27,11 @@ const RETRYABLE_CODES = new Set([
   'malformed_tool_call',
   'empty_reply',
 ])
-const MAX_AUTO_RETRIES = 1
-const RETRY_DELAY_MS = 600
+const MAX_AUTO_RETRIES = 3
+const RETRY_DELAY_MS = 800
+// Idle silence, not total turn length. Keepalives and tokens reset this, so a
+// slow but live reply is not aborted at 25s the way a hung connection is.
+const ATTEMPT_TIMEOUT_MS = 25000
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -212,7 +216,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, activePlanId, referenceContext, controller, requestId, attempt }) => {
+  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, activePlanId, activeQuizId, referenceContext, hasQuiz, controller, requestId, attempt, onProgress }) => {
     let accumulated = ''
     cancelQueuedText()
     setText('')
@@ -229,8 +233,10 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
           chat_id: chatId ?? null,
           class_id: classId ?? null,
           active_plan_id: activePlanId ?? null,
+          active_quiz_id: activeQuizId ?? null,
           voice: Boolean(voice),
           week_number: weekNumber ?? null,
+          has_quiz: Boolean(hasQuiz),
           request_id: requestId,
           attempt,
         }),
@@ -247,7 +253,6 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       // it safely.
       throw new ApiError('The connection dropped before the reply started.', {
         code: 'stream_connection_error',
-        hint: 'Trying once more…',
         extra: { retryable: true },
       })
     }
@@ -339,10 +344,10 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         // request id while replacing the incomplete stream.
         throw new ApiError('The connection dropped while the reply was loading.', {
           code: 'stream_connection_error',
-          hint: 'Trying once more…',
           extra: { retryable: true },
         })
       }
+      onProgress?.()
       const { value, done } = next
       if (value) {
         buffer += decoder.decode(value, { stream: !done })
@@ -398,6 +403,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
           // there's no separate call afterward to fetch anything from; the
           // event already carries the finished array.
           if (event.tool_call === 'ask_clarifying_questions') {
+            toolCalled = true
             questions = event.questions || []
           }
 
@@ -418,13 +424,18 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
           // Its own arguments are the entire payload too, same reasoning as
           // ask_clarifying_questions just above.
           if (event.tool_call === 'generate_quiz') {
+            toolCalled = true
             quizRequested = {
               questionTypes: event.question_types || [],
-              numQuestions: event.num_questions || 10,
+              numQuestions: event.num_questions || 5,
               passageMode: event.passage_mode || 'none',
               passageTitle: event.passage_title || '',
               passageText: event.passage_text || '',
               revisesCurrent: !!event.revises_current,
+              sourcePlanId: event.source_plan_id,
+              targetQuizId: event.target_quiz_id,
+              instruction: event.instruction,
+              questionIndices: (event.question_numbers || []).map((n) => n - 1),
             }
           }
 
@@ -432,6 +443,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
           // see backend/llm.py's update_lesson_day tool. Same reasoning as
           // generate_quiz above: its own arguments are the entire payload.
           if (event.tool_call === 'update_lesson_day') {
+            toolCalled = true
             dayRevisionRequested = {
               targetPlanId: event.target_plan_id,
               day: event.day,
@@ -477,33 +489,23 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       })
     }
 
-    /* Defensive recovery, not a fix for the real problem: every so often the
-       model writes ask_clarifying_questions' own arguments out as literal
-       streamed text instead of actually invoking the tool — the SSE stream
-       never carries a `tool_call: 'ask_clarifying_questions'` event at all,
-       so `questions` stays null and `accumulated` ends up holding a raw
-       JSON blob like the very thing this tool's arguments schema describes.
-       Left alone, that JSON renders verbatim in the chat — worse than any
-       styling this hook's caller could apply, since there's no UI for "raw
-       tool-call JSON." Recognizing and parsing it here at least gets the
-       real, tappable question card on screen instead; the actual fix is
-       getting the model to call the tool reliably (generate.py's system
-       prompt), which no amount of client-side recovery can guarantee. */
-    if (!questions && !toolCalled && !quizRequested && !dayRevisionRequested) {
-      const trimmed = accumulated.trim()
-      if (trimmed.startsWith('{') && trimmed.includes('"questions"')) {
-        try {
-          const parsed = JSON.parse(trimmed)
-          if (Array.isArray(parsed.questions) && parsed.questions.length) {
-            questions = sanitizeClarifyingQuestions(parsed.questions)
-            accumulated = ''
-          }
-        } catch {
-          // Not actually parseable JSON — leave it as plain text, same as
-          // every other reply; nothing here makes that case any worse.
-        }
-      }
+    const recovered = recoverDumpedToolsFromText(accumulated, {
+      questions,
+      toolCalled,
+      quizRequested,
+      dayRevisionRequested,
+    })
+    questions = recovered.questions
+    accumulated = recovered.text
+    if (recovered.quizRequested) {
+      toolCalled = true
+      quizRequested = recovered.quizRequested
     }
+    if (recovered.dayRevisionRequested) {
+      toolCalled = true
+      dayRevisionRequested = recovered.dayRevisionRequested
+    }
+    if (questions) questions = voice ? sanitizeClarifyingQuestions(questions) : sanitizeClarifyingQuestions(questions).slice(0, 1)
 
     // Whatever tail never earned a sentence boundary of its own — a reply
     // that ends without punctuation, or one short enough to have none at all.
@@ -528,7 +530,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   }, [cancelQueuedText, queueText, flushText])
 
   const start = useCallback(
-    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber, activePlanId, referenceContext = '', requestId: requestedRequestId } = {}) => {
+    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber, activePlanId, activeQuizId, referenceContext = '', hasQuiz = false, requestId: requestedRequestId } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -554,7 +556,18 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       try {
         let lastErr = null
         for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
-          if (tryNum > 0) await sleep(RETRY_DELAY_MS)
+          if (controller.signal.aborted) return null
+          if (tryNum > 0) await sleep(RETRY_DELAY_MS * tryNum)
+          if (controller.signal.aborted) return null
+          const attemptController = new AbortController()
+          const onParentAbort = () => attemptController.abort()
+          controller.signal.addEventListener('abort', onParentAbort)
+          let timeoutId
+          const bumpIdleTimeout = () => {
+            window.clearTimeout(timeoutId)
+            timeoutId = window.setTimeout(() => attemptController.abort(), ATTEMPT_TIMEOUT_MS)
+          }
+          bumpIdleTimeout()
           try {
             const result = await attempt(messages, {
               chatId,
@@ -563,32 +576,43 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
               voice,
               weekNumber,
               activePlanId,
+              activeQuizId,
               referenceContext,
-              controller,
+              hasQuiz,
+              controller: attemptController,
               requestId,
               attempt: tryNum,
+              onProgress: bumpIdleTimeout,
             })
             if (!result || activeRequestRef.current !== requestId || controller.signal.aborted) return null
             onDoneRef.current?.(result)
             setStatus({ code: 'complete', label: 'Ready', requestId })
             return result
           } catch (err) {
-            if (err.name === 'AbortError' || controller.signal.aborted || activeRequestRef.current !== requestId) return null
-            lastErr = err
-            const retryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable
-            if (!retryable || tryNum === MAX_AUTO_RETRIES) break
-            // A voice stream may already have handed its first sentence to
-            // Realtime before the network failed. Clear that partial attempt
-            // before retrying the model, otherwise the retry speaks the same
-            // opening sentence twice.
+            if (controller.signal.aborted || activeRequestRef.current !== requestId) return null
+            lastErr = err.name === 'AbortError'
+              ? new ApiError('The connection dropped before the reply started.', {
+                code: 'stream_connection_error',
+                extra: { retryable: true },
+              })
+              : err
+            const retryable = RETRYABLE_CODES.has(lastErr.code) || lastErr.extra?.retryable
+            const maxTries = (lastErr.code === 'malformed_tool_call' || lastErr.code === 'empty_reply')
+              ? 1
+              : MAX_AUTO_RETRIES
+            if (!retryable || tryNum >= maxTries) break
             onRetryRef.current?.()
-            const retryStatus = { code: 'retrying', label: `Retrying… (${tryNum + 1}/${MAX_AUTO_RETRIES})`, requestId, attempt: tryNum }
+            const retryStatus = { code: 'retrying', label: 'Still working…', requestId, attempt: tryNum }
             setStatus(retryStatus)
             onStatusRef.current?.(retryStatus)
+          } finally {
+            window.clearTimeout(timeoutId)
+            controller.signal.removeEventListener('abort', onParentAbort)
+            if (!attemptController.signal.aborted) attemptController.abort()
           }
         }
         onErrorRef.current?.(lastErr)
-        setStatus({ code: 'error', label: lastErr?.message || 'Something went wrong', requestId })
+        setStatus({ code: 'error', label: 'Could not finish the reply', requestId })
         throw lastErr
       } finally {
         if (activeRequestRef.current === requestId) {

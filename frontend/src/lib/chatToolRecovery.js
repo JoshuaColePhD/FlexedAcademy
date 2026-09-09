@@ -16,11 +16,15 @@ function asQuizRequested(parsed) {
   const known = (Array.isArray(types) ? types : [types]).filter(Boolean)
   return {
     questionTypes: known.length ? known : ['multiple_choice'],
-    numQuestions: parsed.num_questions || parsed.numQuestions || 10,
+    numQuestions: parsed.num_questions || parsed.numQuestions || 5,
     passageMode: parsed.passage_mode || parsed.passageMode || 'none',
     passageTitle: parsed.passage_title || parsed.passageTitle || '',
     passageText: parsed.passage_text || parsed.passageText || '',
     revisesCurrent: !!parsed.revises_current || !!parsed.revisesCurrent,
+    sourcePlanId: parsed.source_plan_id ?? parsed.sourcePlanId ?? null,
+    targetQuizId: parsed.target_quiz_id ?? parsed.targetQuizId ?? null,
+    instruction: parsed.instruction || '',
+    questionIndices: (parsed.question_numbers || parsed.questionNumbers || []).map((n) => n - 1),
   }
 }
 
@@ -30,6 +34,7 @@ function asDayRevision(parsed) {
     day: parsed.day,
     field: parsed.field,
     feedback: parsed.feedback,
+    targetPlanId: parsed.target_plan_id || parsed.targetPlanId,
   }
 }
 

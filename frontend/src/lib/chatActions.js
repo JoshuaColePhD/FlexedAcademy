@@ -23,6 +23,12 @@ export function revisionDayIndices(plan, names) {
   })
 }
 
+/** Prefer the model's target, then the quiz the teacher is looking at. */
+export function quizRevisionId(requested, viewingQuiz) {
+  if (!requested?.revisesCurrent) return null
+  return requested.targetQuizId || viewingQuiz?.id || null
+}
+
 // Include card questions in subsequent turns as well as after a reload, when
 // persistence has already flattened them into the assistant's text.
 export function chatMessageText(message) {
@@ -30,4 +36,39 @@ export function chatMessageText(message) {
   const questions = (message.questions || []).map((question) =>
     `${question.text}${question.options?.length ? ` (${question.options.join(' / ')})` : ''}`)
   return [text, ...questions].filter(Boolean).join('\n')
+}
+
+// Optional follow-ups cost no model round trip and never mutate on display.
+// Each choice is an ordinary teacher request, handled by the same chat policy.
+export function completionSuggestions(kind, artifact) {
+  if (kind === 'quiz') return [{
+    id: 'optional_quiz_followup',
+    text: `Optional next step for ${artifact?.title || 'this quiz'}`,
+    options: ['Review whether these questions measure the learning goal.', 'Suggest how to reteach based on students’ answers.'],
+  }]
+  return [{
+    id: 'optional_plan_followup',
+    text: 'Optional next step for this lesson plan',
+    options: ['Review the pacing and flag anything unrealistic.', 'Suggest scaffolding for students who need more support.'],
+  }]
+}
+
+// Versioned metadata in the existing message text envelope keeps old clients
+// compatible; workflow state never depends on the visible completion wording.
+export function quizReceipt(quiz, content) {
+  return `<!--flexed:quiz:${JSON.stringify({ id: quiz.id, planId: quiz.plan_id || null })}-->\n${content}`
+}
+
+export function readQuizReceipt(content) {
+  const text = String(content || '')
+  const match = text.match(/^<!--flexed:quiz:(\{[^\n]*\})-->\n?/)
+  if (!match) return { content: text, quiz: null }
+  try {
+    const quiz = JSON.parse(match[1])
+    if (typeof quiz.id !== 'string' || !/^[\w-]{1,64}$/.test(quiz.id)
+      || (quiz.planId != null && (typeof quiz.planId !== 'string' || !/^[\w-]{1,64}$/.test(quiz.planId)))) return { content: text, quiz: null }
+    return { content: text.slice(match[0].length), quiz }
+  } catch {
+    return { content: text, quiz: null }
+  }
 }

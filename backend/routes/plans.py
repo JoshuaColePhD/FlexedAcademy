@@ -56,6 +56,7 @@ class PlanFeedback(BaseModel):
 
 
 class QuizRequest(BaseModel):
+    instruction: str = Field(default="", max_length=4000)
     question_types: list[str] = Field(default_factory=lambda: ["multiple_choice"], max_length=len(schema.QUESTION_TYPES))
     num_questions: int = Field(default=10, ge=1, le=40)
     passage_mode: Literal["none", "ai_generated", "teacher_provided"] = "none"
@@ -84,6 +85,7 @@ class QuizUpdateRequest(BaseModel):
 
 
 class QuizReviseBody(BaseModel):
+    question_indices: list[int] | None = Field(default=None, max_length=50)
     # The teacher's own message that triggered this — see ChatPage.jsx's own
     # comment on why the chat flow passes it straight through rather than
     # trying to summarize or structure it first.
@@ -784,6 +786,7 @@ def create_quiz(
                     passage_mode=body.passage_mode,
                     passage_text=body.passage_text,
                     passage_title=body.passage_title,
+                    instruction=body.instruction,
                     skip_cache=skip,
                 )
             )
@@ -833,7 +836,7 @@ def revise_quiz_route(
             quiz_raw, warnings = schema.quiz_from_generator(
                 lambda skip: llm.revise_quiz(
                     user_id, row["plan_json"], quiz_row["quiz_json"], body.feedback,
-                    class_id=row.get("class_id"), skip_cache=skip,
+                    class_id=row.get("class_id"), skip_cache=skip, question_indices=body.question_indices,
                 )
             )
         except schema.QuizSchemaError as e:

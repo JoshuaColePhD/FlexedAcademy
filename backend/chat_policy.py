@@ -36,6 +36,10 @@ require a planning interview merely because Plan mode is selected. Use existing
 question cards with a short lead-in and no duplicate prose. Default minor choices
 sensibly and state material assumptions briefly. The school template defines the
 week structure: never ask how many days the new plan should run.
+Keep the conversation open: greetings deserve a natural greeting, not an interview.
+The teacher can think aloud, change subjects, or type freely past a question card.
+Create first when the request is clear; offer at most one useful optional next step
+afterward. Optional suggestions never authorize an edit until selected or requested.
 
 Use generate_lesson_plan with explicit action create, revise_week, or revise_days.
 create produces a separate plan even when one is open. For revisions, copy the
@@ -64,8 +68,15 @@ citations or claim personal classroom experience. Say what you are about to do,
 not that it is saved, built, or updated: the app confirms completion after success.
 Never volunteer extra artifacts. Generate a quiz only when requested; a plan is
 preferred, but a class-scoped standalone quiz is allowed when they clearly asked
-for one with no week yet. Clarify only missing consequential quiz choices, one
-question at a time. When revising an existing quiz use revises_current=true; a
+for one with no week yet. Use source_plan_id=null for a standalone topic or supplied
+passage, even with a plan open; otherwise use the active plan ID for a quiz about
+that plan. For revisions copy active target_quiz_id exactly. Set question_numbers to
+the one-based question numbers for a targeted edit, or [] for a whole-quiz revision
+or new quiz. Include the learning goal, requested change, difficulty, accessibility
+and prior constraints in instruction. Use a short 5-question multiple-choice check
+as the default for an unspecified quick quiz, stating the assumption; do not require
+type/count selections when reasonable defaults suffice. Clarify missing consequential
+choices one at a time. When revising an existing quiz use revises_current=true; a
 distinct quiz uses false.
 """
 
@@ -114,12 +125,41 @@ def typed_chat_tools(legacy_tools):
             fn["parameters"]["properties"]["target_plan_id"] = {"type": "string"}
             fn["parameters"]["required"].append("target_plan_id")
         elif fn["name"] == "generate_quiz":
+            fn["description"] = (
+                "Create a requested quiz or revise the explicitly targeted quiz. No lesson plan is required. "
+                "Use source_plan_id for a quiz grounded in that plan, null for a standalone quiz. "
+                "Use target_quiz_id only for revision. Carry the teacher's goal and constraints in instruction. "
+                "Default a quick quiz to 5 multiple-choice questions if unspecified; do not force a questionnaire."
+            )
             fn["parameters"]["properties"]["revises_current"] = {"type": "boolean"}
+            fn["parameters"]["properties"].update({
+                "source_plan_id": {"type": ["string", "null"]},
+                "question_numbers": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 50}, "uniqueItems": True},
+                "target_quiz_id": {"type": ["string", "null"]},
+                "instruction": {"type": "string", "minLength": 1, "maxLength": 4000},
+            })
+            fn["parameters"]["required"] = ["question_types", "num_questions", "revises_current", "source_plan_id", "target_quiz_id", "instruction", "question_numbers"]
     return tools
 
 
+def _optional_id(value):
+    if value is None or value in ("", "none", "null"):
+        return None
+    if not isinstance(value, str) or not value.strip() or len(value) > 64:
+        raise AppError(
+            "malformed_tool_call", "The action was incomplete. Please try again.", status=502
+        )
+    return value.strip()
+
+
+def _optional_instruction(value):
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:4000]
+
+
 def validate_plan_action(args):
-    """Reject incomplete or contradictory actions before sending an executable event."""
+    """Normalize a plan tool call. Leaked active IDs on create used to 502 the turn."""
 
     def invalid():
         raise AppError(
@@ -129,14 +169,12 @@ def validate_plan_action(args):
     if not isinstance(args, dict):
         invalid()
     action = args.get("action")
-    instruction = args.get("instruction")
-    target = args.get("target_plan_id")
-    days = args.get("days", [])
+    instruction = _optional_instruction(args.get("instruction"))
+    target = _optional_id(args.get("target_plan_id"))
+    days = args.get("days") or []
     field = args.get("field")
     week = args.get("week_number")
     if action not in ("create", "revise_week", "revise_days"):
-        invalid()
-    if not isinstance(instruction, str) or not instruction.strip() or len(instruction) > 4000:
         invalid()
     if (
         not isinstance(days, list)
@@ -146,21 +184,31 @@ def validate_plan_action(args):
         invalid()
     if field is not None and (not isinstance(field, str) or field not in REVISABLE_FIELDS):
         invalid()
-    if week is not None and (type(week) is not int or week < 1):
-        invalid()
-    if action == "create":
-        if target is not None or days or field is not None:
+    if week is not None:
+        if isinstance(week, bool):
             invalid()
-    elif not isinstance(target, str) or not target.strip() or len(target) > 64:
-        invalid()
+        try:
+            week = int(week)
+        except (TypeError, ValueError):
+            invalid()
+        if week < 1:
+            invalid()
+    if action == "create":
+        # Models copy Active target_plan_id into every call because the field is
+        # required. Treating that as a failed create made a clear "build a week"
+        # request look like the chat had crashed.
+        target = None
+        days = []
+        field = None
     if action == "revise_days" and not days:
         invalid()
-    if action == "revise_week" and (days or field is not None):
-        invalid()
+    if action == "revise_week":
+        days = []
+        field = None
     return {
         "action": action,
         "target_plan_id": target,
-        "instruction": instruction.strip(),
+        "instruction": instruction,
         "days": days,
         "field": field,
         "week_number": week,
@@ -178,3 +226,102 @@ def validate_action_target(event, active_plan_id):
             "The requested plan is no longer active. Open the intended plan and try again.",
             status=409,
         )
+
+
+def validate_quiz_action(args):
+    """Normalize a quiz tool call. Missing fields and leaked open-quiz IDs used to 502."""
+    if not isinstance(args, dict):
+        raise AppError("malformed_tool_call", "The quiz action was incomplete.", status=502)
+    revises = bool(args.get("revises_current"))
+    instruction = _optional_instruction(args.get("instruction"))
+    target = _optional_id(args.get("target_quiz_id"))
+    source = _optional_id(args.get("source_plan_id"))
+    count = args.get("num_questions")
+    if count is None or count == "":
+        count = 5
+    elif isinstance(count, bool):
+        raise AppError("malformed_tool_call", "The quiz action was incomplete. Please try again.", status=502)
+    else:
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            count = 5
+    if not 1 <= count <= 40:
+        count = min(40, max(1, count))
+    if not revises:
+        # Same leaked-ID problem as plan create: the model copies Active
+        # target_quiz_id onto a new quiz because the field is required.
+        target = None
+    numbers = args.get("question_numbers") or []
+    if (
+        not isinstance(numbers, list)
+        or any(type(n) is not int or not 1 <= n <= 50 for n in numbers)
+        or len(set(numbers)) != len(numbers)
+        or (numbers and not revises)
+    ):
+        raise AppError("malformed_tool_call", "The quiz question target was incomplete.", status=502)
+    return {
+        "instruction": instruction,
+        "target_quiz_id": target,
+        "source_plan_id": source,
+        "question_numbers": numbers,
+        "revises_current": revises,
+        "num_questions": count,
+    }
+
+
+def complete_typed_event(event, *, active_plan=None, active_quiz=None, last_user=""):
+    """Attach the open artifact when the model omitted it, and drop leaked IDs on create.
+
+    stream_chat validates shape; this runs on the route, which is the only
+    place that knows which plan and quiz the teacher is actually looking at.
+    """
+    if not isinstance(event, dict):
+        return event
+    fallback = _optional_instruction(last_user)
+    active_plan_id = (active_plan or {}).get("id")
+    active_quiz_id = (active_quiz or {}).get("id")
+    tool = event.get("tool_call")
+    if tool == "generate_lesson_plan":
+        if not event.get("instruction") and fallback:
+            event["instruction"] = fallback
+        action = event.get("action")
+        if action == "create":
+            event["target_plan_id"] = None
+            event["days"] = []
+            event["field"] = None
+        elif action in ("revise_week", "revise_days"):
+            if not event.get("target_plan_id") and active_plan_id:
+                event["target_plan_id"] = active_plan_id
+        if action == "revise_week":
+            event["days"] = []
+            event["field"] = None
+    elif tool == "update_lesson_day":
+        if not event.get("target_plan_id") and active_plan_id:
+            event["target_plan_id"] = active_plan_id
+        if not event.get("feedback") and fallback:
+            event["feedback"] = fallback
+    elif tool == "generate_quiz":
+        if not event.get("instruction") and fallback:
+            event["instruction"] = fallback
+        if event.get("revises_current"):
+            if not event.get("target_quiz_id") and active_quiz_id:
+                event["target_quiz_id"] = active_quiz_id
+            if not event.get("target_quiz_id"):
+                event["revises_current"] = False
+        else:
+            event["target_quiz_id"] = None
+    return event
+
+
+def preserve_quiz_scope(original, revised, question_indices):
+    if not question_indices:
+        return revised
+    old = original.get("questions", [])
+    new = revised.get("questions", []) if isinstance(revised, dict) else []
+    if len(new) != len(old) or any(type(i) is not int or not 0 <= i < len(old) for i in question_indices):
+        raise AppError("invalid_quiz_scope", "The revision changed the quiz structure. No questions were saved.", status=502)
+    result = deepcopy(original)
+    for i in question_indices:
+        result["questions"][i] = new[i]
+    return result

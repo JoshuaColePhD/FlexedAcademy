@@ -106,6 +106,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
   const pendingTextRef = useRef(null)
   const pendingPreviewRef = useRef(undefined)
   const previewRafRef = useRef(null)
+  const firstPreviewRef = useRef(false)
   const lastPreviewParseAtRef = useRef(0)
   const PREVIEW_PARSE_INTERVAL_MS = 100
 
@@ -131,7 +132,14 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
     const now = performance.now()
     if (now - lastPreviewParseAtRef.current >= PREVIEW_PARSE_INTERVAL_MS) {
       const parsed = usablePlan(parsePartialJson(value))
-      if (parsed) pendingPreviewRef.current = parsed
+      if (parsed) {
+        pendingPreviewRef.current = parsed
+        if (!firstPreviewRef.current) {
+          firstPreviewRef.current = true
+          perf.mark('lesson-stream:first-preview')
+          perf.measure('lesson-stream:time-to-first-preview', 'lesson-stream:start', 'lesson-stream:first-preview')
+        }
+      }
       lastPreviewParseAtRef.current = now
     }
     if (previewRafRef.current != null) return
@@ -315,7 +323,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
         }
         throw new ApiError('The connection dropped while writing the week.', {
           code: 'stream_connection_error',
-          hint: 'Nothing was saved. Try again.',
+          hint: 'Checking whether the plan finished saving…',
           extra: { retryable: true },
         })
       }
@@ -337,6 +345,8 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
           } catch {
             continue
           }
+          if (controller.signal.aborted || stoppedRef.current) continue
+          if (event.request_id && event.request_id !== requestId) continue
           if (event.error) {
             throw new ApiError(event.error.message || 'Generation failed.', {
               code: event.error.code || 'stream_error',
@@ -402,10 +412,11 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
     if (!finished) {
       throw new ApiError('The connection closed before the plan was finished.', {
         code: 'stream_truncated',
-        hint: 'Nothing was saved. Try again.',
+        hint: 'Checking whether the plan finished saving…',
       })
     }
 
+    if (controller.signal.aborted || stoppedRef.current) return null
     flushPlanUpdate(accumulated)
     setPreview(finished.plan ?? null)
     setStatus({ phase: 'complete', label: 'Complete' })
@@ -429,6 +440,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
       const requestId = requestedRequestId || (typeof crypto !== 'undefined' && crypto.randomUUID
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+      firstPreviewRef.current = false
       paramsRef.current = { query, chatId, weekNumber, classId, conversationContext, referenceContext, requestId }
       onStartRef.current?.({ requestId, attempt: 0 })
 
@@ -442,7 +454,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
 
       try {
         let lastErr = null
-        for (let tryNum = 0; tryNum < 40; tryNum++) {
+        for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
           if (stoppedRef.current) return null
           if (tryNum > 0) await sleep(RETRY_DELAY_MS)
           try {
@@ -456,6 +468,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
               requestId,
               attempt: tryNum,
             })
+            if (!result || controller.signal.aborted || stoppedRef.current) return null
             onDoneRef.current?.(result)
             return result
           } catch (err) {
@@ -475,6 +488,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
             }
             if (snap?.status === 'done' && snap.result) {
               const result = { ...snap.result, requestId, grounding: groundingRef.current }
+              if (controller.signal.aborted || stoppedRef.current) return null
               onDoneRef.current?.(result)
               return result
             }

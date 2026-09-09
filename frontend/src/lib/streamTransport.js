@@ -14,3 +14,27 @@ export function droppedConnectionCopy(writing = false) {
     code: 'stream_connection_error',
   }
 }
+
+export function chatFailureCopy(err) {
+  if (isDroppedConnectionError(err)) return droppedConnectionCopy(false)
+  const code = err?.code
+  if (code === 'malformed_tool_call' || code === 'empty_reply') {
+    return {
+      message: "I didn't catch that cleanly.",
+      hint: 'Send it again and I’ll pick it up.',
+      code,
+    }
+  }
+  if (code === 'invalid_plan_target' || code === 'invalid_quiz_target') {
+    return {
+      message: err.message || 'Open the plan or quiz you meant and try again.',
+      hint: err.hint || 'The open artifact changed before that action finished.',
+      code,
+    }
+  }
+  return {
+    message: err?.message || "I couldn't get a reply just then.",
+    hint: err?.hint || 'Tap Try again.',
+    code,
+  }
+}

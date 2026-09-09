@@ -99,26 +99,14 @@ def test_empty_topic_falls_back_to_class_subject(monkeypatch, tmp_path):
     assert seen["topic"]
 
 
-def test_teacher_provided_without_passage_becomes_topic_quiz(monkeypatch, tmp_path):
+def test_teacher_provided_without_passage_never_substitutes_a_topic(monkeypatch):
     monkeypatch.setattr(quizzes.db, "get_class", lambda u, c: CLASS)
     monkeypatch.setattr(quizzes, "require_entitlement", lambda u: None)
-    monkeypatch.setattr(quizzes.generation_queue, "slot", lambda u: contextlib.nullcontext())
-    seen = {}
-
-    def fake_gen(*a, **k):
-        seen["mode"] = k.get("passage_mode")
-        seen["topic"] = k.get("topic")
-        return FIXTURE_QUIZ
-
-    monkeypatch.setattr(quizzes.llm, "generate_passage_quiz", fake_gen)
-    monkeypatch.setattr(plans_mod.settings, "plans_dir", tmp_path)
-    monkeypatch.setattr(plans_mod.storage, "mirror_file", lambda path: True)
-    monkeypatch.setattr(quizzes.db, "create_quiz", lambda **kw: {"id": kw["quiz_id"], **kw})
-    quizzes.create_standalone_quiz(
-        "c1", _body(passage_mode="teacher_provided", passage_text="   "), user_id="u1"
-    )
-    assert seen["mode"] == "none"
-    assert seen["topic"]
+    with pytest.raises(Exception) as error:
+        quizzes.create_standalone_quiz(
+            "c1", _body(passage_mode="teacher_provided", passage_text="   "), user_id="u1"
+        )
+    assert _code(error.value) == "passage_text_required"
 
 
 def test_create_builds_planfree_quiz_end_to_end(monkeypatch, tmp_path):

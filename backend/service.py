@@ -1179,7 +1179,7 @@ def revise_days(
                 status=400,
             )
 
-    targets = [i for i in day_indices if not days[i].get("no_school")]
+    targets = [i for i in day_indices if field is None or not days[i].get("no_school")]
     if not targets:
         raise AppError(
             "no_revisable_days",
@@ -1244,7 +1244,7 @@ def revise_days(
             act_alignment_enabled=act_row,
         )
         updated["name"] = original["name"]
-        if "no_school" in original:
+        if field is not None and "no_school" in original:
             updated["no_school"] = original["no_school"]
         if field is not None:
             for key, was in original.items():

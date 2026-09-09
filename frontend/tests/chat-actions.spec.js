@@ -144,3 +144,82 @@ test('failed new-plan generation preserves the current plan and shows no complet
   expect(await page.evaluate(() => window.__mock.state.ownedPlanIds.length)).toBe(2)
   await expect(page.getByText(/is built/)).toHaveCount(0)
 })
+
+const quizAction = (extra = {}) => ({ tool_call: 'generate_quiz', source_plan_id: null, target_quiz_id: null, instruction: 'Assess inference with a five-minute paper quiz; preserve accessible wording.', question_types: ['multiple_choice'], num_questions: 5, passage_mode: 'none', revises_current: false, ...extra })
+
+async function trackQuizzes(page) {
+  await page.evaluate(() => {
+    const original = window.fetch
+    window.fetch = async (input, init = {}) => {
+      const url = typeof input === 'string' ? input : input.url
+      if (init.method === 'POST' && /\/quizzes(?:\/[^/]+\/revise)?$/.test(url)) {
+        window.chatCalls.push({ path: 'quiz', url, body: JSON.parse(init.body) })
+        if (window.revisionFailure) return new Response(JSON.stringify({ error: { code: 'quiz_failed', message: 'Quiz test failure' } }), { status: 500 })
+      }
+      return original(input, init)
+    }
+  })
+}
+
+test('standalone quiz with a plan open preserves the plan and carries constraints into revision', async ({ page }) => {
+  await openChat(page)
+  await trackQuizzes(page)
+  const before = await page.evaluate(() => structuredClone(window.__mock.state.plans.plan1))
+  await events(page, [quizAction(), done])
+  await send(page, 'Create a separate inference quiz with accessible wording, five minutes, on paper.')
+  await expect(page.getByText(/Built "/).last()).toBeVisible()
+  const create = await page.evaluate(() => window.chatCalls.find((c) => c.path === 'quiz'))
+  expect(create.url).toContain('/classes/c1/quizzes')
+  expect(create.body.instruction).toContain('accessible wording')
+  const quizId = await page.evaluate(() => window.__mock.state.standaloneQuizzes.c1[0].id)
+  await events(page, [quizAction({ revises_current: true, target_quiz_id: quizId, instruction: 'Make the inference more demanding, retaining five minutes and accessible wording.' }), done])
+  await send(page, 'Make this quiz harder.')
+  await expect(page.getByText(/Updated "/).last()).toBeVisible()
+  const revise = await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'quiz').at(-1))
+  expect(revise.url).toContain(`/quizzes/${quizId}/revise`)
+  expect(revise.body.feedback).toContain('five minutes and accessible wording')
+  expect(await page.evaluate(() => window.__mock.state.standaloneQuizzes.c1.length)).toBe(1)
+  expect(await page.evaluate(() => window.__mock.state.plans.plan1)).toEqual(before)
+})
+
+test('optional suggestions can be skipped or typed past without starting work', async ({ page }) => {
+  await openChat(page, true)
+  await events(page, [planAction('create'), done])
+  await send(page, 'Build a week on inference with paper materials and 45-minute periods.')
+  await expect(page.getByText('Optional next step for this lesson plan', { exact: true })).toBeVisible()
+  const calls = await page.evaluate(() => window.chatCalls.length)
+  await page.getByRole('button', { name: 'Skip', exact: true }).click()
+  await expect(page.getByText('Optional next step for this lesson plan', { exact: true })).toHaveCount(0)
+  expect(await page.evaluate(() => window.chatCalls.length)).toBe(calls)
+  await send(page, 'Why start with modeling?')
+  await expect(page.getByText('Try a short modeled example, then check an independent response.', { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'create').length)).toBe(1)
+})
+
+test('clicking a question answer preserves the full question and previous constraints', async ({ page }) => {
+  await openChat(page, true)
+  await events(page, [{ tool_call: 'ask_clarifying_questions', questions: [{ id: 'goal', text: 'Which skill should students practice?', options: ['Evidence', 'Organization'] }] }, done])
+  await send(page, 'Plan next week using paper materials in 45-minute periods.')
+  await expect(page.getByText('Which skill should students practice?', { exact: true })).toBeVisible()
+  await events(page, [planAction('create'), done])
+  await page.getByRole('button', { name: 'Evidence', exact: true }).click()
+  await expect(page.getByText(/is built/).last()).toBeVisible()
+  const last = await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'chat').at(-1).body)
+  expect(JSON.stringify(last.messages)).toContain('Which skill should students practice? (Evidence / Organization)')
+  expect(JSON.stringify(last.messages)).toContain('45-minute periods')
+})
+
+test('failed quiz revision retains the saved quiz and never reports updated', async ({ page }) => {
+  await openChat(page, true)
+  await trackQuizzes(page)
+  await events(page, [quizAction(), done])
+  await send(page, 'Make a five-question multiple-choice inference quiz.')
+  await expect(page.getByText(/Built "/).last()).toBeVisible()
+  const before = await page.evaluate(() => structuredClone(window.__mock.state.standaloneQuizzes.c1[0]))
+  await page.evaluate(() => { window.revisionFailure = true })
+  await events(page, [quizAction({ revises_current: true, target_quiz_id: before.id }), done])
+  await send(page, 'Make this quiz harder.')
+  await expect(page.getByText(/Quiz test failure/).first()).toBeVisible()
+  expect(await page.evaluate(() => window.__mock.state.standaloneQuizzes.c1[0])).toEqual(before)
+  await expect(page.getByText(/Updated "/)).toHaveCount(0)
+})

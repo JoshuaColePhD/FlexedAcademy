@@ -80,7 +80,7 @@ export function LessonQuestions({ questions, onSubmit }) {
     // Skip with nothing chosen must not dump the question list back as the
     // teacher's "answer" — the model already has the questions.
     if (!answered.length) {
-      onSubmit('Continue with what you already know from this conversation.')
+      onSubmit('Continue with what you already know from this conversation.', { skipped: true })
       return
     }
     onSubmit(answered.join('\n'), { youSaid: summary })

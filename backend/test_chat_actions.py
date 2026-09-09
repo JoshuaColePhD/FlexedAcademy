@@ -27,12 +27,7 @@ def action(**overrides):
     "change",
     [
         {"action": "unknown"},
-        {"instruction": ""},
-        {"instruction": "x" * 4001},
-        {"action": "revise_week"},
-        {"target_plan_id": "old-plan"},
         {"action": "revise_days", "target_plan_id": "p1"},
-        {"days": ["Monday"]},
         {"field": []},
         {"days": ["Blursday"]},
         {"week_number": True},
@@ -42,6 +37,19 @@ def action(**overrides):
 def test_rejects_unsafe_actions(change):
     with pytest.raises(AppError):
         validate_plan_action({**action(), **change})
+
+
+def test_create_ignores_leaked_active_plan_id():
+    result = validate_plan_action({**action(), "target_plan_id": "old-plan", "days": ["Monday"], "field": "during"})
+    assert result["action"] == "create"
+    assert result["target_plan_id"] is None
+    assert result["days"] == []
+    assert result["field"] is None
+
+
+def test_long_instruction_is_truncated_not_rejected():
+    result = validate_plan_action({**action(), "instruction": "x" * 4001})
+    assert len(result["instruction"]) == 4000
 
 
 def test_explicit_create_and_revision_targets():
@@ -329,3 +337,69 @@ def test_instructional_judgment_reaches_creation_and_scoped_revision(monkeypatch
     assert INSTRUCTIONAL_JUDGMENT in prompts.day_field_system_prompt(
         result, "{}", "during", subject="ELA"
     )
+
+
+def test_quiz_contract_preserves_constraints_and_scope():
+    from backend.chat_policy import complete_typed_event, validate_quiz_action
+    args = dict(instruction="Use paper and accessible wording", source_plan_id=None, target_quiz_id=None,
+                revises_current=False, num_questions=5)
+    assert validate_quiz_action(args)["source_plan_id"] is None
+    leaked = validate_quiz_action({**args, "target_quiz_id": "q1"})
+    assert leaked["target_quiz_id"] is None and leaked["revises_current"] is False
+    assert validate_quiz_action({**args, "num_questions": 100})["num_questions"] == 40
+    assert validate_quiz_action({**args, "revises_current": True, "target_quiz_id": "q1"})["target_quiz_id"] == "q1"
+    event = {"tool_call": "generate_quiz", "revises_current": True, "target_quiz_id": None, "instruction": ""}
+    complete_typed_event(event, active_quiz={"id": "q1"}, last_user="Make question 3 harder")
+    assert event["target_quiz_id"] == "q1"
+    assert event["instruction"] == "Make question 3 harder"
+    revision = {"tool_call": "generate_lesson_plan", "action": "revise_week", "target_plan_id": None, "instruction": ""}
+    complete_typed_event(revision, active_plan={"id": "p1"}, last_user="Shorten Thursday.")
+    assert revision["target_plan_id"] == "p1"
+    assert revision["instruction"] == "Shorten Thursday."
+
+
+def test_chat_grounds_advice_in_active_standalone_quiz(chat_client, monkeypatch):
+    from backend.routes import generate
+    client, captured, _ = chat_client
+    monkeypatch.setattr(generate.db, "get_quiz", lambda *a: {"id": "q1", "class_id": "c1", "quiz_json": {"title": "Inference on paper"}})
+    client.post('/api/chat_stream', json={"messages": [], "chat_id": "chat1", "class_id": "c1", "active_quiz_id": "q1"})
+    assert "Active target_quiz_id: q1" in captured[0][0]["content"]
+    assert "Inference on paper" in captured[0][0]["content"]
+
+
+def test_wrong_quiz_target_never_leaves_chat_route(chat_client):
+    client, _, emitted = chat_client
+    emitted.append({"tool_call": "generate_quiz", "revises_current": True, "target_quiz_id": "wrong"})
+    result = client.post('/api/chat_stream', json={"messages": [], "chat_id": "chat1"})
+    assert "invalid_quiz_target" in result.text
+    assert '"tool_call"' not in result.text
+
+
+def test_quiz_question_revision_preserves_unrelated_questions_and_passage():
+    from backend.chat_policy import preserve_quiz_scope
+    original = {"title": "Inference", "passages": [{"text": "Teacher text"}], "questions": [{"prompt": "Keep"}, {"prompt": "Revise"}, {"prompt": "Also keep"}]}
+    model = {"title": "Unwanted title", "passages": [], "questions": [{"prompt": "Unwanted"}, {"prompt": "Improved inference"}, {"prompt": "Unwanted"}]}
+    result = preserve_quiz_scope(original, model, [1])
+    assert result == {**original, "questions": [original["questions"][0], model["questions"][1], original["questions"][2]]}
+    assert original["questions"][1]["prompt"] == "Revise"
+    with pytest.raises(AppError):
+        preserve_quiz_scope(original, {"questions": []}, [1])
+
+
+def test_quiz_creation_prompt_receives_prior_constraints(monkeypatch):
+    seen = []
+    monkeypatch.setattr(llm, "custom_instructions_for", lambda *a: "")
+    monkeypatch.setattr(llm, "class_custom_instructions_for", lambda *a: "")
+    monkeypatch.setattr(llm, "_cached_completion", lambda *a, **kw: seen.append(kw["messages"]) or '{"questions": []}')
+    llm.generate_passage_quiz("u", subject="ELA", grade="8", question_types=["multiple_choice"], num_questions=5,
+                              instruction="Assess inference in five minutes with accessible wording and paper only.")
+    assert "five minutes with accessible wording and paper only" in seen[0][0]["content"]
+
+
+def test_missing_generation_job_does_not_restart_on_stream_retry(chat_client, monkeypatch):
+    from backend.routes import generate
+    client, _, _ = chat_client
+    monkeypatch.setattr(generate, "get_job", lambda *a: None)
+    with pytest.raises(AppError) as error:
+        client.post('/api/generate_stream', json={"query": "Build an inference week", "request_id": "lost-job", "attempt": 1})
+    assert error.value.code == "generation_interrupted"
