@@ -1412,6 +1412,11 @@ export function installMockApi() {
       return json({ web_link: state.planDriveFiles[planId], shares: state.planShares[planId] })
     }
 
+    if (path === '/api/generate_cancel' && method === 'POST') return json({ ok: true })
+    if (path.startsWith('/api/generate_jobs/') && method === 'GET') {
+      return json({ request_id: path.split('/').pop(), status: 'running' })
+    }
+
     if (path === '/api/generate_stream') {
       // Recorded so a test can assert what the MODEL received, as against what
       // the transcript shows — the two are deliberately different once a file

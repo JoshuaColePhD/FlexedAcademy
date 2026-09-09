@@ -3,6 +3,9 @@ from __future__ import annotations
 
 import json
 import logging
+import queue
+import re
+import threading
 import uuid
 
 import openai
@@ -15,6 +18,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..generation_jobs import cancel_job, get_job, start_or_attach
 from ..generation_queue import generation_queue
 from ..ratelimit import limiter
 from ..schema import SchemaError
@@ -22,6 +26,46 @@ from ..template_context import day_names_for_school, weekly_template_context
 
 log = logging.getLogger("flexedacademy.generate")
 router = APIRouter(prefix="/api", tags=["generate"])
+
+# Safari and Render's proxy close an SSE stream that sits idle. The model can
+# spend a long stretch on time-to-first-token after we emit "writing", which
+# is exactly when a phone shows "Building the days" and then "Load failed".
+_SSE_KEEPALIVE_SECONDS = 10.0
+
+
+def _with_keepalives(iterable, *, idle_seconds: float = _SSE_KEEPALIVE_SECONDS):
+    """Yield items from `iterable`, or None when it has been silent too long.
+
+    None is the caller's cue to emit an SSE comment. Work runs on a side
+    thread so a blocking OpenAI iterator cannot starve those heartbeats.
+    """
+    items: queue.Queue = queue.Queue()
+
+    def produce() -> None:
+        try:
+            for item in iterable:
+                items.put(("item", item))
+            items.put(("stop", None))
+        except BaseException as exc:  # noqa: BLE001 - must surface cancel to the SSE generator
+            items.put(("error", exc))
+
+    worker = threading.Thread(target=produce, name="sse-keepalive", daemon=True)
+    worker.start()
+    try:
+        while True:
+            try:
+                kind, payload = items.get(timeout=idle_seconds)
+            except queue.Empty:
+                yield None
+                continue
+            if kind == "item":
+                yield payload
+            elif kind == "stop":
+                return
+            else:
+                raise payload
+    finally:
+        worker.join(timeout=0.1)
 
 
 class GenerateRequest(BaseModel):
@@ -416,18 +460,26 @@ def generate(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, 
     )
 
 
+class CancelGenerateRequest(BaseModel):
+    request_id: str = Field(min_length=1, max_length=64)
+
+
 @router.post("/generate_stream")
 @limiter.limit("100/minute")
 def generate_stream(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     """Stream tokens, then emit the finished plan.
 
-    Every terminal event carries an `error` object with the same {code, message,
-    hint} shape as the REST errors, so the client has one path for both.
+    The model work runs as a job keyed by request_id so locking the phone or
+    switching apps does not cancel it. A later POST with the same request_id
+    attaches and replays. Every terminal event carries an `error` object with
+    the same {code, message, hint} shape as the REST errors.
     """
-    # Before the stream opens, so a blocked request is an ordinary 402 with the
-    # normal error envelope rather than an SSE frame the reader has to special-
-    # case. useLessonStream already reads a non-200 body through apiErrorFromBody.
-    require_entitlement(user_id)
+    request_id = req.request_id or str(uuid.uuid4())
+    existing = get_job(user_id, request_id)
+    if existing is None or existing.status not in {"running", "done"}:
+        # Attach/replay must not 402 a teacher who already started this week.
+        require_entitlement(user_id)
+
     cls = _request_class(user_id, req.class_id, req.chat_id)
     school_id = db.class_school(cls, user_id)
     template_days = day_names_for_school(school_id)
@@ -437,103 +489,187 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
         conversation_context=req.conversation_context,
         reference_context=req.reference_context,
     )
-    request_id = req.request_id or str(uuid.uuid4())
+
+    def worker(job):
+        _run_plan_job(
+            job,
+            user_id=user_id,
+            req=req,
+            cls=cls,
+            school_id=school_id,
+            template_days=template_days,
+            query=query,
+            model_query=model_query,
+        )
+
+    job = start_or_attach(user_id, request_id, worker)
 
     def event_stream():
-        lease = None
-        try:
-            lease = generation_queue.enqueue(user_id)
-            yield _activity_sse(
+        yield ": keepalive\n\n"
+        yield from job.follow()
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        background=bg_tasks,
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/generate_jobs/{request_id}")
+@limiter.limit("100/minute")
+def generate_job_status(request_id: str, request: Request, user_id: str = Depends(get_current_user)):
+    job = get_job(user_id, request_id)
+    if job is None:
+        raise AppError("not_found", "That generation is not running.", status=404)
+    return job.snapshot()
+
+
+@router.post("/generate_cancel")
+@limiter.limit("100/minute")
+def generate_cancel(req: CancelGenerateRequest, request: Request, user_id: str = Depends(get_current_user)):
+    cancel_job(user_id, req.request_id)
+    return {"ok": True}
+
+
+def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, model_query):
+    request_id = job.request_id
+    lease = None
+
+    def emit(payload, **kwargs):
+        job.publish(_activity_sse(payload, request_id, **kwargs))
+
+    try:
+        job.publish(": keepalive\n\n")
+        emit(
+            {
+                "status": "connecting",
+                "status_code": "connecting",
+                "label": "Starting…",
+            },
+            step="context",
+            step_state="active",
+            attempt=req.attempt,
+        )
+        lease = generation_queue.enqueue(user_id)
+        job.lease = lease
+        emit(
+            {
+                "status": "queued",
+                "status_code": "queued",
+                "label": "Queued behind another generation…" if lease.position > 1 else "Starting shortly…",
+                "queue_position": lease.position,
+            },
+            step="context",
+            step_state="active",
+            attempt=req.attempt,
+        )
+        while not lease.wait(timeout=15):
+            if job.cancelled.is_set() or lease.cancelled:
+                lease.cancel()
+                job.complete(cancelled=True)
+                return
+            emit(
                 {
                     "status": "queued",
                     "status_code": "queued",
-                    "label": "Queued behind another generation…" if lease.position > 1 else "Starting shortly…",
+                    "label": "Still queued — your request is safe…",
                     "queue_position": lease.position,
                 },
-                request_id,
                 step="context",
                 step_state="active",
                 attempt=req.attempt,
             )
-            while not lease.wait(timeout=15):
-                if lease.cancelled:
-                    lease.cancel()
-                    return
-                yield _activity_sse(
-                    {
-                        "status": "queued",
-                        "status_code": "queued",
-                        "label": "Still queued — your request is safe…",
-                        "queue_position": lease.position,
-                    },
-                    request_id,
-                    step="context",
+        require_entitlement(user_id)
+        emit(
+            {"status": "accepted", "status_code": "accepted", "label": "Generation started"},
+            step="context",
+            step_state="complete",
+            attempt=req.attempt,
+        )
+    except (AppError, SchemaError) as e:
+        log.warning("stream queue failed code=%s", e.code)
+        if lease is not None:
+            lease.release()
+            lease = None
+        err = e.payload().get("error", e.payload())
+        emit({"error": err, "status": "error"}, step="context", step_state="error", attempt=req.attempt)
+        job.complete(error=err if isinstance(err, dict) else {"message": str(err)})
+        return
+
+    chunks: list[str] = []
+    try:
+        emit({"status": "retrieving", "label": "Matching standards…", "template_days": template_days}, step="retrieval", step_state="active", attempt=req.attempt)
+
+        def _prepare():
+            yield service.prepare(user_id, query, cls=cls)
+
+        result = None
+        for item in _with_keepalives(_prepare()):
+            if job.cancelled.is_set():
+                job.complete(cancelled=True)
+                return
+            if item is None:
+                emit(
+                    {"status": "retrieving", "label": "Still matching standards…", "template_days": template_days},
+                    step="retrieval",
                     step_state="active",
                     attempt=req.attempt,
                 )
-            # The weekly allowance may have changed while this request was
-            # queued behind another generation. Re-check at execution time so
-            # the queue never turns a hard weekly quota into an overspend.
-            require_entitlement(user_id)
-            yield _activity_sse(
-                {"status": "accepted", "status_code": "accepted", "label": "Generation started"},
-                request_id,
-                step="context",
-                step_state="complete",
-                attempt=req.attempt,
-            )
-        except (AppError, SchemaError) as e:
-            log.warning("stream queue failed code=%s", e.code)
-            if lease is not None:
-                lease.release()
-            yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="context", step_state="error", attempt=req.attempt)
+                continue
+            result = item
+        if result is None:
+            raise RuntimeError("prepare returned no retrieval")
+        if job.cancelled.is_set():
+            job.complete(cancelled=True)
+            return
+        emit({"status": "context_ready", "template_days": template_days}, step="planning", step_state="active", attempt=req.attempt)
+        emit(
+            {
+                "grounding": {
+                    "codes": sorted(result.codes),
+                    "thin": result.thin,
+                    "count": len(result.chunks),
+                    "floor": result.floor,
+                }
+            },
+            step="retrieval",
+            step_state="complete",
+            attempt=req.attempt,
+        )
+        emit({"status": "thinking", "template_days": template_days}, step="planning", step_state="active", attempt=req.attempt)
+        emit({"status": "writing", "template_days": template_days}, step="building", step_state="active", attempt=req.attempt)
+        for delta in _with_keepalives(
+            llm.stream_plan(user_id, model_query, result, school_id=school_id, class_id=cls["id"] if cls else None)
+        ):
+            if job.cancelled.is_set():
+                job.complete(cancelled=True)
+                return
+            if delta is None:
+                job.publish(": keepalive\n\n")
+                continue
+            chunks.append(delta)
+            emit({"chunk": delta}, step="building", step_state="active", attempt=req.attempt)
+
+        from ..schema import loads_lenient
+
+        emit({"status": "saving", "template_days": template_days}, step="building", step_state="active", attempt=req.attempt)
+        if job.cancelled.is_set():
+            job.complete(cancelled=True)
             return
 
-        chunks: list[str] = []
-        try:
-            # Emitted BEFORE service.prepare, which is the slowest thing in
-            # this whole request that isn't the model itself — an LLM
-            # expand_query call plus ~30 pgvector reads. It all used to happen
-            # ahead of the first yield, so the response headers were sent and
-            # then nothing followed for seconds: no bytes, nothing for the
-            # client to show, no way to tell a slow retrieval from a hung
-            # request. This costs one frame and makes the wait legible.
-            #
-            # Additive: useLessonStream.js only reads the keys it knows
-            # (grounding/chunk/done/error) and ignores anything else, so an
-            # older client is unaffected by a new frame type.
-            yield _activity_sse({"status": "retrieving", "template_days": template_days}, request_id, step="retrieval", step_state="active", attempt=req.attempt)
-            result = service.prepare(user_id, query, cls=cls)
-            yield _activity_sse({"status": "context_ready", "template_days": template_days}, request_id, step="planning", step_state="active", attempt=req.attempt)
-            yield _activity_sse(
-                {
-                    "grounding": {
-                        "codes": sorted(result.codes),
-                        "thin": result.thin,
-                        "count": len(result.chunks),
-                        "floor": result.floor,
-                    }
-                },
-                request_id,
-                step="retrieval",
-                step_state="complete",
-                attempt=req.attempt,
-            )
-            yield _activity_sse({"status": "thinking", "template_days": template_days}, request_id, step="planning", step_state="active", attempt=req.attempt)
-            yield _activity_sse({"status": "writing", "template_days": template_days}, request_id, step="building", step_state="active", attempt=req.attempt)
-            for delta in llm.stream_plan(user_id, model_query, result, school_id=school_id, class_id=cls["id"] if cls else None):
-                chunks.append(delta)
-                yield _activity_sse({"chunk": delta}, request_id, step="building", step_state="active", attempt=req.attempt)
-
-            from ..schema import loads_lenient
-
-            row = service.finalize(
+        def _finalize():
+            yield service.finalize(
                 user_id=user_id,
                 plan_raw=loads_lenient("".join(chunks)),
                 query=query,
                 result=result,
                 chat_id=req.chat_id,
-                bg_tasks=bg_tasks,
+                bg_tasks=None,
                 class_id=cls["id"] if cls else None,
                 cls=cls,
                 week_number=req.week_number,
@@ -541,44 +677,41 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
                 subject=cls["subject"] if cls else None,
                 grade=cls["grade"] if cls else None,
             )
-            yield _activity_sse(
-                {
-                    "done": True,
-                    "plan_id": row["id"],
-                    "plan": row["plan_json"],
-                    "warnings": row["warnings"],
-                    "week_label": row["week_label"],
-                    "unit": row["unit"],
-                },
-                request_id,
-                step="complete",
-                step_state="complete",
-                attempt=req.attempt,
-            )
-        except (AppError, SchemaError) as e:
-            log.warning("stream failed code=%s", e.code)
-            yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="validation", step_state="error", attempt=req.attempt)
-        except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
-            yield _activity_sse({"error": _openai_error_event(e), "status": "error"}, request_id, step="building", step_state="error", attempt=req.attempt)
-        finally:
-            if lease is not None:
-                lease.release()
 
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        background=bg_tasks,
-        # X-Accel-Buffering: nginx (and several PaaS routers, Render's
-        # included) buffer a proxied response by default, which re-introduces
-        # exactly the batching that excluding this route from gzip
-        # (ConditionalGZipMiddleware) exists to avoid — just one hop further
-        # out, where it is invisible from here.
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
+        row = None
+        for item in _with_keepalives(_finalize()):
+            if job.cancelled.is_set():
+                job.complete(cancelled=True)
+                return
+            if item is None:
+                job.publish(": keepalive\n\n")
+                continue
+            row = item
+        if row is None:
+            raise RuntimeError("finalize returned no plan")
+        done = {
+            "done": True,
+            "plan_id": row["id"],
+            "plan": row["plan_json"],
+            "warnings": row["warnings"],
+            "week_label": row["week_label"],
+            "unit": row["unit"],
+        }
+        emit(done, step="complete", step_state="complete", attempt=req.attempt)
+        job.complete(result=done)
+    except (AppError, SchemaError) as e:
+        log.warning("stream failed code=%s", e.code)
+        err = e.payload().get("error", e.payload())
+        emit({"error": err, "status": "error"}, step="validation", step_state="error", attempt=req.attempt)
+        job.complete(error=err if isinstance(err, dict) else {"message": str(err)})
+    except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
+        err = _openai_error_event(e)
+        emit({"error": err, "status": "error"}, step="building", step_state="error", attempt=req.attempt)
+        job.complete(error=err)
+    finally:
+        job.lease = None
+        if lease is not None:
+            lease.release()
 
 
 def _build_chat_system_prompt(
@@ -683,8 +816,9 @@ def _build_chat_system_prompt(
         system_prompt += (
             ". Treat the week"
             + (" and unit" if unit_row else "")
-            + " as already settled — don't ask which one this is unless the "
-            "teacher's own message clearly means a different week."
+            + " as already settled — never ask which week this is. The app header "
+            "already named it. Only ask if the teacher's own message clearly "
+            "means a different week."
         )
 
     map_context = llm.map_context_for(user_id, subject, last_user, class_id=cls["id"] if cls else None) if last_user else ""
@@ -981,6 +1115,22 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
         request_id = req.request_id or str(uuid.uuid4())
         lease = None
         try:
+            # Headers (and this first frame) must leave the process before
+            # enqueue can block. Safari treats a POST with no response as a
+            # dropped connection — "Chat failed / before the reply started."
+            yield ": keepalive\n\n"
+            yield _activity_sse(
+                {
+                    "status": "connecting",
+                    "status_code": "connecting",
+                    "label": "Starting…",
+                },
+                request_id,
+                step="context",
+                step_state="active",
+                artifact_type="conversation",
+                attempt=req.attempt,
+            )
             lease = generation_queue.enqueue(user_id)
             yield _activity_sse(
                 {
@@ -1104,17 +1254,24 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
             # How many ask_clarifying_questions rounds have happened since the
             # last real commitment (a build/revision confirmation) — not a
             # lifetime total, so an earlier plan build followed by a later
-            # quiz-config round doesn't get conflated with this. Counted from
-            # a structured kind/marker on the message, not a particular
-            # English intro, so rewording the model cannot silently break the cap.
+            # quiz-config round doesn't get conflated with this. The structured
+            # marker survives wording changes in the assistant's visible copy.
             prior_clarify_rounds = count_prior_clarify_rounds(req.messages)
-            if prior_clarify_rounds >= 2 and req.mode != "plan":
+            asks_for_more_questions = bool(
+                re.search(
+                    r"\b(more questions|ask (me )?more|keep asking|another round|ask again)\b",
+                    last_user or "",
+                    re.IGNORECASE,
+                )
+            )
+            if prior_clarify_rounds >= 1 and not asks_for_more_questions and req.mode != "plan":
                 system_prompt += (
-                    f"\n\nThis conversation has already had {prior_clarify_rounds} rounds of "
-                    "clarifying questions in a row with nothing built yet. Do NOT call "
-                    "ask_clarifying_questions again this turn — call generate_lesson_plan (or "
-                    "generate_quiz, whichever applies) now, making a reasonable choice for anything "
-                    "still unspecified and saying what you assumed, rather than asking a third time.\n\n"
+                    "\n\nThis conversation has already had a clarifying-question round "
+                    "with nothing built yet. Do NOT call ask_clarifying_questions again "
+                    "this turn unless the teacher explicitly asked for more questions. "
+                    "Call generate_lesson_plan (or generate_quiz, whichever applies) now, "
+                    "making a reasonable choice for anything still unspecified and saying "
+                    "what you assumed.\n\n"
                 )
 
             # Mutually exclusive, not stacked — see prompts.voice_prompt's own
@@ -1131,46 +1288,49 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     "clickable options. The teacher can choose an option or use the built-in custom response path. "
                     "Ask only questions that will materially change the plan, and never ask for information already "
                     "present in the conversation or class context. Accompany the tool call with one brief line such "
-                    "as 'A few quick choices will help me shape the plan:' and nothing else."
+                    "as 'Let's pick a lane for the week:' and nothing else."
                 )
             elif req.mode == "brainstorm" and not req.voice:
                 system_prompt += (
-                    "Act as an expert in education having a natural back-and-forth conversation with a colleague. Brainstorm ideas for their upcoming week, or discuss revisions to an existing week. "
-                    "Give advice, feedback, and clear choices directly in your conversational replies. When a teacher names a text, a skill, or an angle, "
-                    "react to it specifically as an expert — what's interesting about it, pedagogical best practices, how it might play out across the "
-                    "week, or related angles worth considering. Do not just ask what they want to do; OFFER them expert suggestions and choices "
-                    "to move into right in your text. Concise is not the same as terse: a genuine expert reaction in a few sentences beats a bare acknowledgment.\n\n"
-                    "Sound like a colleague who's actually thinking about THIS class, not a generic assistant reciting "
-                    "best practices at whoever's listening. Pick up specific details the teacher already gave you — their "
-                    "students, the text, a choice from earlier in the conversation — by name, instead of restating their "
-                    "request back at them before answering it. A little genuine reaction is welcome ('that's a hard one to "
-                    "sequence', 'I like that pairing with the unit') where it's true, not tacked on. Warmth here means "
-                    "specific and present, not effusive: skip empty enthusiasm and exclamation points ('Great question!', "
-                    "'Love it!') that read as performative rather than actually engaged.\n\n"
+                    "Talk like a teacher in the workroom next door: contractions, short turns, "
+                    "specific to THIS class. Never 'I'm ready to help shape Week N.' Never a "
+                    "culminating-task paragraph. Never 'What specific X would you like the week "
+                    "to center on?' If you would not say it standing by the copier, do not write it.\n\n"
+                    "When a teacher names a text, a skill, or an angle, react to THAT — one or two "
+                    "sentences — then either build if they asked you to, or offer one next move. "
+                    "Do not recap their request. A little genuine reaction is welcome where it's true "
+                    "('that's a hard one to sequence'). Skip empty enthusiasm ('Great question!', 'Love it!').\n\n"
                     "When you have enough information and the user is ready to build or revise the plan, call the `generate_lesson_plan` tool. "
+                    "If their most recent message is a greeting or a bare opener — "
+                    "hello, hi, hey, what's up, let's go — with no topic, skill, or text named, "
+                    "do NOT write a planning essay and do NOT invent a skill, text, or Friday task. "
+                    "Call `ask_clarifying_questions` with 2-4 short questions and 2-5 clickable "
+                    "options each that move THIS week's plan forward (skill or focus, a text or "
+                    "context, how they want the week to land). Accompany it with ONE warm spoken line "
+                    "that names the week in passing — e.g. 'Hey. Week 10's sitting here — what should it hang on?' "
+                    "The tappable cards are how they move.\n\n"
                     "Recover from messy asks: if they named a text, skill, or quiz type, infer the rest, "
                     "state the assumption, and either coach or call the right tool. Prefer 2–3 concrete "
                     "options and a recommendation over a questionnaire. "
-                    "If their most recent message is genuinely too vague to act on — a new request like \"I want to "
+                    "If their most recent message is otherwise genuinely too vague to act on — a new request like \"I want to "
                     "make a lesson\" with no text, topic, or skill named, a brainstorming reply that doesn't narrow "
                     "anything down, or a revision ask like \"can you change Thursday?\" with no hint of how — call "
                     "`ask_clarifying_questions` INSTEAD, with 2-4 short questions and a few clickable options each. "
-                    "However, prefer offering conversational advice and inline suggestions before reaching for the multiple choice buttons, using them only when you truly need structured choices to narrow down a broad topic.\n\n"
+                    "Offer conversational advice in the reply only after they have named a text, a skill, or an angle. "
+                    "Do not replace the tappable cards with a written list of choices.\n\n"
                     "When you DO call `ask_clarifying_questions`, your accompanying text should be ONE short "
-                    "line — \"A couple of quick questions to get this right:\" or similar — and nothing more. "
-                    "Do NOT restate, list, or preview the questions or their options in that text: they render "
-                    "immediately below as their own tappable card, one question at a time, and a written "
-                    "recap of all of them at once just duplicates that and pushes it off screen.\n\n"
-                    "This isn't limited to the first message of a request: reach for it again later in the same "
-                    "conversation if a later turn is just as vague, but never re-ask about something the teacher "
-                    "already told you or already picked from a previous round — build on what they gave you.\n\n"
+                    "spoken line — 'Hey. What should this week hang on?' or 'Quick — pick a lane:' — not "
+                    "'A couple of quick questions to get this right:'. Do NOT restate, list, or preview "
+                    "the questions or their options in that text: they render immediately below as their own "
+                    "tappable card, one question at a time.\n\n"
+                    "Ask at most one clarifying round unless the teacher explicitly asks for more questions. "
+                    "Never re-ask something they already told you or already picked — build on what they gave you.\n\n"
                     "Hold the line on having an actual plan before you build one: `generate_lesson_plan` needs "
-                    "WHICH WEEK OR UNIT and WHAT THE WEEK IS ABOUT (an anchor text, a skill, or a specific "
-                    "focus). If the week/unit was already named for you above, treat that half as settled — "
-                    "the plan itself is always the complete structure from the selected school "
+                    "WHAT THE WEEK IS ABOUT (an anchor text, a skill, or a specific "
+                    "focus). WHICH WEEK OR UNIT is already settled when named above — never ask which week. "
+                    "The plan itself is always the complete structure from the selected school "
                     "template, so never ask how many days it should run. "
-                    "don't ask about it again unless the teacher's own message clearly points at a different "
-                    "week. WHAT THE WEEK IS ABOUT is a separate question that is almost never answered for "
+                    "WHAT THE WEEK IS ABOUT is a separate question that is almost never answered for "
                     "you; missing that, ask rather than build — a week generated from a one-line request "
                     "costs the teacher more time correcting it than answering one question would have.\n\n"
                     "Having both of those facts means you COULD build, which is not always the same as SHOULD "
@@ -1221,7 +1381,10 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                 "update_lesson_day": "lesson_plan_revision",
                 "generate_quiz": "quiz",
             }
-            for event in llm.stream_chat(user_id, messages, voice=req.voice):
+            for event in _with_keepalives(llm.stream_chat(user_id, messages, voice=req.voice)):
+                if event is None:
+                    yield ": keepalive\n\n"
+                    continue
                 if isinstance(event, dict):
                     event.setdefault("request_id", request_id)
                 artifact_type = event.get("artifact_type") or tool_artifacts.get(event.get("tool_call"), "conversation")

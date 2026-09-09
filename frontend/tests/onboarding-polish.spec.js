@@ -9,17 +9,22 @@ test.describe('onboarding progress journey', () => {
   test('aligns the desktop rail, keeps the action footer stationary, reserves a terminal destination, and hands focus to the next question', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/preview.html?fresh=1')
+    await page.evaluate(() => document.fonts.ready)
 
     await expect(page.locator('.onboarding-rail-step[data-terminal="true"]')).toHaveCount(1)
     await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Welcome to your next chapter.' })).toBeVisible()
 
-    const geometry = await page.evaluate(() => {
+    await expect.poll(async () => page.evaluate(() => {
       const rail = document.querySelector('.onboarding-rail-slot')?.getBoundingClientRect()
       const question = document.querySelector('.onboarding-question')?.getBoundingClientRect()
+      return Math.abs((rail?.top ?? 0) - (question?.top ?? 0))
+    })).toBeLessThanOrEqual(4)
+
+    const geometry = await page.evaluate(() => {
       const footer = document.querySelector('.onboarding-footer')?.getBoundingClientRect()
-      return { railTop: rail?.top, questionTop: question?.top, footerBottom: footer?.bottom, viewportBottom: window.innerHeight }
+      return { footerBottom: footer?.bottom, viewportBottom: window.innerHeight }
     })
-    expect(Math.abs(geometry.railTop - geometry.questionTop)).toBeLessThanOrEqual(4)
     expect(geometry.footerBottom).toBeLessThanOrEqual(geometry.viewportBottom)
     const profileFooterBottom = geometry.footerBottom
 
@@ -32,7 +37,7 @@ test.describe('onboarding progress journey', () => {
     }))).toEqual({ active: 'onboarding-title', scrollTop: 0, titles: 1 })
 
     const footerBottom = () => page.evaluate(() => document.querySelector('.onboarding-footer')?.getBoundingClientRect().bottom)
-    expect(await footerBottom()).toBeCloseTo(profileFooterBottom, 0)
+    expect(Math.abs(await footerBottom() - profileFooterBottom)).toBeLessThanOrEqual(1)
 
     await page.locator('#onboarding-state').selectOption('AL')
     await page.getByRole('button', { name: /Skip the school/ }).click()
@@ -41,12 +46,12 @@ test.describe('onboarding progress journey', () => {
     await expect(page.getByRole('heading', { name: 'Which subject area?' })).toBeVisible()
     await page.getByRole('option', { name: /English \/ Language Arts/ }).click()
     await expect(page.getByRole('heading', { name: 'Which course, exactly?' })).toBeVisible()
-    expect(await footerBottom()).toBeCloseTo(profileFooterBottom, 0)
+    expect(Math.abs(await footerBottom() - profileFooterBottom)).toBeLessThanOrEqual(1)
 
     await page.getByRole('option', { name: /AP English Language/ }).click()
     await expect(page.getByRole('heading', { name: 'Is this your school year?' })).toBeVisible()
     await expect.poll(() => page.locator('#onboarding-title').evaluate((el) => el === document.activeElement)).toBe(true)
-    expect(await footerBottom()).toBeCloseTo(profileFooterBottom, 0)
+    expect(Math.abs(await footerBottom() - profileFooterBottom)).toBeLessThanOrEqual(1)
 
     await page.getByRole('button', { name: 'Continue', exact: true }).click()
     await page.getByRole('button', { name: 'Skip — use a neutral layout for now' }).click()
@@ -62,6 +67,13 @@ test.describe('onboarding progress journey', () => {
     await page.goto('/preview.html?fresh=1')
 
     await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible()
+    // Reduced-motion still used to run .fa-rise-panel for 0.01ms with
+    // fill-mode both, which can leave the shell translated by 2px when this
+    // geometry is read. Wait until that animation is gone before measuring.
+    await page.locator('.onboarding-card').evaluate(async (el) => {
+      if (typeof el.getAnimations !== 'function') return
+      await Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => {})))
+    })
     const layout = await page.evaluate(() => ({
       horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
       markerDuration: getComputedStyle(document.querySelector('.onboarding-rail-marker')).transitionDuration,

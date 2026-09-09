@@ -523,6 +523,10 @@ export const api = {
      plain conversational text. They are not interchangeable. */
   streamUrl: () => `${API_BASE}/api/generate_stream`,
   chatStreamUrl: () => `${API_BASE}/api/chat_stream`,
+  getGenerateJob: (requestId, { signal } = {}) =>
+    request(`/api/generate_jobs/${encodeURIComponent(requestId)}`, { signal }),
+  cancelGenerate: (requestId) =>
+    request('/api/generate_cancel', { method: 'POST', body: { request_id: requestId } }),
   /* Voice mode's card stack — best-effort, re-read after every new message
      while the panel is open. Never worth a toast on failure; the caller
      just keeps whatever it already had. */

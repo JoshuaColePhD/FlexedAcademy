@@ -27,8 +27,11 @@ const RETRYABLE_CODES = new Set([
   'malformed_tool_call',
   'empty_reply',
 ])
-const MAX_AUTO_RETRIES = 1
-const RETRY_DELAY_MS = 600
+const MAX_AUTO_RETRIES = 3
+const RETRY_DELAY_MS = 800
+// Idle silence, not total turn length. Keepalives and tokens reset this, so a
+// slow but live reply is not aborted at 25s the way a hung connection is.
+const ATTEMPT_TIMEOUT_MS = 25000
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -213,7 +216,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, referenceContext, hasQuiz, controller, requestId, attempt }) => {
+  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, referenceContext, hasQuiz, controller, requestId, attempt, onProgress }) => {
     let accumulated = ''
     cancelQueuedText()
     setText('')
@@ -248,7 +251,6 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       // it safely.
       throw new ApiError('The connection dropped before the reply started.', {
         code: 'stream_connection_error',
-        hint: 'Trying once more…',
         extra: { retryable: true },
       })
     }
@@ -339,10 +341,10 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
         // request id while replacing the incomplete stream.
         throw new ApiError('The connection dropped while the reply was loading.', {
           code: 'stream_connection_error',
-          hint: 'Trying once more…',
           extra: { retryable: true },
         })
       }
+      onProgress?.()
       const { value, done } = next
       if (value) {
         buffer += decoder.decode(value, { stream: !done })
@@ -541,7 +543,18 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
       try {
         let lastErr = null
         for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
-          if (tryNum > 0) await sleep(RETRY_DELAY_MS)
+          if (controller.signal.aborted) return null
+          if (tryNum > 0) await sleep(RETRY_DELAY_MS * tryNum)
+          if (controller.signal.aborted) return null
+          const attemptController = new AbortController()
+          const onParentAbort = () => attemptController.abort()
+          controller.signal.addEventListener('abort', onParentAbort)
+          let timeoutId
+          const bumpIdleTimeout = () => {
+            window.clearTimeout(timeoutId)
+            timeoutId = window.setTimeout(() => attemptController.abort(), ATTEMPT_TIMEOUT_MS)
+          }
+          bumpIdleTimeout()
           try {
             const result = await attempt(messages, {
               chatId,
@@ -551,31 +564,37 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onSentence, onR
               weekNumber,
               referenceContext,
               hasQuiz,
-              controller,
+              controller: attemptController,
               requestId,
               attempt: tryNum,
+              onProgress: bumpIdleTimeout,
             })
             onDoneRef.current?.(result)
             setStatus({ code: 'complete', label: 'Ready', requestId })
             return result
           } catch (err) {
-            if (err.name === 'AbortError') return null
-            lastErr = err
-            const retryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable
+            if (controller.signal.aborted) return null
+            lastErr = err.name === 'AbortError'
+              ? new ApiError('The connection dropped before the reply started.', {
+                code: 'stream_connection_error',
+                extra: { retryable: true },
+              })
+              : err
+            const retryable = RETRYABLE_CODES.has(lastErr.code) || lastErr.extra?.retryable
             if (!retryable || tryNum === MAX_AUTO_RETRIES) break
-            // A voice stream may already have handed its first sentence to
-            // Realtime before the network failed. Clear that partial attempt
-            // before retrying the model, otherwise the retry speaks the same
-            // opening sentence twice.
             onRetryRef.current?.()
-            const retryStatus = { code: 'retrying', label: `Retrying… (${tryNum + 1}/${MAX_AUTO_RETRIES})`, requestId, attempt: tryNum }
+            const retryStatus = { code: 'retrying', label: 'Still working…', requestId, attempt: tryNum }
             setStatus(retryStatus)
             onStatusRef.current?.(retryStatus)
+          } finally {
+            window.clearTimeout(timeoutId)
+            controller.signal.removeEventListener('abort', onParentAbort)
+            if (!attemptController.signal.aborted) attemptController.abort()
           }
         }
         onErrorRef.current?.(lastErr)
-        setStatus({ code: 'error', label: lastErr?.message || 'Something went wrong', requestId })
-        throw lastErr
+        setStatus({ code: 'complete', label: 'Ready', requestId })
+        return null
       } finally {
         if (activeRequestRef.current === requestId) {
           activeRequestRef.current = null
