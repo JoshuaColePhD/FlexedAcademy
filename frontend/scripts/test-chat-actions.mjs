@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import test from 'node:test'
 import { recoverDumpedToolsFromText } from '../src/lib/chatToolRecovery.js'
-import { chatMessageText, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, revisionDayIndices } from '../src/lib/chatActions.js'
+import { planOperation, quizReceipt, quizRevisionId, readQuizReceipt, revisionDayIndices } from '../src/lib/chatActions.js'
 
 // Run the actual hook's streaming code without a DOM. Only React state storage,
 // timing instrumentation, and the API URL are stubbed; fetch uses real Responses.

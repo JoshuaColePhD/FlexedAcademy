@@ -341,8 +341,13 @@ def test_instructional_judgment_reaches_creation_and_scoped_revision(monkeypatch
 
 def test_quiz_contract_preserves_constraints_and_scope():
     from backend.chat_policy import complete_typed_event, validate_quiz_action
-    args = dict(instruction="Use paper and accessible wording", source_plan_id=None, target_quiz_id=None,
-                revises_current=False, num_questions=5)
+    args = {
+        "instruction": "Use paper and accessible wording",
+        "source_plan_id": None,
+        "target_quiz_id": None,
+        "revises_current": False,
+        "num_questions": 5,
+    }
     assert validate_quiz_action(args)["source_plan_id"] is None
     leaked = validate_quiz_action({**args, "target_quiz_id": "q1"})
     assert leaked["target_quiz_id"] is None and leaked["revises_current"] is False
