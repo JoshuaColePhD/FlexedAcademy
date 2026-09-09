@@ -544,6 +544,15 @@ export function ChatPage() {
   useEffect(() => {
     if (chatId) setMobileShowHome(false)
   }, [chatId])
+  /* The compact-header back button is an in-app return to the phone's chat
+     home, not a request to start another blank plan. Keep that intent on the
+     destination history entry so the route change below can reveal the list
+     after `chatId` drops out of the URL. */
+  useEffect(() => {
+    if (isPhone && !chatId && location.state?.mobileHome) {
+      setMobileShowHome(true)
+    }
+  }, [chatId, isPhone, location.state])
   // ChatHeaderSheet — phone's stand-in for the header row's own
   // ClassSwitcher/WeekPicker/status, given room to breathe there instead.
   const [headerSheetOpen, setHeaderSheetOpen] = useState(false)
@@ -3910,7 +3919,11 @@ export function ChatPage() {
               type="button"
               className="btn-icon tap-target shrink-0"
               aria-label="Back to your chats"
-              onClick={() => (chatId ? navigate(`/c/${classId}`) : setMobileShowHome(true))}
+              onClick={() => (
+                chatId
+                  ? navigate(`/c/${classId}`, { state: { mobileHome: true } })
+                  : setMobileShowHome(true)
+              )}
             >
               <ChevronLeft size={20} aria-hidden="true" />
             </button>
