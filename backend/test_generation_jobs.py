@@ -1,3 +1,4 @@
+import threading
 import time
 
 from backend.generation_jobs import cancel_job, get_job, start_or_attach
@@ -46,3 +47,26 @@ def test_cancel_marks_a_registered_job_cancelled():
     assert cancel_job("user-stop", "req-stop") is True
     assert live.status == "cancelled"
     assert cancel_job("user-stop", "missing-id") is False
+
+
+def test_cancel_releases_the_generation_lease():
+    released = []
+
+    class FakeLease:
+        def release(self):
+            released.append(True)
+
+    started = threading.Event()
+
+    def worker(job):
+        job.lease = FakeLease()
+        started.set()
+        while not job.cancelled.is_set():
+            time.sleep(0.01)
+
+    live = start_or_attach("user-lease", "req-lease", worker)
+    assert started.wait(timeout=1)
+    assert cancel_job("user-lease", "req-lease") is True
+    assert released == [True]
+    assert live.lease is None
+    assert live.status == "cancelled"

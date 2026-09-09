@@ -29,6 +29,7 @@ class GenerationJob:
         self.result: dict | None = None
         self.error: dict | None = None
         self.created_at = time.monotonic()
+        self.lease = None
 
     def publish(self, sse_text: str) -> None:
         with self.cond:
@@ -119,6 +120,12 @@ def cancel_job(user_id: str, request_id: str) -> bool:
     if job is None:
         return False
     job.cancelled.set()
+    lease = job.lease
+    job.lease = None
+    if lease is not None:
+        # Free the one-at-a-time slot so Stop then Try again is not stuck
+        # behind prepare() still running on the cancelled worker.
+        lease.release()
     job.complete(cancelled=True)
     return True
 

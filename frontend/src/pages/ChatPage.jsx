@@ -827,6 +827,9 @@ export function ChatPage() {
             title: activityTitle(kind),
             status: 'active',
             error: undefined,
+            // Chat turns leave "Preparing your class context…" on the card.
+            // The week build's first observable work is matching standards.
+            currentLabel: kind === 'plan' ? 'Matching standards…' : inherited.currentLabel,
           }
         : createWorkActivity({ requestId, anchorId, kind, title: activityTitle(kind) })
       const result = { ...previous, [requestId]: next }

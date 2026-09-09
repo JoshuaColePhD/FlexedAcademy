@@ -220,7 +220,40 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
 
     let accumulated = ''
     let sawWriting = false
+    const attemptController = new AbortController()
+    const onParentAbort = () => attemptController.abort()
+    controller.signal.addEventListener('abort', onParentAbort)
+    if (controller.signal.aborted) attemptController.abort()
+    let idleTimedOut = false
+    let idleTimer
+    const bumpIdle = () => {
+      window.clearTimeout(idleTimer)
+      idleTimer = window.setTimeout(() => {
+        idleTimedOut = true
+        attemptController.abort()
+      }, 20000)
+    }
+    bumpIdle()
+    const rethrowAbort = (err) => {
+      if (err.name !== 'AbortError') return
+      if (idleTimedOut) {
+        throw new ApiError('The connection went quiet while matching standards.', {
+          code: 'stream_connection_error',
+          hint: 'The week is still building. Reconnecting…',
+          extra: { retryable: true },
+        })
+      }
+      throw err
+    }
 
+    try {
+    onStatusRef.current?.({
+      code: 'retrieving',
+      label: 'Matching standards…',
+      requestId,
+      attempt,
+      step: 'standards',
+    })
     let res
     try {
       res = await fetch(api.streamUrl(), {
@@ -240,11 +273,11 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
           request_id: requestId,
           attempt,
         }),
-        signal: controller.signal,
+        signal: attemptController.signal,
         credentials: 'include',
       })
     } catch (err) {
-      if (err.name === 'AbortError') throw err
+      rethrowAbort(err)
       if (isDroppedConnectionError(err)) {
         const copy = droppedConnectionCopy(false)
         throw new ApiError(copy.message, { code: copy.code, hint: copy.hint, extra: { retryable: true } })
@@ -275,7 +308,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
       try {
         next = await reader.read()
       } catch (err) {
-        if (err.name === 'AbortError') throw err
+        rethrowAbort(err)
         if (isDroppedConnectionError(err)) {
           const copy = droppedConnectionCopy(sawWriting || Boolean(accumulated))
           throw new ApiError(copy.message, { code: copy.code, hint: copy.hint, extra: { retryable: true } })
@@ -286,6 +319,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
           extra: { retryable: true },
         })
       }
+      bumpIdle()
       const { value, done } = next
       if (value) {
         buffer += decoder.decode(value, { stream: !done })
@@ -317,7 +351,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
           if (event.status) {
             const labels = {
               queued: 'Queued — your request is safe…',
-              retrieving: 'Preparing your class context…',
+              retrieving: 'Matching standards…',
               thinking: 'Thinking…',
               writing: 'Writing your lesson plan…',
               saving: 'Saving the week…',
@@ -326,9 +360,10 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
             }
             const phase = typeof event.status === 'string' ? event.status : event.status.phase
             if (phase === 'writing' || phase === 'saving') sawWriting = true
+            const statusLabel = typeof event.status === 'object' ? event.status.label : event.label
             const nextStatus = {
               phase,
-              label: event.status.label || labels[phase] || phase,
+              label: statusLabel || labels[phase] || phase,
               requestId: event.request_id || requestId,
               attempt: event.attempt ?? 0,
             }
@@ -379,6 +414,10 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
     // Grounding rides along, because `finished` (the done event) has none and
     // the caller's `stream.grounding` is a stale read.
     return { ...finished, grounding: groundingRef.current, requestId }
+    } finally {
+      window.clearTimeout(idleTimer)
+      controller.signal.removeEventListener('abort', onParentAbort)
+    }
   }, [cancelQueuedPlan, flushPlanUpdate, queuePlanUpdate])
 
   const start = useCallback(
@@ -453,7 +492,6 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
               label: snap?.status === 'running' ? 'Still building — reconnecting…' : 'Reconnecting…',
               requestId,
               attempt: tryNum,
-              step: 'building',
             })
             if (retryable && typeof document !== 'undefined' && document.visibilityState === 'hidden') {
               try {
