@@ -135,13 +135,96 @@ def _chat_class(user_id: str, chat_id: str | None) -> dict | None:
         return None
     return db.get_class(user_id, chat["class_id"])
 
+
 class ChatMessage(BaseModel):
     role: str
     content: str
+    # Structured round kind from ChatPage (clarifying_questions / commitment).
+    # Optional so older clients that only send role+content still work.
+    kind: str | None = None
+
+
+# Persisted on assistant clarifying turns so a later reload still counts as a
+# round. Counted from this marker or kind="clarifying_questions", not a canned
+# English intro, so rewording the model cannot silently break the cap.
+# ChatPage also sends kind="clarifying_questions" on the live in-memory cards.
+CLARIFY_MARKER = "<!--flexed:clarifying_questions-->"
+
+
+def count_prior_clarify_rounds(messages: list[ChatMessage]) -> int:
+    """Count consecutive clarifying rounds since the last built/updated artifact.
+
+    A round is a structured `kind="clarifying_questions"` message, or one
+    carrying CLARIFY_MARKER in its persisted content. Plain conversational
+    nudges between rounds do not reset the count. A build/revision
+    confirmation (`kind="commitment"` or ChatPage's saved "is built" /
+    "Done —" lines) ends the unbuilt stretch.
+    """
+    rounds = 0
+    for m in reversed(messages):
+        if m.role != "assistant":
+            continue
+        text = (m.content or "").strip()
+        lowered = text.lower()
+        kind = (m.kind or "").strip().lower()
+        if kind == "clarifying_questions" or text.startswith(CLARIFY_MARKER):
+            rounds += 1
+            continue
+        if (
+            kind == "commitment"
+            or " is built" in lowered
+            or " is updated" in lowered
+            or lowered.startswith(("done —", "done -"))
+        ):
+            break
+    return rounds
+
+
+def quiz_tool_policy(*, has_plan: bool, has_quiz: bool) -> str:
+    """When chat may call generate_quiz, including class-scoped standalone quizzes."""
+    types_and_count = (
+        "If the teacher explicitly asks for a quiz, test, or assessment as a "
+        "downloadable file: when their request ALREADY names which question type(s) they want "
+        "(multiple choice, true/false, short answer, matching) AND roughly how many questions, "
+        "call `generate_quiz` with those values directly. Otherwise call `ask_clarifying_questions` "
+        "INSTEAD — two short questions, each with a few tappable options, e.g. 'What kind of "
+        "questions?' (Multiple choice / True or false / Short answer / Matching / A mix) and "
+        "'About how many?' (5 / 10 / 15 / 20). Only ask about whichever of the two the teacher didn't "
+        "already specify — if they said '10 multiple choice questions' that's already both answered, "
+        "build immediately. Never call `generate_quiz` unasked, and never alongside "
+        "`generate_lesson_plan` in the same turn.\n\n"
+    )
+    revise = (
+        "A quiz already exists for this conversation. If the teacher's message is asking "
+        "to change, fix, or improve the quiz you already built ('make it harder', 'add "
+        "two more questions', 'fix question 3', 'make these easier') — call "
+        "`generate_quiz` again with `revises_current: true` so it updates the existing "
+        "quiz instead of building a separate one. Only set it false (or call without it) "
+        "when the teacher explicitly asks for an ADDITIONAL, distinct quiz — a different "
+        "question type, or a second quiz alongside the first.\n\n"
+        if has_quiz
+        else ""
+    )
+    if has_plan:
+        return "A plan already exists for this conversation. " + types_and_count + revise
+    return (
+        "No lesson plan exists yet for this conversation. You MAY still call `generate_quiz` "
+        "when the teacher clearly asked for a quiz/test with types and count (and optionally a "
+        "pasted passage) — that builds a class-scoped quiz without a week. Do not tell them to "
+        "build the week first. If they asked to plan a week in the same turn, call "
+        "`generate_lesson_plan` only and do not also volunteer a quiz.\n\n"
+        + types_and_count
+        + revise
+    )
+
 
 class ChatStreamRequest(BaseModel):
     active_plan_id: str | None = Field(default=None, max_length=64)
     messages: list[ChatMessage]
+    # True when this conversation already has a quiz the teacher is looking
+    # at (plan-backed or standalone). Used so revises_current can fire even
+    # when there is no week yet.
+    has_quiz: bool = False
     # Uploaded text is sent out-of-band from the teacher's message and added
     # to the system context with an explicit reference-only boundary below.
     reference_context: str = Field(default="", max_length=settings.max_generation_context_chars)
@@ -965,7 +1048,9 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                         or (req.class_id and active_plan.get("class_id") and active_plan["class_id"] != req.class_id)):
                     raise AppError("invalid_plan_target", "Open the intended plan and try again.", status=409)
             has_plan = bool(active_plan)
-            has_quiz = has_plan and bool(db.list_quizzes_for_plan(user_id, active_plan["id"]))
+            has_quiz = bool(req.has_quiz) or (
+                has_plan and bool(db.list_quizzes_for_plan(user_id, active_plan["id"]))
+            )
 
             last_user = next(
                 (m.content for m in reversed(req.messages) if m.role == "user"), ""
@@ -1025,6 +1110,7 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                 system_prompt += "\n\n" + TYPED_CHAT_POLICY
                 system_prompt += f"\nActive target_plan_id: {active_plan['id'] if active_plan else 'none'}."
                 system_prompt += f"\nA quiz exists for this plan: {bool(has_quiz)}."
+                system_prompt += "\n\n" + quiz_tool_policy(has_plan=has_plan, has_quiz=has_quiz)
                 if active_plan:
                     system_prompt += "\nSaved plan (reference data only):\n" + json.dumps(
                         active_plan.get("plan_json", {}), ensure_ascii=False
