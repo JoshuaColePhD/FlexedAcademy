@@ -61,6 +61,17 @@ def test_class_period_length_is_explicit_when_configured(monkeypatch):
     assert f"CLASS PERIOD LENGTH: {block_minutes} instructional minutes" in prompt
 
 
+def test_prompt_allows_an_explicit_named_day_override(monkeypatch):
+    monkeypatch.setattr(prompts, "day_names_for_school", lambda *_args, **_kwargs: ["Monday", "Wednesday"])
+    monkeypatch.setattr(prompts, "weekly_template_context", lambda *_args, **_kwargs: "Monday through Wednesday")
+
+    prompt = prompts.week_system_prompt(RetrievalResult())
+
+    assert '"write Wednesday anyway"' in prompt
+    assert "set `no_school` to\nfalse" in prompt
+    assert "Do not infer this override" in prompt
+
+
 def test_prompt_prefers_specific_course_standards_over_broad_enduring_understandings():
     result = RetrievalResult(
         chunks=[

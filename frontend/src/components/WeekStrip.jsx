@@ -24,7 +24,7 @@ const SHORT = { Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed', Thursday: 'Thu'
  *  day is hatched there — tone alone can't say "school is shut" as against
  *  "this surface is sunken", and in a five-cell strip that difference is the
  *  whole point. */
-export function WeekStrip({ days, writing = false, compact = false, loose = false, className = '' }) {
+export function WeekStrip({ days, writing = false, compact = false, loose = false, className = '', onSelectDay }) {
   const byName = new Map((days || []).map((d) => [d.name, d]))
 
   // The day currently being written is the first one that hasn't arrived. Only
@@ -77,6 +77,7 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
             // signal that there's no real timing left to prefer.
             const dropStyle = !writing ? { animationDelay: `${i * 60}ms` } : undefined
 
+            const canOpen = Boolean(onSelectDay && day && !isOff && !writing)
             return (
               <li
                 key={`${name}-${status}`}
@@ -118,6 +119,15 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
                     own `width` open/closed — without a reserved height, a
                     line straddling the 1-line/2-line boundary visibly
                     resizes mid-transition as the drawer's width changes. */}
+                {canOpen ? (
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 line-clamp-2 min-h-[1.35em] rounded-md bg-transparent p-0 text-left leading-[1.35] text-sm text-ink hover:text-accent-text"
+                    onClick={() => onSelectDay(i, 'during')}
+                  >
+                    {title || 'Written'}
+                  </button>
+                ) : (
                 <span className="min-w-0 flex-1 line-clamp-2 min-h-[1.35em] leading-[1.35] text-sm text-ink">
                   {isOff ? (
                     <span className="text-ink-faint">{title || 'No school'}</span>
@@ -129,6 +139,7 @@ export function WeekStrip({ days, writing = false, compact = false, loose = fals
                     <span className="text-ink-faint">Not written yet</span>
                   )}
                 </span>
+                )}
               </li>
             )
           })}

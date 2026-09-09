@@ -29,6 +29,11 @@ import { WorkspaceRailContext } from '../lib/workspaceRailContext'
 // Width of the revealed pin/rename/delete strip on a spacious (mobile) swipe —
 // three .btn-icon-lg targets plus the row's own internal gaps/padding.
 const SWIPE_ACTIONS_WIDTH = 132
+// Open only after a committed drag. Halfway + a 300px/s flick felt like
+// ice: a light thumb slide would snap the row open. ~62% travel and a
+// real flick are closer to Mail.app's planted swipe.
+const SWIPE_OPEN_DISTANCE = Math.round(SWIPE_ACTIONS_WIDTH * 0.62)
+const SWIPE_FLICK_VELOCITY = 720
 const OnboardingWizard = lazy(() => import('./OnboardingWizard').then((module) => ({ default: module.OnboardingWizard })))
 
 function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, touchActions = false, swipeOpen, onSwipeOpenChange }) {
@@ -189,11 +194,12 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, touchAc
         </div>
         <motion.div
           drag="x"
+          dragDirectionLock
           dragConstraints={{ left: -SWIPE_ACTIONS_WIDTH, right: 0 }}
-          dragElastic={0.04}
+          dragElastic={0}
           dragMomentum={false}
           animate={{ x: swipeOpen ? -SWIPE_ACTIONS_WIDTH : 0 }}
-          transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+          transition={{ type: 'spring', stiffness: 680, damping: 58, mass: 0.85 }}
           onDragStart={() => {
             crossedRef.current = swipeOpen
           }}
@@ -206,20 +212,19 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, touchAc
             // Vibration API (desktop Safari and iOS both lack it), so this
             // silently no-ops there instead of throwing — Android Chrome and
             // most other touch browsers do support it.
-            const past = info.offset.x < -SWIPE_ACTIONS_WIDTH / 2
+            const past = info.offset.x < -SWIPE_OPEN_DISTANCE
             if (past !== crossedRef.current) {
               crossedRef.current = past
               if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(10)
             }
           }}
           onDragEnd={(_e, info) => {
-            // Past the halfway point, or flicked with real velocity —
-            // either commits to fully open/closed rather than resting
-            // wherever the finger happened to lift.
-            const pastHalfway = info.offset.x < -SWIPE_ACTIONS_WIDTH / 2
-            const flickedOpen = info.velocity.x < -300
-            const flickedClosed = info.velocity.x > 300
-            onSwipeOpenChange(flickedClosed ? false : flickedOpen || pastHalfway)
+            // A planted swipe commits; a light slide snaps back. Past the
+            // open distance, or a decisive flick — not a 300px/s graze.
+            const pastOpen = info.offset.x < -SWIPE_OPEN_DISTANCE
+            const flickedOpen = info.velocity.x < -SWIPE_FLICK_VELOCITY
+            const flickedClosed = info.velocity.x > SWIPE_FLICK_VELOCITY
+            onSwipeOpenChange(flickedClosed ? false : flickedOpen || pastOpen)
           }}
           className="relative z-10"
         >
@@ -557,8 +562,8 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
       )}
 
       {!collapsed ? (
-        <div className="pt-2 pb-1 flex shrink-0 flex-col">
-          <div className="mt-auto">
+        <div className="flex w-full shrink-0 flex-col pt-2 pb-1">
+          <div className="mt-auto w-full">
             <AccountMenu classPath={classPath} collapsed={false} spacious={spacious} />
           </div>
         </div>

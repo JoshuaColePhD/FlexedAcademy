@@ -34,10 +34,14 @@ export function WorkActivityCard({
   const complete = activity.status === 'complete'
   const title = complete
     ? activity.kind === 'quiz' ? 'Quiz ready' : activity.kind === 'research' ? 'Research ready' : 'Plan ready'
-    : failed ? 'Couldn’t finish this request' : cancelled ? 'Request stopped' : activity.title
+    : failed
+      ? activity.kind === 'plan' ? 'Couldn’t finish the week' : 'Couldn’t finish this request'
+      : cancelled ? 'Request stopped' : activity.title
   const summary = complete
     ? activity.summary || 'The result was saved and checked.'
-    : failed ? activity.error : cancelled ? activity.summary || 'Nothing was saved.' : activity.currentLabel || workActivityStepLabel(activity.activeStep)
+    : failed
+      ? activity.error || (activity.kind === 'plan' ? 'The week was not saved. Tap Try again.' : 'The request could not be completed.')
+      : cancelled ? activity.summary || 'Nothing was saved.' : activity.currentLabel || workActivityStepLabel(activity.activeStep)
 
   if (compact) {
     const compactSummary = active ? WORK_ACTIVITY_MESSAGES[activity.kind] || 'Working through the update now.' : summary

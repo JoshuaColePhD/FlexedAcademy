@@ -38,6 +38,7 @@ def main() -> int:
     time.sleep(0.03)
     assert not started, "same-user work must wait for the active job"
     first.release()
+    first.release()  # Stop then Try again must not underflow the slot count
     waiter.join(timeout=1)
     assert started == [True]
     second.release()

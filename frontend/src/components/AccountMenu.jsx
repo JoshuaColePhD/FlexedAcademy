@@ -12,6 +12,8 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { useTheme } from '../hooks/useTheme'
 
+const OWNER_EMAIL = 'joshuacolephd@gmail.com'
+
 /* The rail footer, and the home of the control that did not exist.
  *
  * AuthProvider has exposed `logout` since the multi-tenant work and nothing has
@@ -161,17 +163,20 @@ function ProfileNotificationBadge({ count, admin }) {
 
 export function AccountMenu({ classPath, collapsed, spacious }) {
   const { user, logout } = useAuth()
+  // Match the server-side authorization identity exactly. The Admin link is
+  // never an indicator of a historical `is_admin` flag or subscription tier.
+  const isOwner = user?.email?.trim().toLocaleLowerCase() === OWNER_EMAIL
   const { entitlement, openPaywall } = useBilling()
   const { resolved, setMode } = useTheme()
   const supportQuery = useQuery({
-    queryKey: user?.is_owner ? qk.adminSupportThreads : qk.supportThreads,
-    queryFn: () => (user?.is_owner ? api.adminListSupportThreads() : api.listSupportThreads()),
+    queryKey: isOwner ? qk.adminSupportThreads : qk.supportThreads,
+    queryFn: () => (isOwner ? api.adminListSupportThreads() : api.listSupportThreads()),
     enabled: Boolean(user?.id),
     staleTime: 15_000,
     refetchInterval: 30_000,
   })
   const supportThreads = supportQuery.data?.threads || []
-  const supportNotificationCount = user?.is_owner
+  const supportNotificationCount = isOwner
     ? supportThreads.filter((thread) => thread.last_author_type === 'teacher').length
     : supportThreads.filter((thread) => (thread.unread_count || 0) > 0).length
   const [open, setOpen] = useState(false)
@@ -259,15 +264,15 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
   const profileAvatarNode = (
     <span className="relative inline-flex shrink-0">
       {avatarNode}
-      <ProfileNotificationBadge count={supportNotificationCount} admin={user?.is_owner} />
+      <ProfileNotificationBadge count={supportNotificationCount} admin={isOwner} />
     </span>
   )
   const profileLabel = supportNotificationCount
-    ? `${name}, ${user?.is_owner ? `${supportNotificationCount} new teacher repl${supportNotificationCount === 1 ? 'y' : 'ies'}` : `${supportNotificationCount} unread support repl${supportNotificationCount === 1 ? 'y' : 'ies'}`}`
+    ? `${name}, ${isOwner ? `${supportNotificationCount} new teacher repl${supportNotificationCount === 1 ? 'y' : 'ies'}` : `${supportNotificationCount} unread support repl${supportNotificationCount === 1 ? 'y' : 'ies'}`}`
     : name
 
   return (
-    <div className={`account-menu-footer relative flex items-center gap-1 py-2${spacious ? ' is-spacious' : ''} ${collapsed ? 'px-1 justify-center' : 'px-2'}`} ref={ref}>
+    <div className={`account-menu-footer relative flex w-full items-center gap-1 py-2${spacious ? ' is-spacious' : ''} ${collapsed ? 'px-1 justify-center' : 'px-2'}`} ref={ref}>
       {collapsed ? (
         <button
           type="button"
@@ -280,17 +285,19 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
           {profileAvatarNode}
         </button>
       ) : (
-        <div className="rail-reveal flex min-w-0 flex-1 items-center gap-1">
+        <div className="rail-reveal flex min-w-0 w-full flex-1 items-center gap-1">
           {/* One control, not two — this used to be a Link straight to
               Settings sitting beside a separate chevron button that opened
               this same popover, and the popover already has its own
               Settings row (below). Both pieces did the same job of "find
               your account," just at different distances, so they're merged
               into the single toggle the collapsed state above already
-              uses. */}
+              uses. On spacious (phone home) this profile control is meant
+              to span most of the footer; the theme toggle stays a compact
+              control pinned to the trailing edge. */}
           <button
             type="button"
-            className={`flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left transition-colors hover:bg-paper-inset ${spacious ? 'min-h-[48px] px-2.5 py-2.5' : 'gap-2 px-2 py-1.5'}`}
+            className={`account-menu-profile flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-left transition-colors hover:bg-paper-inset ${spacious ? 'min-h-[48px] px-2.5 py-2.5' : 'gap-2 px-2 py-1.5'}`}
             onClick={() => setOpen((o) => !o)}
             aria-expanded={open}
             aria-label={`Open account menu for ${profileLabel}`}
@@ -345,7 +352,7 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
               Placed first (above My classes/Settings), on Josh's own ask —
               the one control gated to admins only is the one that should be
               hardest to scroll past, not the last thing in the list. */}
-          {user?.is_owner ? (
+          {isOwner ? (
             <div className="mt-1 border-t border-hairline pt-1">
               <Link
                 to={`${classPath}/admin`}
@@ -361,7 +368,7 @@ export function AccountMenu({ classPath, collapsed, spacious }) {
                 className="flex min-h-touch items-center gap-2 px-3 py-2 text-xs text-ink-soft transition-colors hover:bg-paper-sunken"
               >
                 <Mail size={14} aria-hidden="true" /> Contact support
-                <SupportNotification count={supportNotificationCount} admin={user?.is_owner} />
+                <SupportNotification count={supportNotificationCount} admin={isOwner} />
               </Link>
             </div>
           ) : (

@@ -27,6 +27,10 @@ async function chooseFile(page, name = 'Blank lesson template.docx') {
 }
 
 test('phone template journey reveals real response sections, confirms the default, and advances', async ({ page }) => {
+  /* CI runners have no prefers-reduced-motion; this VM often does. Pin full
+     motion so the context-step focus race (200ms exit vs incoming heading)
+     is actually exercised instead of skipped. */
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.setViewportSize({ width: 390, height: 844 })
   await openTemplateStep(page)
   await expect(page.getByRole('checkbox', { name: 'I confirm this is a blank reusable format.' })).toBeVisible()

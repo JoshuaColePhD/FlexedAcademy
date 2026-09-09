@@ -35,8 +35,9 @@ log = logging.getLogger("flexedacademy.service")
 #     settings row held "English_Language_Arts", so without an alias the app would
 #     have planned against AP Lang while the UI claimed ELA.
 #
-# Unknown values fall back to AP_Lang rather than raising: this app's reason to
-# exist is that one course, and a stale settings row shouldn't take it down.
+# Unknown *named* values stay as-is (dynamic subjects like AP Biology). An
+# empty subject must not silently become AP_Lang — that grounded other
+# classes against the wrong corpus.
 _SUBJECT_ALIASES = {
     # display names
     "AP Language & Composition": "AP_Lang",
@@ -70,7 +71,7 @@ def subject_code(subject: str) -> str:
         if subject == label:
             return code
     # If not in hardcoded aliases, assume it is a valid dynamic subject (like AP Biology)
-    return subject or "AP_Lang"
+    return subject
 
 
 _subject_code = subject_code  # internal callers
@@ -119,11 +120,11 @@ def _resolve_subject_grade(user_id: str, cls: dict | None) -> tuple[str, int]:
     class_id at all.
     """
     if cls:
-        subject = cls.get("subject", "AP Language & Composition")
+        subject = (cls.get("subject") or "").strip()
         grade_str = cls.get("grade", "11")
     else:
         s = db.get_settings_row(user_id)
-        subject = s.get("subject", "AP Language & Composition")
+        subject = (s.get("subject") or "").strip()
         grade_str = s.get("grade", "11")
 
     try:
@@ -132,6 +133,19 @@ def _resolve_subject_grade(user_id: str, cls: dict | None) -> tuple[str, int]:
         grade = 11
 
     return _subject_code(subject), grade
+
+
+def require_subject_grade(user_id: str, cls: dict | None) -> tuple[str, int]:
+    """Same as _resolve_subject_grade, but refuse instead of planning AP Lang."""
+    code, grade = _resolve_subject_grade(user_id, cls)
+    if not code:
+        raise AppError(
+            "subject_required",
+            "Set this class's subject before I can ground a lesson in standards.",
+            status=400,
+            hint="Open class settings and pick a subject. I won't assume AP Language.",
+        )
+    return code, grade
 
 
 def _resolve_state(cls: dict | None) -> str:
@@ -212,7 +226,7 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
     _resolve_subject_grade's own docstring for why this matters and what
     omitting it means.
     """
-    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    subject_code, grade = require_subject_grade(user_id, cls)
     state = _resolve_state(cls)
     school_id = _school_for_class(cls, user_id) if cls else db.get_user_school(user_id)
     template_id = _selected_template_id(user_id, (cls or {}).get("id"), school_id)
@@ -750,7 +764,7 @@ def revise_day(
     # to the account default, same as _resolve_subject_grade does for a
     # class-less chat.
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    subject_code, grade = require_subject_grade(user_id, cls)
     school_for_revision = _school_for_class(cls, user_id)
     selected_template_id = row.get("template_id") or _selected_template_id(
         user_id, row.get("class_id"), school_for_revision
@@ -938,7 +952,7 @@ def set_day_field(
 
     original = days[day_index]
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    subject_code, grade = require_subject_grade(user_id, cls)
     school_for_edit = _school_for_class(cls, user_id)
     selected_template_id = row.get("template_id") or _selected_template_id(
         user_id, row.get("class_id"), school_for_edit
@@ -1052,7 +1066,7 @@ def edit_day_field(
         value = [part.strip() for part in re.split(r"[\n,]+", text) if part.strip()]
 
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    subject_code, grade = require_subject_grade(user_id, cls)
     row_class = cls
     school_for_revision = (
         db.class_school(row_class, user_id)
@@ -1175,7 +1189,7 @@ def revise_days(
         )
 
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
-    subject_code, grade = _resolve_subject_grade(user_id, cls)
+    subject_code, grade = require_subject_grade(user_id, cls)
     school_for_revision = _school_for_class(cls, user_id)
     selected_template_id = row.get("template_id") or _selected_template_id(
         user_id, row.get("class_id"), school_for_revision

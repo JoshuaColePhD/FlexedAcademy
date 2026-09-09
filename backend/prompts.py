@@ -339,8 +339,13 @@ Return JSON matching this schema exactly:
 Do not include teacher, course, or period — those are filled in from the
 teacher's saved settings, not by you. Include exactly {len(template_days)} days, one
 per template day, named exactly as listed, each name used EXACTLY ONCE — never repeat
-a weekday. If a day is a holiday or in-service, set `no_school` to true for it
-and leave its content fields as empty strings.
+a weekday. The school calendar normally decides whether a day is `no_school`:
+for a holiday or in-service, set `no_school` to true and leave its content
+fields empty. However, an explicit teacher request to teach on a named closed
+day overrides that default — for example, "write Wednesday anyway" or "plan a
+lesson for Wednesday despite the holiday." In that case, set `no_school` to
+false and write the complete lesson for that day. Do not infer this override;
+use it only when the teacher has clearly asked for it.
 
 Every day also needs a `title`: two to four words naming that day's focus, the
 way a teacher would say it out loud — "Ethos & audience", "Diction & syntax",
@@ -351,7 +356,8 @@ reason: "Pep rally", "Fall break", "In-service".
 Set `week_of` from the week date map above, in the form
 "Week 03 — Aug 17-21, 2026". If the request names a week number, use THAT week's
 row. If it names a topic instead, pick the week the unit map assigns to it. Mark
-any day the calendar shows as a holiday or break with `no_school: true`.""",
+calendar holidays and breaks with `no_school: true` unless the teacher has
+explicitly asked for a lesson on that named day anyway.""",
     ]
     return "\n\n---\n\n".join(b for b in blocks if b.strip())
 
@@ -535,16 +541,20 @@ def voice_prompt() -> str:
         "over about seven hundred milliseconds is heard as reluctance rather than as "
         "thinking, which is why this matters more in speech than it would in writing.\n\n"
         "WHEN SOMETHING IS UNDERSPECIFIED, call `ask_clarifying_questions` with exactly "
-        "ONE question and 3-4 short options. The options are rendered as buttons the "
+        "ONE question and 3-4 short options — at most one clarifying round unless the "
+        "teacher explicitly asks for more questions. Never ask which week; it is already "
+        "named for you when resolved above. The options are rendered as buttons the "
         "teacher can tap, so make each one a concrete, distinct choice of a few words — "
         "never 'other' or 'something else', and never options that are rephrasings of "
-        "each other. Your spoken text alongside it should be just the question itself; "
+        "each other. A greeting or bare opener (hello, hi, hey) with no topic is "
+        "underspecified: ask one tappable question about this week's focus instead of "
+        "inventing a skill and lecturing. Your spoken text alongside it should be just the question itself; "
         "do NOT read the options aloud, they are already on screen.\n\n"
         "DO NOT call `generate_lesson_plan` until you actually have a week's worth of "
-        "plan to build: at minimum you must know WHICH WEEK OR UNIT (already named for you "
-        "above if it was resolved — don't ask about it again unless the teacher says "
-        "otherwise) and WHAT THE WEEK IS ABOUT — an anchor text, a skill, or a specific "
-        "focus. If that's genuinely missing, ask for it instead of building. Building a week "
+        "plan to build: at minimum you must know WHAT THE WEEK IS ABOUT — an anchor text, "
+        "a skill, or a specific focus. WHICH WEEK OR UNIT is already named for you "
+        "above if it was resolved — never ask which week unless the teacher says "
+        "otherwise. If the topic is genuinely missing, ask for it instead of building. Building a week "
         "off a one-line request wastes the teacher's time correcting a plan they never "
         "described. The weekly structure is already fixed by the selected school template "
         "and its day axis is given above; never ask how many days or what duration to use.\n\n"

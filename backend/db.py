@@ -3873,6 +3873,22 @@ MIGRATIONS: list[str] = [
         OR id = current_setting('app.user_id', true)
       );
     """,
+    # ── 87: quizzes can stand alone (no lesson plan required) ────────────────
+    #
+    # A teacher who pastes a passage and asks for "multiple choice + a QTI"
+    # should get one without first building a whole week. Until now
+    # quizzes.plan_id was NOT NULL with an FK to plans, so the only path to a
+    # quiz was over an already-built plan (routes/plans.py's _require_plan) —
+    # which is exactly why a passage-in-a-fresh-chat request had nowhere to go.
+    # Relax it: plan_id becomes optional, and a nullable class_id gives a
+    # standalone quiz a home for listing and subject/grade context. Existing
+    # plan-backed quizzes are unaffected — their plan_id stays set, and the
+    # ON DELETE CASCADE from plans still governs any row that has one.
+    """
+    ALTER TABLE quizzes ALTER COLUMN plan_id DROP NOT NULL;
+    ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS class_id TEXT REFERENCES classes(id) ON DELETE SET NULL;
+    CREATE INDEX IF NOT EXISTS idx_quizzes_class ON quizzes(class_id);
+    """,
 ]
 
 
@@ -5928,22 +5944,26 @@ def create_quiz(
     *,
     quiz_id: str,
     user_id: str,
-    plan_id: str,
+    plan_id: str | None,
     title: str,
     question_types: list[str],
     quiz_json: dict,
     qti_path: str | None,
     docx_path: str | None,
     warnings: list[str],
+    class_id: str | None = None,
 ) -> dict:
+    # plan_id is optional (migration 87): a standalone passage/topic quiz has
+    # no backing week, only a class_id for listing and subject/grade context.
     _write(
-        """INSERT INTO quizzes (id, user_id, plan_id, title, question_types, quiz_json,
+        """INSERT INTO quizzes (id, user_id, plan_id, class_id, title, question_types, quiz_json,
                                 qti_path, docx_path, warnings, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?)""",
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (
             quiz_id,
             user_id,
             plan_id,
+            class_id,
             title,
             json.dumps(question_types),
             json.dumps(quiz_json),
@@ -5990,6 +6010,18 @@ def list_quizzes_for_plan(user_id: str, plan_id: str) -> list[dict]:
     rows = _rows(
         "SELECT * FROM quizzes WHERE plan_id = ? AND user_id = ? ORDER BY created_at DESC",
         (plan_id, user_id),
+    )
+    return [_hydrate_quiz(r) for r in rows]
+
+
+def list_standalone_quizzes_for_class(user_id: str, class_id: str) -> list[dict]:
+    """Plan-free quizzes (migration 87) that belong to a class rather than a
+    single built week. plan_id IS NULL keeps a plan's own quizzes — listed
+    through list_quizzes_for_plan — out of this class-level view."""
+    rows = _rows(
+        "SELECT * FROM quizzes WHERE class_id = ? AND user_id = ? AND plan_id IS NULL "
+        "ORDER BY created_at DESC",
+        (class_id, user_id),
     )
     return [_hydrate_quiz(r) for r in rows]
 
@@ -7533,13 +7565,20 @@ def is_admin(user_id: str) -> bool:
 
 
 def is_owner(user_id: str) -> bool:
-    """Return whether this is the one configured owner account.
+    """Return whether this is Joshua Cole's one authorized admin account.
 
     `is_admin` remains stored for historical account data and reporting, but
     it is not an authorization boundary: subscribers and any old admin flags
     must never be able to turn themselves into the owner.
     """
-    return bool(user_id and user_id == settings.owner_user_id)
+    if not user_id:
+        return False
+    row = get_user_by_id(user_id)
+    return bool(
+        row
+        and str(row.get("email") or "").strip().casefold()
+        == settings.owner_email.strip().casefold()
+    )
 
 
 def list_accounts_with_stats() -> list[dict]:

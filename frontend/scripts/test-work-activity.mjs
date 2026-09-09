@@ -20,14 +20,43 @@ test('action activity follows the ordered lifecycle and keeps day progress', () 
   assert.equal(activity.steps[1].state, 'active')
   assert.equal(activity.previewDays.length, 2)
 
-  activity = updateWorkActivity(activity, { code: 'writing', step: 'building', label: 'Building lesson plan' })
-  assert.equal(activity.activeStep, 'building')
+  activity = updateWorkActivity(activity, { code: 'writing', step: 'building', label: 'Building the days' })
+  assert.equal(activity.activeStep, 'days')
   assert.equal(activity.steps[1].state, 'complete')
-  assert.equal(activity.steps[3].state, 'active')
+  assert.equal(activity.steps[2].state, 'active')
+  assert.equal(activity.steps.length, 3)
 
   activity = updateWorkActivity(activity, { status: 'complete', done: true, label: 'Plan saved' })
   assert.equal(activity.status, 'complete')
   assert.ok(activity.steps.every((step) => step.state === 'complete'))
+})
+
+test('chat-stream complete does not mark the plan ready', () => {
+  let activity = createWorkActivity({ requestId: 'request-chat', anchorId: 'message-chat', kind: 'plan' })
+  activity = updateWorkActivity(activity, { code: 'tool_call', tool: 'generate_lesson_plan' })
+  activity = updateWorkActivity(activity, { status: 'complete', code: 'complete', label: 'Ready' })
+  assert.equal(activity.status, 'active')
+  assert.equal(activity.activeStep, 'days')
+  assert.equal(activity.steps[2].state, 'active')
+  assert.ok(activity.steps.some((step) => step.state !== 'complete'))
+})
+
+test('explicit done/finish is what marks the plan ready', () => {
+  let activity = createWorkActivity({ requestId: 'request-done', anchorId: 'message-done', kind: 'plan' })
+  activity = updateWorkActivity(activity, { status: 'complete', done: true, label: 'Plan saved' })
+  assert.equal(activity.status, 'complete')
+  assert.ok(activity.steps.every((step) => step.state === 'complete'))
+
+  activity = createWorkActivity({ requestId: 'request-finish', anchorId: 'message-finish', kind: 'plan' })
+  activity = updateWorkActivity(activity, { finish: true })
+  assert.equal(activity.status, 'complete')
+})
+
+test('failed activity keeps the real error message', () => {
+  let activity = createWorkActivity({ requestId: 'request-err', anchorId: 'message-err', kind: 'plan' })
+  activity = updateWorkActivity({ ...activity, error: 'The model took too long to respond.' }, { status: 'error' })
+  assert.equal(activity.status, 'error')
+  assert.equal(activity.error, 'The model took too long to respond.')
 })
 
 test('failed and cancelled activities remain addressable', () => {

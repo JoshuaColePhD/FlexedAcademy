@@ -1,7 +1,8 @@
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/api'
 import { qk } from '../../lib/queryKeys'
+import { useAuth } from '../../lib/authContext'
 import { useClasses } from '../../hooks/useAppData'
 import { OnboardingWizard } from '../../components/OnboardingWizard'
 import { BootScreen } from '../../components/BootScreen'
@@ -27,6 +28,7 @@ import { safeReturnTo } from '../../lib/returnTo'
  */
 export function OnboardingSetupPage() {
   const { classId } = useParams()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const returnTo = safeReturnTo(params.get('next'))
@@ -57,6 +59,19 @@ export function OnboardingSetupPage() {
      first-run flow, which creates one. Either way the teacher ends up
      somewhere that works instead of on a wizard with nothing to confirm. */
   const cls = (classId ? classes.find((c) => c.id === classId) : null) || classes[0] || null
+
+  /* First-run is once. Completing or skipping stamps onboarding_seen_at
+     (backend/db.set_onboarding_progress); ClassRoutes already honours that
+     and will not send a finished account back here. These two routes stay
+     publicly reachable though — /welcome still redirects here, and a
+     bookmark or leftover tab can land on /onboarding after setup is done.
+     Bounce any finished account that already has a class into the app.
+     An account with no classes still needs the course step to create one,
+     so that rare case is allowed through. "Take the tour again" is the
+     modal in AppShell, not this page. */
+  if (user?.onboarding_seen_at && cls) {
+    return <Navigate to={returnTo || `/c/${cls.id}`} replace />
+  }
 
   return (
     <OnboardingWizard

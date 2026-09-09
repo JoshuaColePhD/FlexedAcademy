@@ -737,6 +737,11 @@
 .composer-control-row.is-expanded > .composer-action-cluster {
   align-self: flex-end;
 }
+.composer-action-cluster,
+.composer-input,
+.composer-dock-surface {
+  overflow-anchor: none;
+}
 @media (prefers-reduced-motion: reduce) {
   .composer-shell,
   .composer-input { transition-duration: 0.01ms !important; }
@@ -1862,17 +1867,32 @@
    the magnifying-glass control in its header is used. */
 .rail-search-popover { flex: 0 0 auto; }
 .account-menu-footer.is-spacious {
+  display: flex;
+  width: 100%;
+  box-sizing: border-box;
   margin-top: 6px;
   padding: 10px 12px max(10px, env(safe-area-inset-bottom));
   border-top: 1px solid var(--edge);
   background: var(--paper);
 }
-.account-menu-footer.is-spacious .rail-reveal > button {
-  min-height: 64px;
+/* Profile spans most of the footer; theme toggle stays compact on the
+   trailing edge. An earlier `width: 100%` on every `.rail-reveal > button`
+   let the shrink-0 moon claim the full row and squeeze the profile into
+   an avatar+chevron strip with empty space around the theme control. */
+.account-menu-footer.is-spacious .rail-reveal {
   width: 100%;
+  gap: 8px;
+}
+.account-menu-footer.is-spacious .account-menu-profile {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 64px;
   gap: 14px;
   border-radius: 16px;
   padding: 8px 10px;
+  /* Fill so the wide flex-1 hit target reads as covering most of the
+     footer, not as a small left cluster with empty gap before the moon. */
+  background: var(--paper-inset);
 }
 .account-menu-footer.is-spacious .account-menu-avatar {
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.22);
@@ -1882,8 +1902,12 @@
   min-height: 2.5rem;
 }
 .account-menu-footer.is-spacious .account-theme-toggle {
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
   min-width: 2.75rem;
   min-height: 2.75rem;
+  width: auto;
 }
 .app-rail a:focus-visible,
 .app-rail button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -2097,7 +2121,12 @@ body:has(.dialog-scrim) .composer-dock-surface {
 .composer-accessories .composer-tools-menu { left: 0; right: auto; width: min(320px, calc(100vw - 48px)); }
 .composer-ghost-overlay {
   font-size: 16px !important;
-  transform: translateY(3px);
+}
+.composer-ghost {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .workspace-topbar .chat-head { max-width: none; flex: 1; }
 @media (min-width: 768px) {
@@ -2192,6 +2221,57 @@ body:has(.dialog-scrim) .composer-dock-surface {
   width: calc(100% + 36px) !important;
   max-height: min(48dvh, 380px);
   overscroll-behavior: contain;
+}
+/* An open picker is the task at hand. Let its options claim the remaining
+   dialog height instead of forcing a nested list to squeeze below the other
+   field, where the last weeks were clipped behind the dialog's own scroll. */
+.chat-header-sheet.is-picker-open {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection-field {
+  display: none;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection-field:has(.is-open) {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection-field:has(.is-open) > .relative,
+.chat-header-sheet.is-picker-open .chat-header-selection-field .chat-week.is-open {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection-field > .relative.is-open {
+  display: flex;
+  flex-direction: column;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection-field .chat-week.is-open {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 52px minmax(0, 1fr);
+  align-content: start;
+}
+.chat-header-sheet.is-picker-open .chat-header-sheet-menu,
+.chat-header-sheet.is-picker-open .week-picker-menu {
+  position: relative !important;
+  left: -18px !important;
+  width: calc(100% + 36px) !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+.chat-header-sheet.is-picker-open .week-picker-menu {
+  grid-column: 1 / -1;
+  height: 100%;
 }
 .chat-header-selection-field .chat-week {
   position: relative;
@@ -2566,6 +2646,10 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .composer-control-row {
     padding-right: 8px;
     padding-left: 8px;
+  }
+
+  .composer-action-cluster {
+    overflow-anchor: none;
   }
 
   .composer-tools-menu {

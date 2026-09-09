@@ -1193,10 +1193,22 @@
   @media (max-width: 767.98px) {
     .onboarding-ground {
       padding: 0;
+      /* Pin to the visible window. 100dvh can sit 1px above window.innerHeight
+         in headless Chromium, and .glass-panel's 1px border on an edge-to-edge
+         card added a second pixel of overflow — the fixed Continue footer then
+         painted past the phone viewport. */
+      position: fixed;
+      inset: 0;
+      height: auto;
+      overflow: hidden;
     }
     .onboarding-card {
       max-width: none;
+      max-height: 100%;
+      min-height: 0;
+      height: 100%;
       border-radius: 0;
+      border: 0 !important;
     }
     .onboarding-column {
       min-height: 0;
@@ -7382,6 +7394,11 @@
       padding: 0;
     }
   }
+  /* Marker for the in-composer generation chip (pairs with .composer-writing-status). */
+  .composer-generation-status {
+    color: var(--accent-text);
+    border-color: rgb(var(--accent-rgb) / 0.18);
+  }
   .composer-save-status {
     color: var(--ok);
     border-color: rgb(var(--ok-rgb) / 0.18);
@@ -9572,13 +9589,17 @@
     animation: composer-reason-in 260ms var(--ease-out) 45ms both;
   }
   .composer-ghost {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     animation: composer-ghost-in 180ms var(--ease-out) both;
   }
   .composer-ghost-overlay {
     display: flex;
     align-items: center;
     min-width: 0;
-    padding: 0 0.5rem;
+    padding: 0;
     white-space: nowrap;
   }
   /* The attachment rail already gets its layout from the utility classes in
@@ -10105,6 +10126,11 @@
        only the placeholder-only state was ever wrong). */
     .composer-input {
       min-height: 48px;
+    }
+    .composer-input::placeholder {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
 
@@ -11983,6 +12009,25 @@
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@media (max-width: 767.98px) {
+  /* Unlayered so it can beat .glass-panel's later unlayered 1px !important
+     border. The matching rules inside @layer components lose that fight, and
+     the Continue footer then sits 1px past a 375×812 phone viewport. */
+  .onboarding-ground {
+    position: fixed;
+    inset: 0;
+    height: auto;
+    overflow: hidden;
+  }
+  .onboarding-card.glass-panel {
+    box-sizing: border-box;
+    height: 100%;
+    max-height: 100%;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+}
 @media (max-width: 767px) {
   .onboarding-encouragement { display: none; }
   .onboarding-rail-visual { display: none; }
@@ -11993,4 +12038,12 @@
 @media (prefers-reduced-motion: reduce) {
   .onboarding-confetti { display: none; }
   .onboarding-celebration *, .onboarding-encouragement, .onboarding-welcome button[aria-pressed='true'], .onboarding-rail-step[data-state='done'] .onboarding-rail-dot { animation: none !important; }
+  /* .fa-rise-panel uses fill-mode: both. The global reduced-motion block
+     only shortens that animation to 0.01ms, so the from-keyframe
+     translateY(--motion-reveal) (2px in the workspace skin) can still be
+     the used transform when layout is measured. On a 375×812 phone that
+     drops Continue 1px past window.innerHeight (811 + 2 = 813). */
+  .onboarding-card.fa-rise-panel {
+    animation: none !important;
+  }
 }
