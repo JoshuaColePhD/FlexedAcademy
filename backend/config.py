@@ -51,12 +51,9 @@ class Settings(BaseSettings):
     llm_cache_cleanup_batch: int = Field(default=10_000, ge=100, le=100_000)
     common_standards_api_key: str = ""
 
-    # There is exactly one administrator: the account owner. Keep this as an
-    # immutable account id rather than treating a subscriber's `is_admin` row
-    # flag as permission. The default account seeded by the first migration is
-    # the owner's account; deployments with a different owner id must set
-    # OWNER_USER_ID explicitly.
-    owner_user_id: str = "default_user"
+    # There is exactly one administrator. Authorize that account by its
+    # verified sign-in address, never by a mutable database admin flag.
+    owner_email: str = "joshuacolephd@gmail.com"
 
     # ── voice replies ────────────────────────────────────────────────────────
     # gpt-4o-mini-tts, not tts-1: OpenAI's own guidance names this the model for
@@ -391,10 +388,11 @@ class Settings(BaseSettings):
     # Lower is also FASTER here: 30 jobs took 5.0s at 8 workers and 2.3s at 2,
     # because the workers were contending for a pool of the same size and for
     # Supabase's pooler behind it. Concurrency past the pool buys nothing.
-    # Default 1 so a missing env var cannot overlap those buffers. retrieve_grounded
-    # also hard-caps workers at 1; raise RETRIEVAL_WORKERS only together with
-    # that cap and a larger instance.
-    retrieval_workers: int = 1
+    # Two workers use the two available database connections without creating
+    # an unbounded memory spike. This was the measured fastest stable setting
+    # for the hybrid standards retrieval; more workers only contend for the
+    # same pool and grow each query's transient buffers.
+    retrieval_workers: int = 2
 
     # Short-term backpressure for LLM work. Requests that arrive in a burst are
     # queued instead of being mistaken for a subscription/usage failure. Default

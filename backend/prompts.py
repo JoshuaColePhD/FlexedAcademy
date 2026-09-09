@@ -339,8 +339,13 @@ Return JSON matching this schema exactly:
 Do not include teacher, course, or period — those are filled in from the
 teacher's saved settings, not by you. Include exactly {len(template_days)} days, one
 per template day, named exactly as listed, each name used EXACTLY ONCE — never repeat
-a weekday. If a day is a holiday or in-service, set `no_school` to true for it
-and leave its content fields as empty strings.
+a weekday. The school calendar normally decides whether a day is `no_school`:
+for a holiday or in-service, set `no_school` to true and leave its content
+fields empty. However, an explicit teacher request to teach on a named closed
+day overrides that default — for example, "write Wednesday anyway" or "plan a
+lesson for Wednesday despite the holiday." In that case, set `no_school` to
+false and write the complete lesson for that day. Do not infer this override;
+use it only when the teacher has clearly asked for it.
 
 Every day also needs a `title`: two to four words naming that day's focus, the
 way a teacher would say it out loud — "Ethos & audience", "Diction & syntax",
@@ -351,7 +356,8 @@ reason: "Pep rally", "Fall break", "In-service".
 Set `week_of` from the week date map above, in the form
 "Week 03 — Aug 17-21, 2026". If the request names a week number, use THAT week's
 row. If it names a topic instead, pick the week the unit map assigns to it. Mark
-any day the calendar shows as a holiday or break with `no_school: true`.""",
+calendar holidays and breaks with `no_school: true` unless the teacher has
+explicitly asked for a lesson on that named day anyway.""",
     ]
     return "\n\n---\n\n".join(b for b in blocks if b.strip())
 

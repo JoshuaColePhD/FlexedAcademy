@@ -78,11 +78,10 @@ services:
         value: "0.65"
       - key: RETRIEVAL_FLOORS
         value: '{"Math": 0.52, "Science": 0.55, "PE": 0.60, "AP_Lang": 0.64}'
-      # Keep the free Render instance inside its memory budget. Retrieval
-      # queries hold a sizeable transient result set, so one in-flight query
-      # is safer than allowing concurrent generations to multiply that peak.
+      # Two in-flight retrieval queries match the database pool and overlap
+      # independent standards searches without opening unbounded concurrency.
       - key: RETRIEVAL_WORKERS
-        value: "1"
+        value: "2"
       - key: DB_POOL_SIZE
         value: "2"
       # Render is the only public ingress. Trust its forwarded client address

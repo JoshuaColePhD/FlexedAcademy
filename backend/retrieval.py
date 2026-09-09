@@ -1027,7 +1027,7 @@ _ITERATIVE_SCAN = (
 #
 # Acquired BEFORE db.borrow(), and always in that order, so the two semaphores
 # cannot deadlock against each other.
-_INFLIGHT = threading.Semaphore(max(1, min(settings.retrieval_workers, settings.db_pool_size, 1)))
+_INFLIGHT = threading.Semaphore(max(1, min(settings.retrieval_workers, settings.db_pool_size)))
 
 
 def _retrieval_states(course: str | None, source_type: str | None, requested: str) -> tuple[str, ...]:
@@ -1354,10 +1354,10 @@ def retrieve_grounded(
     # holding a thread, and never more than the memory bound allows. See
     # settings.retrieval_workers: at 8 this peaked over Render's 512MB and the
     # worker was OOM-killed mid-stream.
-    # The current Render free instance has 512 MB. Keep retrieval strictly
-    # serial there even if a larger local config asks for more workers; the
-    # hybrid query's transient buffers are the dominant per-request spike.
-    workers = max(1, min(settings.retrieval_workers, settings.db_pool_size, 1))
+    # Keep the concurrent work aligned with the database pool. Two workers is
+    # the measured fast, stable point: it overlaps the independent standards
+    # searches without allowing a burst of hybrid-query buffers in memory.
+    workers = max(1, min(settings.retrieval_workers, settings.db_pool_size))
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = []
         for q, n, source_type in jobs:

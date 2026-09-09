@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -22,6 +22,10 @@ export function ChatHeaderSheet({
 }) {
   const { mounted, closing } = useExitTransition(open, 180)
   const sheetRef = useRef(null)
+  const [openPicker, setOpenPicker] = useState(null)
+  useEffect(() => {
+    if (!open) setOpenPicker(null)
+  }, [open])
   /* Keyed on `open`, not `mounted`. `mounted` stays true through the 180ms
      exit transition, so trapping on it kept Tab captured inside a sheet that
      was already visually gone — and Escape still bound to a dialog the
@@ -47,7 +51,7 @@ export function ChatHeaderSheet({
         role="dialog"
         aria-modal="true"
         aria-label="Class and week"
-        className={`chat-header-sheet${closing ? ' is-closing' : ''}`}
+        className={`chat-header-sheet${openPicker ? ' is-picker-open' : ''}${closing ? ' is-closing' : ''}`}
       >
         <div className="chat-header-sheet-heading">
           <div>
@@ -63,7 +67,13 @@ export function ChatHeaderSheet({
         <div className="chat-header-selection">
           <section className="chat-header-selection-field" aria-labelledby="chat-header-course-label">
             <p id="chat-header-course-label" className="chat-header-selection-label">Course</p>
-            <ClassSwitcher classes={classes} activeClass={activeClass} classPath={classPath} fullWidthMenu />
+            <ClassSwitcher
+              classes={classes}
+              activeClass={activeClass}
+              classPath={classPath}
+              fullWidthMenu
+              onOpenChange={(isOpen) => setOpenPicker(isOpen ? 'course' : null)}
+            />
           </section>
 
           {classId && classId !== 'default' && classes.length > 0 ? (
@@ -79,6 +89,7 @@ export function ChatHeaderSheet({
                 schoolName={calendar?.school?.name}
                 disabled={busy}
                 fullWidthMenu
+                onOpenChange={(isOpen) => setOpenPicker(isOpen ? 'week' : null)}
               />
             </section>
           ) : null}

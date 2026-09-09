@@ -1788,6 +1788,8 @@ CHAT_TOOLS = [
                 "skill — including pointing out that a day's ACT cell is blank — use `act_alignment`; populate it "
                 "with the closest grounded companion ACT standard instead of only acknowledging the gap. If the "
                 "teacher says only 'rewrite Wednesday' without saying what should change, ask a clarifying question. "
+                "If the teacher asks to turn a holiday/no-school day into a teaching day, do NOT use this "
+                "field-level tool: call generate_lesson_plan so the whole-day `no_school` state can change. "
                 "Do not use this for a whole-week change or a change spanning several days."
             ),
             "parameters": {
@@ -1832,7 +1834,8 @@ CHAT_TOOLS = [
                 "throughline, or which specific change to make on a revision. A normal new weekly plan "
                 "is always the complete week defined by the selected school's format; do not require "
                 "or ask for a day count or duration. Use the school calendar for holidays and no-school "
-                "days. A request that only gestures at a topic ('something about "
+                "days unless the teacher explicitly asks to teach on a named closed day; that request takes "
+                "priority and requires a full lesson for that day. A request that only gestures at a topic ('something about "
                 "Gatsby's symbolism', 'make it more engaging') is NOT enough — call ask_clarifying_questions "
                 "instead of guessing at the missing shape yourself. When the conversation already has enough, "
                 "call this immediately; don't ask a question just to double-check something already answered. "

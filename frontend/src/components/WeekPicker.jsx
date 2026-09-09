@@ -6,10 +6,14 @@ import { useExitTransition } from '../hooks/useExitTransition'
 /* Which week this conversation is planning. This is a themed listbox rather
  * than a native select so its open state uses the same curved menu treatment
  * as the class picker on every platform. */
-export function WeekPicker({ options, value, onChange, schoolName, disabled = false, fullWidthMenu = false }) {
+export function WeekPicker({ options, value, onChange, schoolName, disabled = false, fullWidthMenu = false, onOpenChange }) {
   const [open, setOpen] = useState(false)
   const { mounted, closing } = useExitTransition(open, 150)
   const ref = useRef(null)
+
+  useEffect(() => {
+    onOpenChange?.(open)
+  }, [onOpenChange, open])
 
   useEffect(() => {
     if (!open) return undefined

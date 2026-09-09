@@ -2222,6 +2222,57 @@ body:has(.dialog-scrim) .composer-dock-surface {
   max-height: min(48dvh, 380px);
   overscroll-behavior: contain;
 }
+/* An open picker is the task at hand. Let its options claim the remaining
+   dialog height instead of forcing a nested list to squeeze below the other
+   field, where the last weeks were clipped behind the dialog's own scroll. */
+.chat-header-sheet.is-picker-open {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection-field {
+  display: none;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection-field:has(.is-open) {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection-field:has(.is-open) > .relative,
+.chat-header-sheet.is-picker-open .chat-header-selection-field .chat-week.is-open {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection-field > .relative.is-open {
+  display: flex;
+  flex-direction: column;
+}
+.chat-header-sheet.is-picker-open .chat-header-selection-field .chat-week.is-open {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 52px minmax(0, 1fr);
+  align-content: start;
+}
+.chat-header-sheet.is-picker-open .chat-header-sheet-menu,
+.chat-header-sheet.is-picker-open .week-picker-menu {
+  position: relative !important;
+  left: -18px !important;
+  width: calc(100% + 36px) !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+}
+.chat-header-sheet.is-picker-open .week-picker-menu {
+  grid-column: 1 / -1;
+  height: 100%;
+}
 .chat-header-selection-field .chat-week {
   position: relative;
   display: flex;
