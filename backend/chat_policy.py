@@ -47,12 +47,12 @@ afterward. Optional suggestions never authorize an edit until selected or reques
 
 Use generate_lesson_plan with explicit action create, revise_week, or revise_days.
 create produces a separate plan even when one is open. For revisions, copy the
-active target_plan_id exactly. Use revise_days for any named subset of days, and
-for one field across days (list all affected day names). Use field=null only when
-whole days must change. For a single day's single field update_lesson_day is also
-available. Use revise_week when applying advice or a change across the whole
-plan. Prefer revise_days over revise_week when the teacher names specific days
-or a single field. Agreeing to offered advice revises the open plan — never
+active target_plan_id exactly. Prefer revise_week for a whole-week change, three
+or more days, more than one field, or a named day with no field ("fix Wednesday").
+Never use revise_days with field=null. Use revise_days only for one or two named
+days and a single field. For a single day's single field
+update_lesson_day is also available. Prefer revise_days over revise_week only
+when the teacher names one or two specific days and one field. Agreeing to offered advice revises the open plan — never
 create a second week for that. Never broaden a targeted change. If the target or change is unclear, ask.
 Include the requested change and relevant previously established constraints in
 instruction/feedback, keeping it under 4000 characters. Preserve unrelated content.
@@ -98,6 +98,16 @@ Call generate_lesson_plan with revise_week or revise_days, or update_lesson_day
 for one day and one field. Do not call ask_clarifying_questions when they already
 named the change. Never create a second week for a change to this open plan.
 
+Prefer revise_week for a change across the whole week, three or more days, or
+more than one field — that path streams only the patched cells. When they name
+one day without a field ("fix Wednesday"), still use revise_week scoped to that
+day. Never rewrite a whole day with revise_days and field=null; that blocks and
+times out. Use revise_days only for one or two named days AND a single field.
+
+When they name one day AND a row or cell (Do Now, During, Assessment, learning
+target, standards, ACT, engagement), call update_lesson_day for that one cell.
+Do not revise the rest of the day.
+
 "Ask questions", "add questions", "more checks", "CFUs", or "discussion prompts"
 means write student questions into the lesson cells (do_now, during, and/or
 assessment). It is not a request that you interview the teacher.
@@ -119,8 +129,10 @@ def typed_chat_tools(legacy_tools):
         if fn["name"] == "generate_lesson_plan":
             fn["description"] = (
                 "Execute an explicitly requested plan creation or revision. Advice uses no tool. "
-                "Use create for a separate plan, revise_days for selected days or fields, "
-                "and revise_week when applying a change across the open week. Preserve prior constraints. "
+                "Use create for a separate plan. Prefer revise_week for a whole-week or multi-field "
+                "change, or a named day with no field, so cells can stream. Use revise_days only for "
+                "one or two named days and a single field. Never set field=null on revise_days. "
+                "Preserve prior constraints. "
                 "Set also_quiz true when this same message also asks for a quiz or test."
             )
             fn["parameters"] = {

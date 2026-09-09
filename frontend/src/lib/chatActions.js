@@ -15,6 +15,13 @@ export function planOperation(result, activePlanId, { voice = false } = {}) {
   return action
 }
 
+/** Whole-day REST rewrites often hit the browser timeout. Stream a patch instead. */
+export function shouldStreamPlanRevision(action) {
+  if (!action) return false
+  if (action.action === 'revise_week') return true
+  return action.action === 'revise_days' && !action.field
+}
+
 export function revisionDayIndices(plan, names) {
   return names.map((name) => {
     const index = plan.days.findIndex((day) => day.name === name)

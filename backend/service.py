@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import curriculum, db, docx_build, llm, retrieval, schema, schoolcal, storage, units
@@ -1314,10 +1315,9 @@ def revise_days(
 
     import json as _json
 
-    new_days = list(days)
-    warnings: list[str] = []
-    retrieved_codes: set[str] = set()
-    for idx in targets:
+    plan_dump = _json.dumps(plan, indent=2)
+
+    def revise_one(idx: int):
         original = days[idx]
         if needs_retrieval:
             contextual_feedback = (
@@ -1335,15 +1335,14 @@ def revise_days(
                 result = RetrievalResult(chunks=[], rejected=result.rejected, floor=result.floor)
         else:
             result = RetrievalResult()
-        retrieved_codes |= result.codes
 
         if field is None:
             merged = llm.rewrite_day(
-                user_id, original, feedback, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
+                user_id, original, feedback, plan_dump, result, class_id=row.get("class_id")
             )
         else:
             value = llm.rewrite_day_field(
-                user_id, original, feedback, field, _json.dumps(plan, indent=2), result, class_id=row.get("class_id")
+                user_id, original, feedback, field, plan_dump, result, class_id=row.get("class_id")
             )
             merged = {**original, field: value}
         updated, day_warnings = schema.validate_day(
@@ -1361,8 +1360,20 @@ def revise_days(
             for key, was in original.items():
                 if key != field:
                     updated[key] = was
+        return idx, updated, day_warnings, set(result.codes)
+
+    new_days = list(days)
+    warnings: list[str] = []
+    retrieved_codes: set[str] = set()
+    if len(targets) == 1:
+        revised = [revise_one(targets[0])]
+    else:
+        with ThreadPoolExecutor(max_workers=min(5, len(targets))) as pool:
+            revised = list(pool.map(revise_one, targets))
+    for idx, updated, day_warnings, codes in revised:
         new_days[idx] = updated
         warnings += day_warnings
+        retrieved_codes |= codes
 
     new_plan = {**plan, "days": new_days}
 
@@ -1373,7 +1384,7 @@ def revise_days(
             allowed,
             subject_code=subject_code,
             act_expected=_act_row_expected(act_row, subject_code),
-            result=result,
+            result=RetrievalResult(),
         )
     cited = retrieval.cited_standards(new_plan, allowed, subject_code=subject_code)
 

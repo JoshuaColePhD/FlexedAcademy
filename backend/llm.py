@@ -67,6 +67,7 @@ log = logging.getLogger("flexedacademy.llm")
 # max_retries=2 (the SDK default) still applies underneath this, for the
 # connection-level errors it retries before it ever reaches our code.
 _REQUEST_TIMEOUT_S = 30.0
+_REWRITE_TIMEOUT_S = 90.0
 
 # The latest twelve Florence plans (Aug 21–27, 2026) used 1,493–2,097 raw
 # completion tokens, with a median of 1,793 and a mean of 1,791. Medium is
@@ -107,6 +108,17 @@ def client() -> OpenAI:
             hint="Add it to the .env file at the project root (see .env.example).",
         )
     return OpenAI(api_key=settings.openai_api_key, timeout=_REQUEST_TIMEOUT_S)
+
+
+@functools.lru_cache(maxsize=1)
+def _rewrite_client() -> OpenAI:
+    if not settings.has_api_key:
+        raise AppError(
+            "no_api_key",
+            "OPENAI_API_KEY is not set.",
+            hint="Add it to the .env file at the project root (see .env.example).",
+        )
+    return OpenAI(api_key=settings.openai_api_key, timeout=_REWRITE_TIMEOUT_S)
 
 
 def _response_format(name: str, schema: dict) -> dict:
@@ -374,6 +386,7 @@ def class_custom_instructions_for(user_id: str, class_id: str | None) -> str | N
 def _cached_completion(user_id: str, kind: str, **kwargs):
     """Checks the database cache before calling OpenAI."""
     skip_cache = bool(kwargs.pop("skip_cache", False))
+    rewrite_timeout = kwargs.pop("timeout", None)
     # We only cache if we have a stable way to hash the request
     messages = kwargs.get("messages", [])
     model = kwargs.get("model", "")
@@ -409,7 +422,8 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
         log.info("LLM cache skip for %s retry", kind)
 
     started_at = time.perf_counter()
-    resp = client().chat.completions.create(**kwargs)
+    openai_client = _rewrite_client() if rewrite_timeout else client()
+    resp = openai_client.chat.completions.create(**kwargs)
     _record(user_id, kind, resp.usage, started_at=started_at)
     choice = resp.choices[0]
     if getattr(choice, "finish_reason", None) == "length":
@@ -919,6 +933,7 @@ def rewrite_day(
         "rewrite_day",
         model=settings.openai_model,
         max_completion_tokens=OUTPUT_LENGTH_BUDGETS[output_length],
+        timeout=_REWRITE_TIMEOUT_S,
         response_format=_response_format("lesson_plan_day", day_json_schema(template_days)),
         messages=[
             {
@@ -978,6 +993,7 @@ def rewrite_day_field(
         "rewrite_day_field",
         model=settings.openai_model,
         max_completion_tokens=700,
+        timeout=_REWRITE_TIMEOUT_S,
         response_format=_response_format(f"lesson_plan_day_{field}", field_json_schema(field)),
         messages=[
             {

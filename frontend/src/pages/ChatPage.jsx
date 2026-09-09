@@ -1,4 +1,5 @@
-import { chatMessageText, completionSuggestions, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, revisionDayIndices } from '../lib/chatActions'
+import { chatMessageText, completionSuggestions, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, revisionDayIndices, shouldStreamPlanRevision } from '../lib/chatActions'
+import { isClearlySpecifiedPlanRequest } from '../lib/planIntent'
 import { chatAvatarColor } from '../lib/chatPresentation'
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -81,35 +82,6 @@ function revisionWorkingKeys(dayIndices, field) {
 // persisted shape, and keeping a detached copy prevents a later React state
 // update from changing what Undo is meant to restore.
 const clonePlan = (plan) => (plan ? JSON.parse(JSON.stringify(plan)) : null)
-
-/* A fully specified first request does not need a model call just to decide
- * that it is a lesson-plan request. Keep this intentionally conservative: a
- * vague "make a lesson plan" still goes through the question path, while a
- * request that names both a subject/text and an instructional focus can go
- * straight to the grounded generator. This removes one complete model
- * round-trip from the common, ready-to-build path without changing the
- * backend's validation or the clarification behavior. */
-function isClearlySpecifiedPlanRequest(text) {
-  const normalized = String(text || '').replace(/\s+/g, ' ').trim()
-  if (normalized.length < 24 || normalized.length > 12000) return false
-
-  const asksForPlan =
-    /\b(?:make|create|build|generate|design|prepare|plan)\b/i.test(normalized) &&
-    /\b(?:lesson plan|weekly plan|plan for the week|week of lessons?)\b/i.test(normalized)
-  if (!asksForPlan) return false
-
-  const namesTopic =
-    /\b(?:on|about|around|covering|focused? on|using|through|for)\s+(?!(?:a|an|the|my|this|students?|learners?)\b)[a-z0-9]/i.test(
-      normalized
-    ) ||
-    /\b(?:chapter|unit|novel|article|matter|properties|argument|grammar|fractions?|ecosystems?)\b/i.test(normalized)
-  const namesLearningWork =
-    /\b(?:focus(?:ed|ing)?|students?\s+(?:will|should|need)|practice|apply|analy[sz]|read|write|discuss|compare|skill|standard|objective|assessment|quiz|project)\b/i.test(
-      normalized
-    )
-
-  return namesTopic && namesLearningWork
-}
 
 /* A running transcript reopened days later used to read as one unbroken
  * column — nothing marked where "last Tuesday" ended and "just now" began.
@@ -742,9 +714,10 @@ export function ChatPage() {
   const [viewKind, setViewKind] = useState('plan')
   const [viewingQuiz, setViewingQuiz] = useState(null)
   const [viewingDoc, setViewingDoc] = useState(null)
-  // Open the workspace on request. A new message never steals conversation space.
+  // Outputs stays closed on an empty chat. A first build or a loaded week
+  // opens it once; the teacher can still close it after that.
   const [railOpen, setRailOpen] = useState(false)
-  const railAutoOpenedRef = useRef(true)
+  const railAutoOpenedRef = useRef(false)
   // A live plan should earn the document surface as soon as the stream has a
   // real day to show. Keep this one-way per build: the teacher can close it
   // while the rest of the week writes without React reopening it on every
@@ -1262,7 +1235,7 @@ export function ChatPage() {
       setViewingQuiz(null)
       setViewingDoc(null)
       setRailOpen(false)
-      railAutoOpenedRef.current = true
+      railAutoOpenedRef.current = false
       setPlanPeekOpen(false)
       planBuildStartedRef.current = false
       setSelectedWeek(null)
@@ -1294,7 +1267,7 @@ export function ChatPage() {
     setViewingQuiz(null)
     setViewingDoc(null)
     setRailOpen(false)
-    railAutoOpenedRef.current = true
+    railAutoOpenedRef.current = false
     setPlanPeekOpen(false)
     planBuildStartedRef.current = false
 
@@ -2228,7 +2201,7 @@ export function ChatPage() {
       'revision',
       liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current,
     )
-    if (action.action === 'revise_week') {
+    if (shouldStreamPlanRevision(action)) {
       pendingActivityKindRef.current = 'revision'
       planBuildInFlightRef.current = true
       revisionBeforePlanRef.current = clonePlan(ctx.artifact.plan)
@@ -2238,7 +2211,11 @@ export function ChatPage() {
       let history = ctx.priorConversation || ''
       if (action?.instruction) history += `\n\nRequest summary and prior constraints: ${action.instruction}`
       if (result.text?.trim()) history += `\n\nASSISTANT: ${result.text}`
-      stream.start(revisionFeedback, {
+      let query = revisionFeedback
+      if (action.action === 'revise_days' && action.days?.length) {
+        query = `${revisionFeedback}\n\nOnly change ${action.days.join(', ')}. Leave every other day unchanged.`
+      }
+      stream.start(query, {
         chatId: ctx.activeChatId,
         weekNumber: action?.week_number ?? ctx.conversationWeek ?? ctx.effectiveWeek,
         classId: ctx.classId,
@@ -2683,7 +2660,7 @@ export function ChatPage() {
           { role: 'user', content: selectedStandard ? modelQuery : chatUserContent },
         ]
 
-        if (voiceOpen && !planning && isClearlySpecifiedPlanRequest(promptText)) {
+        if (!planning && chatMode !== 'research' && isClearlySpecifiedPlanRequest(promptText)) {
           finishPreparing()
           pendingActivityKindRef.current = 'plan'
           planBuildInFlightRef.current = true
@@ -3699,17 +3676,9 @@ export function ChatPage() {
      are a small pill leaving the page, not a panel. */
   const latestPill = useExitTransition(!atBottom && !isEmpty, 150)
 
-  /* Opens the drawer after a plan actually exists; while a build starts, the
-     activity line attached to the teacher's message is the single live
-     surface. After
-     that it is the teacher's to open or close. Fires at most ONCE per chat
-     (railAutoOpenedRef) — `busy` flips true and back false on every later
-     turn too (a revision, a follow-up, a quiz), and without the guard each
-     of those turns re-ran this effect and force-reopened a drawer the
-     teacher had just closed. "The plan so far" now lives inline in the chat
-     itself (see the decisions list rendered with the messages), not in the
-     rail, so landing a decision no longer needs to pop the rail open on its
-     own — the rail opens only once the saved artifact is useful to inspect. */
+  /* When this chat already has a week, open it on the right and keep Outputs
+     ready underneath. First build uses the same path. Once per chat so a
+     later close stays closed through revisions. Switching chats resets. */
   useEffect(() => {
     if (railAutoOpenedRef.current) return
     if (hasArtifact) {
@@ -3719,10 +3688,11 @@ export function ChatPage() {
          recruiter showcase is the exception on a portrait phone: it should
          open on the evidence, not make a visitor hunt for the lesson plan. */
       setRailOpen(!isLandscapePhone)
+      if (!isPhone && !isLandscapePhone) setExpanded(true)
       if (user?.read_only && isPhone) setExpanded(true)
       railAutoOpenedRef.current = true
     }
-  }, [busy, hasArtifact, isLandscapePhone, isPhone, user?.read_only])
+  }, [hasArtifact, isLandscapePhone, isPhone, user?.read_only])
 
   // A builder should feel underway in two places at once: the composer keeps
   // Stop under the teacher's thumb, while Outputs opens to the live document

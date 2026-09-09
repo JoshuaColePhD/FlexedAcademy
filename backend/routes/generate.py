@@ -693,13 +693,16 @@ def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, mo
             return
 
         def _finalize():
+            # This job runs off the request thread, so FastAPI BackgroundTasks
+            # cannot attach here. A truthy bg_tasks skips the sync Word build
+            # and enqueues document_build so `done` is not blocked on DOCX.
             yield service.finalize(
                 user_id=user_id,
                 plan_raw=loads_lenient("".join(chunks)),
                 query=query,
                 result=result,
                 chat_id=req.chat_id,
-                bg_tasks=None,
+                bg_tasks=True,
                 class_id=cls["id"] if cls else None,
                 cls=cls,
                 week_number=req.week_number,
@@ -1557,13 +1560,13 @@ def set_day_field(
 
 @router.post("/revise_days")
 @limiter.limit("100/minute")
-def revise_days(req: ReviseDaysRequest, request: Request, user_id: str = Depends(get_current_user)):
+def revise_days(req: ReviseDaysRequest, request: Request, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
     """Rewrite one field across several days from a single instruction, then
     rebuild the .docx once."""
     require_entitlement(user_id)
     with generation_queue.slot(user_id):
         require_entitlement(user_id)
-        return service.revise_days(user_id, req.plan_id, req.day_indices, req.feedback, req.field)
+        return service.revise_days(user_id, req.plan_id, req.day_indices, req.feedback, req.field, bg_tasks)
 
 
 @router.post("/chats/{chat_id}/messages")

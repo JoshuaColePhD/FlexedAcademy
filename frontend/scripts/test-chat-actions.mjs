@@ -3,7 +3,8 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import test from 'node:test'
 import { recoverDumpedToolsFromText } from '../src/lib/chatToolRecovery.js'
-import { planOperation, quizReceipt, quizRevisionId, readQuizReceipt, revisionDayIndices } from '../src/lib/chatActions.js'
+import { planOperation, quizReceipt, quizRevisionId, readQuizReceipt, revisionDayIndices, shouldStreamPlanRevision } from '../src/lib/chatActions.js'
+import { isClearlySpecifiedPlanRequest } from '../src/lib/planIntent.js'
 
 // Run the actual hook's streaming code without a DOM. Only React state storage,
 // timing instrumentation, and the API URL are stubbed; fetch uses real Responses.
@@ -44,6 +45,20 @@ async function harness(responses, callbacks = {}) {
 }
 const action = { tool_call: 'generate_lesson_plan', action: 'create', target_plan_id: null, instruction: 'Build argument analysis.', days: [], field: null }
 const done = { done: true }
+
+test('whole-day edits stream instead of blocking on a REST rewrite', () => {
+  assert.equal(shouldStreamPlanRevision({ action: 'revise_week' }), true)
+  assert.equal(shouldStreamPlanRevision({ action: 'revise_days', field: null, days: ['Wednesday'] }), true)
+  assert.equal(shouldStreamPlanRevision({ action: 'revise_days', field: 'during', days: ['Wednesday'] }), false)
+  assert.equal(shouldStreamPlanRevision({ action: 'create' }), false)
+})
+
+test('clear first requests skip the routing hop', () => {
+  assert.equal(isClearlySpecifiedPlanRequest('make a lesson plan'), false)
+  assert.equal(isClearlySpecifiedPlanRequest('Plan Week 03 around voice, tone, and rhetorical devices using The Cask.'), true)
+  assert.equal(isClearlySpecifiedPlanRequest('Build a lesson plan about quadratic vertex form for graphing practice'), true)
+  assert.equal(isClearlySpecifiedPlanRequest('Help me plan this week.'), false)
+})
 
 test('advice does not dispatch an artifact; explicit creation wins over open plan', () => {
   assert.equal(planOperation({ text: 'Try modeling.' }, 'p1'), null)
