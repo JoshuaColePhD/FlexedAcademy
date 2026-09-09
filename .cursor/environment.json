@@ -8,5 +8,10 @@
       "command": "cd /workspace && ./venv/bin/uvicorn backend.server:app --host 127.0.0.1 --port 8010"
     }
   ],
-  "ports": [8010]
+  "ports": [
+    {
+      "name": "backend",
+      "port": 8010
+    }
+  ]
 }

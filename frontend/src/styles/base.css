@@ -7394,6 +7394,11 @@
       padding: 0;
     }
   }
+  /* Marker for the in-composer generation chip (pairs with .composer-writing-status). */
+  .composer-generation-status {
+    color: var(--accent-text);
+    border-color: rgb(var(--accent-rgb) / 0.18);
+  }
   .composer-save-status {
     color: var(--ok);
     border-color: rgb(var(--ok-rgb) / 0.18);
