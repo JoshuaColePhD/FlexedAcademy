@@ -1928,7 +1928,11 @@
   font-size: 14px;
 }
 .composer-dock-surface { padding-bottom: 18px !important; }
-.composer-dock-surface > div { max-width: 54rem; }
+.composer-dock-surface > div {
+  width: 100%;
+  max-width: 54rem;
+  margin-inline: auto;
+}
 /* A modal owns the screen while it is open. Keep the persistent composer from
    showing through the dimmed layer as a distracting dark rectangle beneath the
    card; it returns with its original geometry as soon as the modal closes. */
@@ -2751,7 +2755,9 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
 
   .composer-dock-surface > div {
+    width: 100%;
     max-width: 54rem;
+    margin-inline: auto;
     padding-right: 0;
     padding-left: 0;
   }

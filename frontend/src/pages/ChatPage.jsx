@@ -69,17 +69,6 @@ function standaloneQuizBody(requested, topicFallback) {
 // The composer is a command surface, not a child of whichever side rail is
 // currently open. Its portal follows the live middle column so the input can
 // sit evenly between the navigation rail and the materials inspector.
-const COMPOSER_HOST_MAX_WIDTH = 960
-const COMPOSER_VIEWPORT_GUTTER = 16
-const ARTIFACT_RAIL_MIN_WIDTH = 292
-const ARTIFACT_RAIL_MAX_WIDTH = 360
-const ARTIFACT_RAIL_VW = 0.26
-const ARTIFACT_RAIL_RIGHT_GUTTER = 12
-
-const artifactRailWidth = (viewportWidth) => Math.min(
-  ARTIFACT_RAIL_MAX_WIDTH,
-  Math.max(ARTIFACT_RAIL_MIN_WIDTH, viewportWidth * ARTIFACT_RAIL_VW),
-)
 
 const cellKey = (dayIndex, field) => `${dayIndex}:${field}`
 
@@ -1072,25 +1061,12 @@ export function ChatPage() {
     if (!anchor) return
     const sync = () => {
       const r = anchor.getBoundingClientRect()
-      // Keep the command surface in the usable middle column. The drawer is
-      // an overlay, so its left edge is the only boundary the anchor cannot
-      // observe through flex sizing; watching that edge here prevents the
-      // composer from stretching underneath an open inspector.
+      // Match the chat column itself. The greeting and transcript already
+      // center a max-width column inside this box; capping the host and
+      // pinning it to the left edge left the composer sitting off-center
+      // in the same panel.
       portalHost.style.left = `${r.left}px`
-      const viewportWidth = window.visualViewport?.width || window.innerWidth
-      const drawer = document.querySelector('.artifact-drawer')
-      const drawerRect = drawer?.getBoundingClientRect()
-      // While the rail is animating, its live left edge gives the composer a
-      // matching width animation. Once it is fully closed, use the complete
-      // viewport so the composer expands back into the released space.
-      const railWidth = railOpen ? (drawerRect?.width > 0 ? drawerRect.width : artifactRailWidth(viewportWidth)) : 0
-      const rightBoundary = railOpen && drawerRect && drawerRect.left > r.left
-        ? drawerRect.left
-        : railWidth > 0
-          ? viewportWidth - ARTIFACT_RAIL_RIGHT_GUTTER - railWidth
-          : viewportWidth - COMPOSER_VIEWPORT_GUTTER
-      const middleColumnWidth = Math.max(0, rightBoundary - r.left)
-      portalHost.style.width = `${Math.min(COMPOSER_HOST_MAX_WIDTH, middleColumnWidth)}px`
+      portalHost.style.width = `${Math.max(0, r.width)}px`
       // The same bottom inset applies whether the plan overlay is open or not.
       // Positioning from the anchor's top made the composer depend on the
       // flex transcript's available height; positioning from a special
@@ -1103,14 +1079,12 @@ export function ChatPage() {
     sync()
     const ro = new ResizeObserver(sync)
     ro.observe(anchor)
-    const drawer = document.querySelector('.artifact-drawer')
-    const drawerRo = drawer ? new ResizeObserver(sync) : null
-    drawerRo?.observe(drawer)
+    const pane = anchor.parentElement
+    if (pane && pane !== anchor) ro.observe(pane)
     window.addEventListener('resize', sync)
     window.visualViewport?.addEventListener('resize', sync)
     return () => {
       ro.disconnect()
-      drawerRo?.disconnect()
       window.removeEventListener('resize', sync)
       window.visualViewport?.removeEventListener('resize', sync)
     }
