@@ -4,7 +4,6 @@ import pytest
 
 from backend.schema import SchemaError, apply_plan_patch
 
-
 PLAN = {
     "week_of": "Week 18 — Nov 30–Dec 4, 2026",
     "days": [

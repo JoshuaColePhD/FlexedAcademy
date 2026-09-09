@@ -36,7 +36,6 @@ from .errors import AppError
 from .prompts import (
     day_field_system_prompt,
     day_system_prompt,
-    output_length_block,
     week_system_prompt,
 )
 from .retrieval import RetrievalResult
