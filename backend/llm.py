@@ -21,7 +21,13 @@ import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, wait
 
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 
 from . import costs, curriculum, db
 from .chat_policy import (
@@ -38,6 +44,7 @@ from .prompts import (
     day_system_prompt,
     week_system_prompt,
 )
+from .resilience import CircuitBreaker
 from .retrieval import RetrievalResult
 from .schema import (
     BUILDER_LAYOUT_JSON_SCHEMA,
@@ -97,6 +104,28 @@ PATCH_COMPLETION_CEILING = 2_500
 # degrades to "no map context" instead of stalling the first token.
 _MAP_CONTEXT_TIMEOUT_S = 4.0
 _context_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="map-context")
+
+# Shared across every conversational/generation call (stream_plan,
+# stream_plan_revision, stream_chat) rather than one breaker per call site:
+# if OpenAI itself is down or rate-limiting hard, that is one fact about the
+# dependency, not a separate fact per feature. Connection/timeout/5xx/429
+# trip it; a bad request or an auth error does not — those are a config bug
+# to surface immediately and repeatedly, not an outage to wait out.
+_OPENAI_BREAKER = CircuitBreaker("openai_chat", failure_threshold=4, reset_after_s=30.0)
+_OPENAI_TRIPS_ON = (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)
+
+
+def openai_breaker_status() -> dict:
+    """For /api/health — a live, no-Sentry-required answer to "is the AI
+    dependency degraded right now", visible to any signed-in teacher the
+    same way the rest of that endpoint's operational fields already are."""
+    status = _OPENAI_BREAKER.status()
+    return {
+        "state": status.state,
+        "consecutive_failures": status.consecutive_failures,
+        "seconds_since_opened": status.seconds_since_opened,
+        "last_error": status.last_error,
+    }
 
 
 @functools.lru_cache(maxsize=1)
@@ -520,37 +549,40 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
     started_at = time.perf_counter()
-    stream = client().chat.completions.create(
-        model=settings.openai_model,
-        max_completion_tokens=plan_completion_tokens_for(user_id),
-        reasoning_effort="none",
-        response_format=_response_format("weekly_lesson_plan", plan_json_schema(template_days)),
-        messages=[
-            {
-                "role": "system",
-                "content": week_system_prompt(
-                    result,
-                    subject=subject,
-                    grade=grade,
-                    map_context=map_context,
-                    custom_instructions=custom_instructions_for(user_id),
-                    class_custom_instructions=class_custom_instructions_for(user_id, class_id),
-                    school_id=school_id,
-                    output_length=output_length,
-                    period_minutes=period_minutes,
-                    user_id=user_id,
-                ),
-            },
-            {"role": "user", "content": query},
-        ],
-        stream=True,
-        # A streamed response has no single .usage the way a plain
-        # completion does — without this the whole most expensive call this
-        # app makes (4000 max_tokens, run on every generate) went unmetered.
-        # The usage-bearing chunk has choices=[], so it survives the
-        # `if not chunk.choices: continue` below only because it's checked
-        # first.
-        stream_options={"include_usage": True},
+    stream = _OPENAI_BREAKER.call(
+        lambda: client().chat.completions.create(
+            model=settings.openai_model,
+            max_completion_tokens=plan_completion_tokens_for(user_id),
+            reasoning_effort="none",
+            response_format=_response_format("weekly_lesson_plan", plan_json_schema(template_days)),
+            messages=[
+                {
+                    "role": "system",
+                    "content": week_system_prompt(
+                        result,
+                        subject=subject,
+                        grade=grade,
+                        map_context=map_context,
+                        custom_instructions=custom_instructions_for(user_id),
+                        class_custom_instructions=class_custom_instructions_for(user_id, class_id),
+                        school_id=school_id,
+                        output_length=output_length,
+                        period_minutes=period_minutes,
+                        user_id=user_id,
+                    ),
+                },
+                {"role": "user", "content": query},
+            ],
+            stream=True,
+            # A streamed response has no single .usage the way a plain
+            # completion does — without this the whole most expensive call this
+            # app makes (4000 max_tokens, run on every generate) went unmetered.
+            # The usage-bearing chunk has choices=[], so it survives the
+            # `if not chunk.choices: continue` below only because it's checked
+            # first.
+            stream_options={"include_usage": True},
+        ),
+        trips_on=_OPENAI_TRIPS_ON,
     )
     finish_reason = None
     try:
@@ -1105,14 +1137,17 @@ def stream_plan_revision(
     subject, grade = _prompt_subject_grade(user_id, class_id)
     template_days = day_names_for_school(school_id, user_id=user_id)
     started_at = time.perf_counter()
-    stream = client().chat.completions.create(
-        model=settings.openai_model,
-        max_completion_tokens=PATCH_COMPLETION_CEILING,
-        reasoning_effort="none",
-        response_format=_response_format("lesson_plan_patch", plan_patch_json_schema(template_days)),
-        messages=_revision_messages(plan, retrieved_context, feedback, subject, grade),
-        stream=True,
-        stream_options={"include_usage": True},
+    stream = _OPENAI_BREAKER.call(
+        lambda: client().chat.completions.create(
+            model=settings.openai_model,
+            max_completion_tokens=PATCH_COMPLETION_CEILING,
+            reasoning_effort="none",
+            response_format=_response_format("lesson_plan_patch", plan_patch_json_schema(template_days)),
+            messages=_revision_messages(plan, retrieved_context, feedback, subject, grade),
+            stream=True,
+            stream_options={"include_usage": True},
+        ),
+        trips_on=_OPENAI_TRIPS_ON,
     )
     finish_reason = None
     try:
@@ -2124,28 +2159,31 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
     """
 
     started_at = time.perf_counter()
-    stream = client().chat.completions.create(
-        model=settings.openai_model,
-        # Required, not tuning: the configured model rejects function tools
-        # outright in /v1/chat/completions unless reasoning is off —
-        # "Function tools with reasoning_effort are not supported ... set
-        # reasoning_effort to 'none'". Both tools below are the entire
-        # mechanism of this conversation (build the plan / ask instead), so
-        # without this every chat turn, typed or spoken, 400s.
-        # Voice turns use the same Luna model as every other text turn; the
-        # low reasoning setting keeps spoken responses quick and concise.
-        reasoning_effort="low" if voice else "none",
-        # Voice replies stay deliberately short. Written chat follows the
-        # same persisted preference as lesson-plan generation, so this setting
-        # is no longer a prompt-only suggestion on either surface.
-        max_completion_tokens=700 if voice else output_length_tokens_for(user_id),
-        messages=messages,
-        stream=True,
-        tools=CHAT_TOOLS if voice else typed_chat_tools(CHAT_TOOLS),
-        parallel_tool_calls=False,
-        # See stream_plan's identical option — without it this call, which
-        # runs on every non-generating chat turn too, went unmetered.
-        stream_options={"include_usage": True},
+    stream = _OPENAI_BREAKER.call(
+        lambda: client().chat.completions.create(
+            model=settings.openai_model,
+            # Required, not tuning: the configured model rejects function tools
+            # outright in /v1/chat/completions unless reasoning is off —
+            # "Function tools with reasoning_effort are not supported ... set
+            # reasoning_effort to 'none'". Both tools below are the entire
+            # mechanism of this conversation (build the plan / ask instead), so
+            # without this every chat turn, typed or spoken, 400s.
+            # Voice turns use the same Luna model as every other text turn; the
+            # low reasoning setting keeps spoken responses quick and concise.
+            reasoning_effort="low" if voice else "none",
+            # Voice replies stay deliberately short. Written chat follows the
+            # same persisted preference as lesson-plan generation, so this setting
+            # is no longer a prompt-only suggestion on either surface.
+            max_completion_tokens=700 if voice else output_length_tokens_for(user_id),
+            messages=messages,
+            stream=True,
+            tools=CHAT_TOOLS if voice else typed_chat_tools(CHAT_TOOLS),
+            parallel_tool_calls=False,
+            # See stream_plan's identical option — without it this call, which
+            # runs on every non-generating chat turn too, went unmetered.
+            stream_options={"include_usage": True},
+        ),
+        trips_on=_OPENAI_TRIPS_ON,
     )
     # Typed actions wait for complete arguments; legacy voice emits its signal early.
     tool_name = None

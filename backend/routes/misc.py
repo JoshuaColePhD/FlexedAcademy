@@ -78,6 +78,7 @@ def health(user_id: str | None = Depends(get_current_user_optional)):
         # malformed DATABASE_URL, and each one cost a round trip through the
         # logs to identify. 110 is correct; 160 means the host is in there twice.
         "database_url_len": len(settings.database_url or ""),
+        "openai_circuit": llm.openai_breaker_status(),
     }
     try:
         out["builder_found"] = True
