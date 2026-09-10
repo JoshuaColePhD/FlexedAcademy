@@ -56,7 +56,7 @@ jobs:
         # running it to notice; test_config_secret_whitespace.py guards the
         # 2026-09-10 fix for a dashboard-pasted secret silently breaking
         # Stripe. Both added to CI the same day.
-        run: pytest -q backend/test_memory_defaults.py backend/test_config_secret_whitespace.py backend/test_chat_flag.py backend/test_chat_prompt_injection.py backend/test_export_flagged_chat_reports.py backend/test_resilience.py
+        run: pytest -q backend/test_memory_defaults.py backend/test_config_secret_whitespace.py backend/test_chat_flag.py backend/test_chat_prompt_injection.py backend/test_export_flagged_chat_reports.py backend/test_resilience.py backend/test_plan_locks.py backend/test_plan_generation_setup.py
       - name: Run eval suites that need no DB or API
         # eval/run_all.py --fast runs exactly the suites its own SUITES list
         # marks needs_corpus=False: test_grounding_audit, test_field_scoped_

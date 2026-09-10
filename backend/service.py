@@ -17,6 +17,7 @@ from . import curriculum, db, docx_build, llm, retrieval, schema, schoolcal, sto
 from .entitlement import require_entitlement
 from .errors import AppError
 from .generation_queue import generation_queue
+from .plan_locks import plan_write_lock
 from .retrieval import RetrievalResult
 from .template_context import day_names_for_school, has_template_field
 
@@ -637,6 +638,31 @@ def retrieval_result_for_saved_plan(user_id: str, row: dict, cls: dict | None) -
     )
 
 
+def _reload_unchanged_or_conflict(user_id: str, plan_id: str, base_plan_json: dict) -> dict:
+    """Call while holding plan_write_lock(plan_id), immediately before the
+    write that finishes a revision built from `base_plan_json`.
+
+    There is no version/timestamp column to compare on this table, so this
+    re-reads the row and diffs its actual plan_json against the snapshot the
+    revision was computed from -- cheap, and needs no schema migration. A
+    mismatch means some other write (a manual cell edit, undo, another
+    revision) committed while this one's LLM call was in flight; applying a
+    patch computed against stale content on top of it would silently
+    discard whichever one loses, so this raises instead of guessing.
+    """
+    current = db.get_plan(user_id, plan_id)
+    if not current:
+        raise AppError("plan_not_found", "This plan no longer exists.", status=404)
+    if current["plan_json"] != base_plan_json:
+        raise AppError(
+            "plan_changed_concurrently",
+            "This plan changed elsewhere while that revision was being written.",
+            status=409,
+            hint="Reload the plan and try the change again.",
+        )
+    return current
+
+
 def persist_revised_plan(
     *,
     user_id: str,
@@ -680,18 +706,20 @@ def persist_revised_plan(
         result=result,
     )
     cited = retrieval.cited_standards(plan, allowed, subject_code=subject_code)
-    db.update_plan(
-        user_id,
-        plan_id,
-        plan_json=plan,
-        docx_path=None,
-        week_label=plan.get("week_of", row["week_label"]),
-        unit=units.unit_for_week(plan.get("week_of", row["week_label"])),
-        warnings=warnings,
-        course=plan.get("course", row["course"]),
-    )
-    if hasattr(db, "enqueue_document_build"):
-        db.enqueue_document_build(plan_id, user_id)
+    with plan_write_lock(plan_id):
+        _reload_unchanged_or_conflict(user_id, plan_id, row["plan_json"])
+        db.update_plan(
+            user_id,
+            plan_id,
+            plan_json=plan,
+            docx_path=None,
+            week_label=plan.get("week_of", row["week_label"]),
+            unit=units.unit_for_week(plan.get("week_of", row["week_label"])),
+            warnings=warnings,
+            course=plan.get("course", row["course"]),
+        )
+        if hasattr(db, "enqueue_document_build"):
+            db.enqueue_document_build(plan_id, user_id)
     db.replace_plan_standards(
         plan_id,
         user_id,
@@ -994,21 +1022,23 @@ def revise_day(
         _persist_docx(out_path)
         docx_path_val = str(out_path)
 
-    updated_row = db.update_plan(
-        user_id,
-        plan_id,
-        plan_json=new_plan,
-        docx_path=docx_path_val,
-        warnings=(row.get("warnings") or []) + warnings,
-    )
-    db.replace_plan_standards(
-        plan_id,
-        user_id,
-        class_id=row.get("class_id"),
-        subject=subject_code,
-        grade=str(grade),
-        entries=cited,
-    )
+    with plan_write_lock(plan_id):
+        _reload_unchanged_or_conflict(user_id, plan_id, row["plan_json"])
+        updated_row = db.update_plan(
+            user_id,
+            plan_id,
+            plan_json=new_plan,
+            docx_path=docx_path_val,
+            warnings=(row.get("warnings") or []) + warnings,
+        )
+        db.replace_plan_standards(
+            plan_id,
+            user_id,
+            class_id=row.get("class_id"),
+            subject=subject_code,
+            grade=str(grade),
+            entries=cited,
+        )
     return updated_row  # type: ignore[return-value]
 
 
@@ -1112,21 +1142,23 @@ def set_day_field(
         _persist_docx(out_path)
         docx_path_val = str(out_path)
 
-    updated_row = db.update_plan(
-        user_id,
-        plan_id,
-        plan_json=new_plan,
-        docx_path=docx_path_val,
-        warnings=(row.get("warnings") or []) + warnings,
-    )
-    db.replace_plan_standards(
-        plan_id,
-        user_id,
-        class_id=row.get("class_id"),
-        subject=subject_code,
-        grade=str(grade),
-        entries=cited,
-    )
+    with plan_write_lock(plan_id):
+        _reload_unchanged_or_conflict(user_id, plan_id, row["plan_json"])
+        updated_row = db.update_plan(
+            user_id,
+            plan_id,
+            plan_json=new_plan,
+            docx_path=docx_path_val,
+            warnings=(row.get("warnings") or []) + warnings,
+        )
+        db.replace_plan_standards(
+            plan_id,
+            user_id,
+            class_id=row.get("class_id"),
+            subject=subject_code,
+            grade=str(grade),
+            entries=cited,
+        )
     return updated_row  # type: ignore[return-value]
 
 
@@ -1236,21 +1268,23 @@ def edit_day_field(
         _persist_docx(out_path)
         docx_path_val = str(out_path)
 
-    updated_row = db.update_plan(
-        user_id,
-        plan_id,
-        plan_json=new_plan,
-        docx_path=docx_path_val,
-        warnings=(row.get("warnings") or []) + warnings,
-    )
-    db.replace_plan_standards(
-        plan_id,
-        user_id,
-        class_id=row.get("class_id"),
-        subject=subject_code,
-        grade=str(grade),
-        entries=cited,
-    )
+    with plan_write_lock(plan_id):
+        _reload_unchanged_or_conflict(user_id, plan_id, row["plan_json"])
+        updated_row = db.update_plan(
+            user_id,
+            plan_id,
+            plan_json=new_plan,
+            docx_path=docx_path_val,
+            warnings=(row.get("warnings") or []) + warnings,
+        )
+        db.replace_plan_standards(
+            plan_id,
+            user_id,
+            class_id=row.get("class_id"),
+            subject=subject_code,
+            grade=str(grade),
+            entries=cited,
+        )
     return updated_row  # type: ignore[return-value]
 
 
@@ -1398,19 +1432,21 @@ def revise_days(
         _persist_docx(out_path)
         docx_path_val = str(out_path)
 
-    updated_row = db.update_plan(
-        user_id,
-        plan_id,
-        plan_json=new_plan,
-        docx_path=docx_path_val,
-        warnings=(row.get("warnings") or []) + warnings,
-    )
-    db.replace_plan_standards(
-        plan_id,
-        user_id,
-        class_id=row.get("class_id"),
-        subject=subject_code,
-        grade=str(grade),
-        entries=cited,
-    )
+    with plan_write_lock(plan_id):
+        _reload_unchanged_or_conflict(user_id, plan_id, row["plan_json"])
+        updated_row = db.update_plan(
+            user_id,
+            plan_id,
+            plan_json=new_plan,
+            docx_path=docx_path_val,
+            warnings=(row.get("warnings") or []) + warnings,
+        )
+        db.replace_plan_standards(
+            plan_id,
+            user_id,
+            class_id=row.get("class_id"),
+            subject=subject_code,
+            grade=str(grade),
+            entries=cited,
+        )
     return updated_row  # type: ignore[return-value]
