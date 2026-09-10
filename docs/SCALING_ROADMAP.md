@@ -20,7 +20,13 @@ admin usage-cost report and a staging load test before changing production.
   rasterize is an onboarding spike, not lesson-plan traffic; enable it only
   on a larger instance or a dedicated worker after a memory test.
 - Confirm Render dashboard env matches `render.yaml`: `BUILDER_CODEGEN_ENABLED=false`,
-  `GENERATION_MAX_CONCURRENT=1`, `RETRIEVAL_WORKERS=1`, `DB_POOL_SIZE=2`.
+  `GENERATION_MAX_CONCURRENT=1`, `RETRIEVAL_WORKERS=2`, `DB_POOL_SIZE=3` (raised
+  from 2 on 2026-09-10 — see `backend/config.py`'s `db_pool_size` comment for
+  why this one moved and `retrieval_workers`/`generation_max_concurrent`
+  deliberately did not).
+- Set `SENTRY_DSN` in the Render dashboard. As of 2026-09-10 it was never set at
+  all, so production has been running with no error tracking beyond raw stdout
+  logs — get the DSN from Sentry → Settings → Client Keys (DSN).
 - Run the safe local burst check:
 
   ```bash
