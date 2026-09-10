@@ -3231,6 +3231,28 @@ export function ChatPage() {
     requestAnimationFrame(() => document.getElementById('composer-input')?.focus())
   }, [artifact?.planId])
 
+  /* One-click escalation for a reply a teacher doesn't trust. Deliberately no
+     "why" field to fill in first — the whole point is this costs one tap, so
+     a teacher who's already annoyed at a bad answer actually uses it instead
+     of just closing the tab. The preceding ask is captured automatically so
+     support has the context without the teacher retyping it. */
+  const handleFlagMessage = useCallback(async (message) => {
+    const priorAsk = [...messages]
+      .slice(0, messages.findIndex((m) => m.id === message.id))
+      .reverse()
+      .find((m) => m.role === 'user')
+    try {
+      await api.flagChatMessage({
+        chatId,
+        messageContent: message.content,
+        context: priorAsk?.content || '',
+      })
+      toast.success('Flagged for review', "Thanks — FlexEd support will take a look.")
+    } catch {
+      toast.error("Couldn't flag this response", 'Try again in a moment.')
+    }
+  }, [messages, chatId, toast])
+
   // Auto-retry once on reconnect: a message that failed while the device
   // was genuinely offline (see the offline-aware hint above) shouldn't need
   // a teacher to notice wifi came back AND remember to tap Retry — the
@@ -4161,6 +4183,7 @@ export function ChatPage() {
                          thread — which is the whole cost this memo exists to avoid. */
                       onEdit={m.role === 'user' && !busy ? handleEditMessage : undefined}
                       onApplyAdvice={m.role === 'assistant' && !m.planId && (m.researchSources?.length || chatMode === 'research') ? handleApplyAdvice : undefined}
+                      onFlag={m.role === 'assistant' && !m.streaming && !m.isError ? handleFlagMessage : undefined}
                       /* The day-by-day breakdown moved into ArtifactRail's own
                          "This week" section on desktop, which sits right next to
                          the plan it describes instead of scrolling away with the

@@ -408,6 +408,37 @@ def send_support_message(request: Request, body: SupportMessageBody, user_id: st
     return {"ok": True, "thread": thread, "email_sent": thread.get("email_sent", False)}
 
 
+class FlagChatMessageBody(BaseModel):
+    chat_id: str | None = Field(default=None, max_length=64)
+    message_content: str = Field(min_length=1, max_length=8000)
+    context: str = Field(default="", max_length=4000)
+    note: str = Field(default="", max_length=1000)
+
+
+@router.post("/chat/flag")
+@limiter.limit("20/hour")
+def flag_chat_message(request: Request, body: FlagChatMessageBody, user_id: str = Depends(get_current_user)):
+    """One-click escalation for a reply a teacher doesn't trust.
+
+    Reuses the existing support-thread pipeline rather than a parallel
+    review queue: a flagged reply lands in the same admin inbox
+    (`/api/admin/support/threads`) any other teacher message would, with a
+    distinguishing subject and the flagged content + the request that
+    produced it assembled automatically so the teacher never has to
+    retype anything to report a bad answer.
+    """
+    parts = ["A teacher flagged this AI response for review."]
+    if body.chat_id:
+        parts.append(f"Chat: {body.chat_id}")
+    if body.context.strip():
+        parts.append(f"Teacher's request:\n{body.context.strip()}")
+    parts.append(f"Flagged response:\n{body.message_content.strip()}")
+    if body.note.strip():
+        parts.append(f"Teacher's note:\n{body.note.strip()}")
+    thread = _create_support_thread(user_id, "Flagged AI response", "\n\n".join(parts))
+    return {"ok": True, "thread_id": thread["id"]}
+
+
 @router.post("/support/inbound")
 async def receive_support_email(
     request: Request,
