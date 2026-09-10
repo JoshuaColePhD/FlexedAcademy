@@ -415,6 +415,24 @@ class FlagChatMessageBody(BaseModel):
     note: str = Field(default="", max_length=1000)
 
 
+FLAGGED_CHAT_SUBJECT = "Flagged AI response"
+
+
+def _flag_message_body(body: FlagChatMessageBody) -> str:
+    """Pure string assembly, split out of the route so scripts/export_flagged_chat_reports.py
+    can be tested against the exact format it has to parse back apart, without
+    going through the rate-limited route function to do it."""
+    parts = ["A teacher flagged this AI response for review."]
+    if body.chat_id:
+        parts.append(f"Chat: {body.chat_id}")
+    if body.context.strip():
+        parts.append(f"Teacher's request:\n{body.context.strip()}")
+    parts.append(f"Flagged response:\n{body.message_content.strip()}")
+    if body.note.strip():
+        parts.append(f"Teacher's note:\n{body.note.strip()}")
+    return "\n\n".join(parts)
+
+
 @router.post("/chat/flag")
 @limiter.limit("20/hour")
 def flag_chat_message(request: Request, body: FlagChatMessageBody, user_id: str = Depends(get_current_user)):
@@ -427,15 +445,7 @@ def flag_chat_message(request: Request, body: FlagChatMessageBody, user_id: str 
     produced it assembled automatically so the teacher never has to
     retype anything to report a bad answer.
     """
-    parts = ["A teacher flagged this AI response for review."]
-    if body.chat_id:
-        parts.append(f"Chat: {body.chat_id}")
-    if body.context.strip():
-        parts.append(f"Teacher's request:\n{body.context.strip()}")
-    parts.append(f"Flagged response:\n{body.message_content.strip()}")
-    if body.note.strip():
-        parts.append(f"Teacher's note:\n{body.note.strip()}")
-    thread = _create_support_thread(user_id, "Flagged AI response", "\n\n".join(parts))
+    thread = _create_support_thread(user_id, FLAGGED_CHAT_SUBJECT, _flag_message_body(body))
     return {"ok": True, "thread_id": thread["id"]}
 
 
