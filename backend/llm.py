@@ -1148,8 +1148,9 @@ def critique_and_revise(
     Used to rewrite every field of every day, which is why follow-up edits
     timed out; the model now emits only the changed cells.
     """
+    days_future = _setup_pool.submit(day_names_for_school, school_id)
     s = db.get_settings_row(user_id)
-    template_days = day_names_for_school(school_id)
+    template_days = days_future.result()
     content = _cached_completion(
         user_id,
         "critique_and_revise",
@@ -1169,8 +1170,11 @@ def stream_plan_revision(
     *, school_id: str | None = None, class_id: str | None = None,
 ) -> Iterator[str]:
     """Yield patch JSON deltas. The caller accumulates, applies, and saves."""
+    # Independent of each other -- run concurrently rather than one after the
+    # other, same reasoning as stream_plan/generate_plan's setup phase.
+    days_future = _setup_pool.submit(day_names_for_school, school_id, user_id=user_id)
     subject, grade = _prompt_subject_grade(user_id, class_id)
-    template_days = day_names_for_school(school_id, user_id=user_id)
+    template_days = days_future.result()
     started_at = time.perf_counter()
     stream = _OPENAI_BREAKER.call(
         lambda: client().chat.completions.create(
