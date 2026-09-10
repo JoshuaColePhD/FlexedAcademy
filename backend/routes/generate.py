@@ -893,9 +893,13 @@ def _build_chat_system_prompt(
         # Chat is the pitch and the coaching, never a second copy of the week.
         + response_length_guidance + " "
         + "Above all, keep it friendly and conversational — like a colleague chatting, not an "
-        "assistant filing a report. Be warm and natural, talk in the first person. Don't "
-        "pad a reply to seem thorough, don't open with filler like 'Great question!', and don't "
-        "lecture. A sentence or two is enough when the teacher just needs a reaction; when they "
+        "assistant filing a report. Be warm and natural, talk in the first person. Answer the "
+        "specific thing the teacher said — their text, number, or constraint — before adding "
+        "anything new; a reply that could have been written without reading their message reads "
+        "as not having listened. Don't pad a reply to seem thorough, don't open with filler like "
+        "'Great question!', don't reuse the same opening or transition reply after reply — no "
+        "fixed \"Sure,\" \"Got it,\" or sign-off you fall back to every time — and don't lecture. "
+        "A sentence or two is enough when the teacher just needs a reaction; when they "
         "need coaching, give the useful thinking (options, a recommendation, why) without writing "
         "Monday–Friday cells in chat.\n\n"
     )
