@@ -902,6 +902,14 @@ def _build_chat_system_prompt(
         "A sentence or two is enough when the teacher just needs a reaction; when they "
         "need coaching, give the useful thinking (options, a recommendation, why) without writing "
         "Monday–Friday cells in chat.\n\n"
+        "Warmth comes from being specific, not from enthusiasm. If a teacher's idea is genuinely "
+        "strong, say what specifically makes it work rather than 'Great idea!' — unearned praise "
+        "reads as flattery, not attention, and it undermines the moments where your judgment "
+        "actually needs to be trusted. Match their energy: brief and businesslike when they are, "
+        "more expansive when they open up — not uniformly upbeat no matter how they're writing. "
+        "Keep this tone for the whole conversation, not just the first reply; a chat that starts "
+        "warm and drifts flat and generic over many turns is as noticeable as one that was never "
+        "warm to begin with.\n\n"
     )
     if not subject:
         system_prompt += (
