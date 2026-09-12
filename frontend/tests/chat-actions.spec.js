@@ -70,10 +70,11 @@ test('commands from the open week apply to that plan', async ({ page }) => {
 test('explicit new plan preserves the old plan and creates once after a dropped stream', async ({ page }) => {
   await openChat(page)
   const before = await page.evaluate(() => structuredClone(window.__mock.state.plans.plan1))
+  const ownedBefore = await page.evaluate(() => window.__mock.state.ownedPlanIds.length)
   await events(page, [planAction('create')], [planAction('create'), done])
   await send(page, 'Create a separate plan on argument with paper materials and 45-minute periods.')
   await expect.poll(() => page.evaluate(() => window.chatCalls.filter((c) => c.path === 'create').length)).toBe(1)
-  await expect.poll(() => page.evaluate(() => window.__mock.state.ownedPlanIds.length)).toBe(3)
+  await expect.poll(() => page.evaluate(() => window.__mock.state.ownedPlanIds.length)).toBe(ownedBefore + 1)
   expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'chat').length)).toBe(1)
   expect(await page.evaluate(() => window.chatCalls.filter((c) => ['day', 'days', 'week'].includes(c.path)))).toEqual([])
   expect(await page.evaluate(() => window.__mock.state.plans.plan1)).toEqual(before)
@@ -191,12 +192,13 @@ test('ambiguous revision asks a question without changing the plan', async ({ pa
 test('failed new-plan generation preserves the current plan and shows no completion', async ({ page }) => {
   await openChat(page)
   const before = await page.evaluate(() => structuredClone(window.__mock.state.plans.plan1))
+  const ownedBefore = await page.evaluate(() => window.__mock.state.ownedPlanIds.slice())
   await page.evaluate(() => { window.generationFailure = true })
   await events(page, [planAction('create'), done])
   await send(page, 'Create a separate plan on argument.')
   await expect(page.getByText('Generation test failure', { exact: true }).first()).toBeVisible()
   expect(await page.evaluate(() => window.__mock.state.plans.plan1)).toEqual(before)
-  expect(await page.evaluate(() => window.__mock.state.ownedPlanIds.length)).toBe(2)
+  expect(await page.evaluate(() => window.__mock.state.ownedPlanIds)).toEqual(ownedBefore)
   await expect(page.getByText(/is built/)).toHaveCount(0)
 })
 

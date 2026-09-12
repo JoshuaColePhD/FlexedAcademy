@@ -243,6 +243,7 @@ const state = {
   ],
   chats: [
     { id: 'seed1', title: 'Week 03 · Rhetorical Devices', class_id: 'c1', updated_at: '2026-08-07', week_number: 3 },
+    { id: 'seedWeek2', title: 'Week 02 · Close Reading', class_id: 'c1', updated_at: '2026-08-05', week_number: 2 },
     { id: 'stranded', title: 'Week 12 · Satire', class_id: 'c1', updated_at: '2026-08-06' },
     { id: 'physics', title: 'Week 05 · Kinematics', class_id: 'c2', updated_at: '2026-08-05' },
     // Never attributed — must appear under BOTH classes, not vanish.
@@ -263,6 +264,14 @@ const state = {
     stranded: [
       { role: 'user', content: 'Build Week 12 around satire and social critique.', plan_id: null },
     ],
+    seedWeek2: [
+      { role: 'user', content: 'Plan Week 02 around close reading of the first Cask pages.' },
+      {
+        role: 'assistant',
+        content: 'Five teaching days on annotation and diction before the rhetorical-devices week.',
+        plan_id: 'planWeek2',
+      },
+    ],
     seed1: [
       { role: 'user', content: 'Plan Week 03 around voice, tone, and rhetorical devices using "The Cask of Amontillado."' },
       {
@@ -272,9 +281,13 @@ const state = {
       },
     ],
   },
-  plans: { plan1: makePlan('Week 03 — Aug 17-21, 2026'), planOrphan: makePlan('Week 12 — Oct 19-23, 2026') },
-  planChat: { plan1: 'seed1', planOrphan: 'stranded' },
-  ownedPlanIds: ['plan1', 'planOrphan'],
+  plans: {
+    plan1: makePlan('Week 03 — Aug 17-21, 2026'),
+    planWeek2: makePlan('Week 02 — Aug 10-14, 2026'),
+    planOrphan: makePlan('Week 12 — Oct 19-23, 2026'),
+  },
+  planChat: { plan1: 'seed1', planWeek2: 'seedWeek2', planOrphan: 'stranded' },
+  ownedPlanIds: ['plan1', 'planWeek2', 'planOrphan'],
   publicPlans: { plan1: true },
   // quizzes[planId] is an array — a plan can have several (db.py migration
   // 26). plan1 seeds with one already built, so ArtifactRail's quiz list has
@@ -508,13 +521,14 @@ const state = {
     },
   ],
   // GET /api/weeks — db.week_board()'s shape. Week 03 is built and links to
-  // seed1 (the has_plan-and-openable case); week 12 is built but with no
+  // seed1 (the has_plan-and-openable case); week 02 is past and built
+  // (reopen via earlier-weeks picker); week 12 is built but with no
   // chat_id (the pre-chat_id-tracking orphan case, plain text not a link);
-  // week 02 is past and never built (the "missed" case); the rest are
+  // week 01 is past and never built (the "missed" case); the rest are
   // upcoming, and week 06 includes Labor Day plus a teacher in-service day.
   weeks: [
     { week: 1, start: '2026-08-03', end: '2026-08-07', no_school: false, has_plan: false, is_current: false, is_past: true, plan_id: null, chat_id: null, unit: null },
-    { week: 2, start: '2026-08-10', end: '2026-08-14', no_school: false, has_plan: false, is_current: false, is_past: true, plan_id: null, chat_id: null, unit: null },
+    { week: 2, start: '2026-08-10', end: '2026-08-14', no_school: false, has_plan: true, is_current: false, is_past: true, plan_id: 'planWeek2', chat_id: 'seedWeek2', unit: 'Close Reading' },
     { week: 3, start: '2026-08-17', end: '2026-08-21', no_school: false, has_plan: true, is_current: true, is_past: false, plan_id: 'plan1', chat_id: 'seed1', unit: 'Voice, Tone & Rhetorical Devices' },
     { week: 4, start: '2026-08-24', end: '2026-08-28', no_school: false, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
     { week: 5, start: '2026-08-31', end: '2026-09-04', no_school: false, has_plan: false, is_current: false, is_past: false, plan_id: null, chat_id: null, unit: null },
@@ -1129,7 +1143,7 @@ export function installMockApi() {
         const plan = state.plans[id]
         if (!plan) return null
         return {
-          week_number: id === 'plan1' ? 3 : null,
+          week_number: id === 'plan1' ? 3 : id === 'planWeek2' ? 2 : null,
           latest: {
             id,
             week_label: plan.week_of,

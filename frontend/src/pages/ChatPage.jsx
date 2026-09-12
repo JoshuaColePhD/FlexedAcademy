@@ -18,6 +18,7 @@ import { useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
 import { useActiveClass, useCalendar, useChats, useClasses } from '../hooks/useAppData'
 import { FIELD_LABELS, SHORT_DAY, dayTitle, unitSuffix } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
+import { existingChatForWeek, newChatWeekOptions, pinWeekForNewChat, priorWeeksWithWork } from '../lib/weekAccess'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
@@ -1029,7 +1030,10 @@ export function ChatPage() {
   useDocumentTitle(activeChat?.title || (chatId ? 'New plan' : null))
 
   const autoWeek = useMemo(() => firstUnplanned(calendar?.weeks), [calendar])
-  const effectiveWeek = selectedWeek ?? autoWeek?.week ?? null
+  const effectiveWeek = useMemo(
+    () => pinWeekForNewChat(calendar?.weeks, selectedWeek ?? autoWeek?.week ?? null),
+    [calendar, selectedWeek, autoWeek]
+  )
   /* Which week THIS CONVERSATION is about — the one stable answer, read back
      off the chat rather than recomputed.
 
@@ -1055,15 +1059,18 @@ export function ChatPage() {
      trusted until the source file is uploaded. Keep this as one derived fact
      so every header layout shows the same state. */
   const calendarMissing = Boolean(calendar?.school && calendar.school.has_calendar === false)
-  /* Every week worth offering: never a week the school is shut, never one
-     already behind us — EXCEPT the one this chat is already pinned to, which
-     stays listed however old it is. Dropping it would leave the select with
-     no matching option and render blank, which is the one thing this control
-     exists to prevent. */
-  const weekOptions = useMemo(() => {
-    const weeks = calendar?.weeks || []
-    return weeks.filter((w) => !w.no_school && (!w.is_past || w.week === conversationWeek))
-  }, [calendar, conversationWeek])
+  /* Upcoming teaching weeks a new chat may pin to, plus this conversation's
+     own week if it is already in the past (so the select still has a match).
+     Earlier weeks with existing chats live in priorWeekOptions and open that
+     work rather than retargeting a new chat. */
+  const weekOptions = useMemo(
+    () => newChatWeekOptions(calendar?.weeks, conversationWeek),
+    [calendar, conversationWeek]
+  )
+  const priorWeekOptions = useMemo(
+    () => priorWeeksWithWork(calendar?.weeks, conversationWeek),
+    [calendar, conversationWeek]
+  )
 
   /* Change which week this conversation is planning. Three cases, because
      "the week" means something different depending on how far along the chat
@@ -1084,6 +1091,16 @@ export function ChatPage() {
   const changeWeek = useCallback(
     async (week) => {
       if (!week || week === conversationWeek) return
+      const row = (calendar?.weeks || []).find((item) => item.week === week)
+      const existingChatId = existingChatForWeek(row)
+      // Past weeks are history: reopen the chat that built them. Never pin a
+      // brand-new conversation onto a week the calendar has already left.
+      if (row?.is_past) {
+        if (existingChatId && existingChatId !== chatId) {
+          navigate(`/c/${classId}/chat/${existingChatId}`)
+        }
+        return
+      }
       if (!chatId) {
         setSelectedWeek(week)
         return
@@ -1119,7 +1136,7 @@ export function ChatPage() {
         toast.apiError('Could not change the week', err)
       }
     },
-    [chatId, classId, conversationWeek, artifact?.planId, navigate, qc, toast]
+    [chatId, classId, conversationWeek, artifact?.planId, calendar, navigate, qc, toast]
   )
 
   /* Which chat the in-memory transcript currently belongs to.
@@ -1455,16 +1472,25 @@ export function ChatPage() {
   useEffect(() => {
     const weekParam = searchParams.get('week')
     if (chatId || !weekParam) return
-    setSelectedWeek(Number(weekParam))
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('week')
-        return next
-      },
-      { replace: true }
-    )
-  }, [chatId, searchParams, setSearchParams])
+    // Wait for the calendar so a past-week handoff can open the existing
+    // chat instead of pinning a new conversation to a finished week.
+    if (!calendar) return
+    const requested = Number(weekParam)
+    const row = (calendar.weeks || []).find((item) => item.week === requested)
+    const stripWeek = (prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('week')
+      return next
+    }
+    if (row?.is_past) {
+      setSearchParams(stripWeek, { replace: true })
+      const existingChatId = existingChatForWeek(row)
+      if (existingChatId) navigate(`/c/${classId}/chat/${existingChatId}`, { replace: true })
+      return
+    }
+    setSelectedWeek(requested)
+    setSearchParams(stripWeek, { replace: true })
+  }, [chatId, classId, calendar, navigate, searchParams, setSearchParams])
 
   /* Back from Google's consent screen (routes/drive.py's /callback) — the
      browser lands right back on this same chat with ?drive=connected,
@@ -4048,6 +4074,7 @@ export function ChatPage() {
           hasPacingGuide={hasPacingGuide}
           calendar={calendar}
           weekOptions={weekOptions}
+          priorWeekOptions={priorWeekOptions}
           conversationWeek={conversationWeek}
           changeWeek={changeWeek}
           busy={busy}
