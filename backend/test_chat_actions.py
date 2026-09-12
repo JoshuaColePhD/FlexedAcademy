@@ -87,6 +87,16 @@ def test_voice_tools_unchanged_and_typed_questions_are_single():
     assert "target_quiz_id" not in quiz_required
 
 
+def test_typed_policy_steers_greetings_to_the_week_not_a_product_menu():
+    from backend.chat_policy import TYPED_CHAT_POLICY
+
+    text = TYPED_CHAT_POLICY
+    assert "Do not offer assessment design, instructional coaching" in text
+    assert "ask one question about what this week is about" in text
+    assert "not a list of other services" in text
+    assert "Do not pitch a standalone quiz or an assessment-design" in text
+
+
 def fake_stream(monkeypatch, payload, *, truncated=False):
     chunks = []
     for i, fragment in enumerate([payload[:12], payload[12:35], payload[35:]]):

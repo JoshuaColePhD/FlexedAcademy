@@ -12,7 +12,7 @@ Flexed typed chat treats advice, clarification, separate plan creation, whole-we
 
 ## Teaching behavior
 
-The typed conversation policy asks only one consequential unanswered question, uses existing context, and never forces generation based on a clarification count. It answers exploratory questions directly and requires an affirmative response to an offer to build. Creation and revision prompts also connect goals, student practice, scaffolds, misconceptions, timing, and evidence of learning within the requested scope. Standards and research claims must use supplied evidence.
+The typed conversation policy asks only one consequential unanswered question, uses existing context, and never forces generation based on a clarification count. Conversation stays about this week's lesson plan: greetings get a brief greeting plus one question about the week, not a menu of coaching or assessment-design jobs. It answers exploratory questions in service of the week and requires an affirmative response to an offer to build. Creation and revision prompts also connect goals, student practice, scaffolds, misconceptions, timing, and evidence of learning within the requested scope. Standards and research claims must use supplied evidence.
 
 ## Verification
 

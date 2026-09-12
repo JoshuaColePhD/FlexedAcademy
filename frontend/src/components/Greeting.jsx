@@ -65,7 +65,7 @@ export function Greeting({ onOpenVoice, className: courseName, week, hint, onOpe
         </h1>
         
         <p className="max-w-xl text-sm sm:text-base text-ink-muted leading-relaxed">
-          Say what you need and I’ll build{' '}
+          Say what this week is about and I’ll build{' '}
           {weekLabel ? (
             <span className="whitespace-nowrap font-medium text-ink bg-paper-sunken px-2 py-0.5 rounded-md border border-ink/5 shadow-sm">
               {weekLabel}

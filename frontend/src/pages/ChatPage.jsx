@@ -5,7 +5,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -499,6 +499,7 @@ export function ChatPage() {
   // ChatHeaderSheet — phone's stand-in for the header row's own
   // ClassSwitcher/WeekPicker/status, given room to breathe there instead.
   const [headerSheetOpen, setHeaderSheetOpen] = useState(false)
+  const headerTriggerRef = useRef(null)
   const { classes, activeClass } = useActiveClass()
   // useAuth().user is deliberately the small {id,email,name} shape (see
   // authContext.js) — beta_features lives on the fuller /api/auth/me payload,
@@ -1952,13 +1953,19 @@ export function ChatPage() {
 
   const busy = stream.isStreaming || revising || quizBuilding || chatStream.isStreaming || preparing
   const generationBusy = preparing || stream.isStreaming || chatStream.isStreaming || quizBuilding || revising
+  // A conversational reply (including "hello") uses chat_stream. That is a
+  // turn in progress, not a week being written — folding it into the Outputs
+  // "Writing the week" row made greetings look like a stalled plan build.
+  const artifactBusy = stream.isStreaming || revising
   const generationStatus = stream.isStreaming
     ? { label: 'Building your lesson plan', detail: stream.status?.label || 'Matching standards and shaping the week.' }
-    : chatStream.isStreaming
-      ? { label: 'Working on your request', detail: 'Reading the context and preparing the next step.' }
-      : preparing
-        ? { label: 'Getting your request ready', detail: 'Starting a workspace for this conversation.' }
-        : null
+    : revising
+      ? { label: 'Updating your lesson plan', detail: 'Changing only the requested part of the week.' }
+      : quizBuilding
+        ? { label: 'Building your quiz', detail: 'Writing questions from this week’s plan.' }
+        : preparing && !chatStream.isStreaming
+          ? { label: 'Getting your request ready', detail: 'Starting a workspace for this conversation.' }
+          : null
   useEffect(() => {
     if (!isPhone) {
       planBuildStartedRef.current = false
@@ -1967,15 +1974,15 @@ export function ChatPage() {
     // Only the initial build opens the peek. A revision keeps the teacher's
     // chosen collapsed/open state, and a plan fetched while reopening a chat
     // never looks like a new completion.
-    if (busy && !artifact?.planId) {
+    if (artifactBusy && !artifact?.planId) {
       planBuildStartedRef.current = true
       return
     }
-    if (!busy && artifact?.planId && planBuildStartedRef.current) {
+    if (!artifactBusy && artifact?.planId && planBuildStartedRef.current) {
       planBuildStartedRef.current = false
       setPlanPeekOpen(true)
     }
-  }, [artifact?.planId, busy, isPhone])
+  }, [artifact?.planId, artifactBusy, isPhone])
 
   /* Opening the panel is itself a real click — the one gesture VoiceProvider
      needs to unlock playback on THIS page load (see its own comment on
@@ -3720,11 +3727,13 @@ export function ChatPage() {
   // Stop under the teacher's thumb, while Outputs opens to the live document
   // row. Do this only for a lesson-plan build, never for ordinary chat or a
   // revision, so an intentionally closed workspace stays closed otherwise.
+  // `preparing` is true for every send, including greetings, so it must not
+  // open Outputs or the panel looks like a week has already started.
   useEffect(() => {
-    if (!isPhone && !isLandscapePhone && (preparing || stream.isStreaming) && !artifact?.planId) {
+    if (!isPhone && !isLandscapePhone && stream.isStreaming && !artifact?.planId) {
       setRailOpen(true)
     }
-  }, [artifact?.planId, isLandscapePhone, isPhone, preparing, stream.isStreaming])
+  }, [artifact?.planId, isLandscapePhone, isPhone, stream.isStreaming])
 
   useEffect(() => {
     if (!stream.isStreaming) {
@@ -3936,8 +3945,8 @@ export function ChatPage() {
         onEditDay={artifact?.planId ? editDay : undefined}
         onPickStandard={artifact?.planId ? pickStandard : undefined}
         onPlanRevised={onPlanRevised}
-        busy={busy}
-        preparing={preparing}
+        busy={artifactBusy}
+        preparing={preparing && artifactBusy}
         planSaveState={planSaveState}
         streamingText={stream.text}
         openTweak={openTweak}
@@ -4030,10 +4039,16 @@ export function ChatPage() {
             </button>
             <button
               type="button"
-              className="tap-target flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left"
+              ref={headerTriggerRef}
+              className="chat-head-trigger tap-target flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left"
               onClick={() => setHeaderSheetOpen(true)}
               aria-haspopup="dialog"
               aria-expanded={headerSheetOpen}
+              aria-label={
+                displayWeek
+                  ? `Change course or week. Currently ${activeClass?.name || 'no course'}, Week ${displayWeek.week}.`
+                  : 'Change course or week'
+              }
             >
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
                 {activeClass?.name || 'Choose a class'}
@@ -4049,17 +4064,23 @@ export function ChatPage() {
                   title="School calendar needs to be uploaded"
                 />
               ) : null}
+              <ChevronDown size={16} aria-hidden="true" className="chat-head-trigger-caret shrink-0" />
             </button>
           </>
         ) : (
           <button
             type="button"
+            ref={headerTriggerRef}
             className="chat-head chat-head-trigger pointer-events-auto flex min-w-0 max-w-[52%] flex-1 flex-nowrap items-center text-left"
             onClick={() => setHeaderSheetOpen(true)}
             aria-haspopup="dialog"
             aria-expanded={headerSheetOpen}
-            aria-label="Choose course and week"
-            title="Choose course and week"
+            aria-label={
+              displayWeek
+                ? `Change course or week. Currently ${activeClass?.name || 'no course'}, Week ${displayWeek.week}.`
+                : 'Change course or week'
+            }
+            title="Change course or week"
           >
             <div className="chat-current-thread flex min-w-0 items-center gap-2">
               <span
@@ -4071,8 +4092,12 @@ export function ChatPage() {
               </span>
               <span className="chat-current-thread-copy min-w-0">
                 <span className="chat-current-thread-title truncate">{currentChat?.title || 'New chat'}</span>
-                <span className="chat-current-thread-course truncate">{activeClass?.name || 'Choose a course'}</span>
+                <span className="chat-current-thread-course truncate">
+                  {activeClass?.name || 'Choose a course'}
+                  {displayWeek ? ` · Week ${String(displayWeek.week).padStart(2, '0')}` : ' · Choose a week'}
+                </span>
               </span>
+              <ChevronDown size={16} aria-hidden="true" className="chat-head-trigger-caret shrink-0" />
             </div>
           </button>
         )}
@@ -4114,6 +4139,8 @@ export function ChatPage() {
           conversationWeek={conversationWeek}
           changeWeek={changeWeek}
           busy={busy}
+          variant={isPhone || isLandscapePhone ? 'sheet' : 'popover'}
+          anchorRef={headerTriggerRef}
         />, document.body
       )}
 
@@ -4315,7 +4342,7 @@ export function ChatPage() {
           classId={classId}
           onExpand={() => openDocument()}
           onOpenQuiz={openQuiz}
-          busy={busy}
+          busy={artifactBusy}
           quizBuilding={quizBuilding}
           updating={revising}
           variant="bar"
@@ -4543,8 +4570,8 @@ export function ChatPage() {
                 onEditDay={editDay}
                 onPickStandard={pickStandard}
                 onPlanRevised={onPlanRevised}
-                busy={busy}
-                preparing={preparing}
+                busy={artifactBusy}
+                preparing={preparing && artifactBusy}
                 planSaveState={planSaveState}
                 streamingText={stream.text}
                 openTweak={openTweak}
@@ -4768,7 +4795,7 @@ export function ChatPage() {
           onOpenStandards={openStandards}
           onOpenCalendar={openCalendar}
           onOpenDocument={openDoc}
-          busy={busy}
+          busy={artifactBusy}
           quizBuilding={quizBuilding}
           updating={revising}
           artifactLoadError={artifactLoadError}

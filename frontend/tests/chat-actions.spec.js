@@ -123,6 +123,29 @@ test('an opening plan request talks first and does not start writing the week', 
   await expect(page.getByText('Building your lesson plan')).toHaveCount(0)
 })
 
+test('a greeting does not start writing the week', async ({ page }) => {
+  await openChat(page, true)
+  await events(page, [{ chunk: 'Hey — what are we working on this week?' }, done])
+  await page.evaluate(() => {
+    window.holdChat = new Promise((resolve) => { window.releaseChat = resolve })
+    const inner = window.fetch
+    window.fetch = async (input, init = {}) => {
+      const url = typeof input === 'string' ? input : input.url
+      if (url.includes('/api/chat_stream')) await window.holdChat
+      return inner(input, init)
+    }
+  })
+  await send(page, 'hello')
+  await expect(page.getByText(/Right with you|Hey — one sec|Give me a beat/)).toBeVisible()
+  await expect(page.getByText('Writing the week')).toHaveCount(0)
+  await expect(page.getByText('Working on your request')).toHaveCount(0)
+  await expect(page.getByText('Building your lesson plan')).toHaveCount(0)
+  expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'create'))).toEqual([])
+  await page.evaluate(() => window.releaseChat())
+  await expect(page.getByText('Hey — what are we working on this week?', { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'create'))).toEqual([])
+})
+
 test('initial clarification through creation retains earlier constraints', async ({ page }) => {
   await openChat(page, true)
   await events(page, [{ tool_call: 'ask_clarifying_questions', questions: [{ id: 'goal', text: 'Which skill should students practice?', options: ['Evidence', 'Organization'] }] }, done])

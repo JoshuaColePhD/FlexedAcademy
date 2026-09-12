@@ -21,7 +21,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
    reserves blue for "something is waiting for you"; the class you are already
    looking at is not waiting for anything, and spending accent here is part of
    why the blue had stopped meaning anything. */
-export function ClassSwitcher({ classes, activeClass, inline = false, variant = 'default', fullWidthMenu = false, onOpenChange }) {
+export function ClassSwitcher({ classes, activeClass, inline = false, variant = 'default', fullWidthMenu = false, embedded = false, onSelect, onOpenChange }) {
   const heading = variant === 'heading'
   const [open, setOpen] = useState(false)
   // The menu used to unmount the instant `open` went false — a hard cut, the
@@ -85,6 +85,40 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
 
   if (!classes?.length) return null
 
+  /* Switching class keeps you on the same KIND of screen — if you were looking
+     at the year for AP Lang, you get the year for ENG 101, not thrown home.
+     Week numbers deliberately do not carry across: week 12 of another prep is a
+     different plan, and landing on it silently would be a lie. */
+  const targetFor = (id) => {
+    const tail = location.pathname.split('/').slice(3).join('/')
+    /* Only `class` survives a class switch. It used to fall back to `calendar`
+       — a route that no longer exists — so switching class from the DEFAULT
+       landing screen (/c/A, where `tail` is empty) went straight to a 404.
+
+       A chat id deliberately does not carry either: a conversation belongs to
+       one class, and re-labelling it under another would show the wrong prep's
+       transcript beneath the new class's heading. Everything else lands on the
+       class root, which is where you start a plan anyway. */
+    return tail === 'class' ? `/c/${id}/class` : `/c/${id}`
+  }
+
+  const chooseClass = (id) => {
+    navigate(targetFor(id))
+    onSelect?.(id)
+  }
+
+  if (embedded) {
+    return (
+      <ClassList
+        classes={classes}
+        activeClass={activeClass}
+        displayName={displayName}
+        onChoose={chooseClass}
+        onAdd={() => onSelect?.()}
+      />
+    )
+  }
+
   if (classes.length === 1) {
     return (
       <p
@@ -105,23 +139,6 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
         <span className={heading ? 'min-w-0 flex-1 truncate text-xl font-semibold tracking-tight text-ink' : 'min-w-0 flex-1 truncate'}>{classes[0].name}</span>
       </p>
     )
-  }
-
-  /* Switching class keeps you on the same KIND of screen — if you were looking
-     at the year for AP Lang, you get the year for ENG 101, not thrown home.
-     Week numbers deliberately do not carry across: week 12 of another prep is a
-     different plan, and landing on it silently would be a lie. */
-  const targetFor = (id) => {
-    const tail = location.pathname.split('/').slice(3).join('/')
-    /* Only `class` survives a class switch. It used to fall back to `calendar`
-       — a route that no longer exists — so switching class from the DEFAULT
-       landing screen (/c/A, where `tail` is empty) went straight to a 404.
-
-       A chat id deliberately does not carry either: a conversation belongs to
-       one class, and re-labelling it under another would show the wrong prep's
-       transcript beneath the new class's heading. Everything else lands on the
-       class root, which is where you start a plan anyway. */
-    return tail === 'class' ? `/c/${id}/class` : `/c/${id}`
   }
 
   /* Two very different homes for the same control: full-width and left-
@@ -206,7 +223,7 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
                 aria-selected={c.id === activeClass?.id}
                 onClick={() => {
                   setOpen(false)
-                  navigate(targetFor(c.id))
+                  chooseClass(c.id)
                 }}
                 className={`flex min-h-touch w-full items-center gap-2 rounded-xl py-1.5 pl-2.5 pr-3 text-left text-sm transition-colors ${
                   c.id === activeClass?.id
@@ -238,5 +255,61 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
         </ul>
       ) : null}
     </div>
+  )
+}
+
+function ClassList({ classes, activeClass, displayName, onChoose, onAdd }) {
+  const listRef = useRef(null)
+  const selectedRef = useRef(null)
+
+  useEffect(() => {
+    const list = listRef.current
+    const selected = selectedRef.current
+    if (!list || !selected) return
+    const top = selected.offsetTop - list.clientHeight / 2 + selected.offsetHeight / 2
+    list.scrollTop = Math.max(0, top)
+  }, [activeClass?.id, classes.length])
+
+  return (
+    <ul
+      ref={listRef}
+      role="listbox"
+      aria-label="Your classes"
+      className="class-switcher-embedded"
+    >
+      {classes.map((c) => {
+        const selected = c.id === activeClass?.id
+        return (
+          <li key={c.id}>
+            <button
+              ref={selected ? selectedRef : undefined}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              onClick={() => onChoose(c.id)}
+              className={`week-picker-option${selected ? ' is-selected' : ''}`}
+            >
+              <span
+                className="class-dot h-2.5 w-2.5 shrink-0 rounded-full"
+                aria-hidden="true"
+                style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
+              />
+              <span className="min-w-0 flex-1 truncate">{displayName.get(c.id)}</span>
+              {selected ? <Check size={13} aria-hidden="true" className="shrink-0 text-ok" /> : null}
+            </button>
+          </li>
+        )
+      })}
+      <li>
+        <Link
+          to="/c/new/class"
+          onClick={onAdd}
+          className="week-picker-option text-ink-muted"
+        >
+          <Plus size={13} aria-hidden="true" />
+          Add a class
+        </Link>
+      </li>
+    </ul>
   )
 }

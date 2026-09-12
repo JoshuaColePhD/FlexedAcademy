@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 // list — the overlay only renders while a file is actually being dragged over
 // the composer, so the ReferenceError sat there unnoticed by anything but a
 // linter until someone dragged a file.
-import { ArrowUp, BookOpen, Check, FileText, Loader2, Mic, Paperclip, Pause, Play, Plus, RotateCcw, Square, Trash2, Upload, X } from 'lucide-react'
+import { ArrowUp, BookOpen, FileText, Loader2, Mic, Paperclip, Pause, Plus, Square, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { haptic } from '../lib/haptics'
 import { useToast } from '../lib/toastContext'
@@ -29,7 +29,6 @@ const MAX_ATTACH_BATCH = 5
 // visual center as the geometric center of the plus button. The total vertical
 // padding stays 24px, so the one-line field keeps the same measured height.
 const COMPOSER_TEXT_METRICS = 'px-0 pt-[0.9375rem] pb-[0.5625rem] text-[0.9375rem] leading-6'
-const COMPOSER_GHOST_METRICS = 'text-[0.9375rem] leading-6'
 const VOICE_DEVICE_STORAGE_KEY = 'flexedacademy.voice.inputDevice'
 
 // Keep cleanup deterministic and local. The review step lets a teacher fix
@@ -197,9 +196,6 @@ export function Composer({
   const [isPaused, setIsPaused] = useState(false)
   const [isTranscribing, setIsTranscribing] = useState(false)
   const [recordingSeconds, setRecordingSeconds] = useState(0)
-  const [recordingPreview, setRecordingPreview] = useState(null)
-  const [reviewText, setReviewText] = useState('')
-  const [inputDevices, setInputDevices] = useState([])
   const [selectedDeviceId, setSelectedDeviceId] = useState(() => {
     try { return window.localStorage.getItem(VOICE_DEVICE_STORAGE_KEY) || '' } catch { return '' }
   })
@@ -335,28 +331,6 @@ export function Composer({
     }
   }, [stopMicVisualizer])
 
-  // Device labels are only exposed after the browser grants microphone
-  // permission. Refreshing after permission and on device changes means the
-  // selector reflects the computer's actual microphones, not the iPhone or a
-  // stale Bluetooth device from an earlier session.
-  useEffect(() => {
-    let cancelled = false
-    const refreshDevices = async () => {
-      if (!navigator.mediaDevices?.enumerateDevices) return
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices()
-        if (cancelled) return
-        setInputDevices(devices.filter((device) => device.kind === 'audioinput'))
-      } catch { /* device enumeration is optional; recording still works */ }
-    }
-    void refreshDevices()
-    navigator.mediaDevices?.addEventListener?.('devicechange', refreshDevices)
-    return () => {
-      cancelled = true
-      navigator.mediaDevices?.removeEventListener?.('devicechange', refreshDevices)
-    }
-  }, [])
-
   useEffect(() => {
     if (!isRecording || isPaused) {
       window.clearInterval(recordingTimerRef.current)
@@ -373,6 +347,25 @@ export function Composer({
   }, [isPaused])
 
   useEffect(() => () => window.clearInterval(recordingTimerRef.current), [])
+
+  useEffect(() => {
+    if (!isRecording) return undefined
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      recordingDiscardedRef.current = true
+      const recorder = mediaRecorder.current
+      if (recorder && recorder.state !== 'inactive') recorder.stop()
+      else mediaRecorder.current?.stream?.getTracks?.().forEach((track) => track.stop())
+      mediaRecorder.current = null
+      audioChunks.current = []
+      setIsRecording(false)
+      setIsPaused(false)
+      setRecordingSeconds(0)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [isRecording])
 
   // Always 0 or 1 items — the composer has exactly one caller (ChatPage),
   // and contextualSuggestions.js's MAX_SUGGESTIONS caps `suggestions` at 1;
@@ -422,15 +415,16 @@ export function Composer({
   // rather than requiring a specific "prove it's stale" keystroke.
   const [dismissed, setDismissed] = useState(null)
   const isDismissed = dismissed && dismissed.key === suggestionKey && dismissed.value === value
-  // Keep an empty field as a familiar message prompt. Suggestions become
-  // useful once a teacher begins a matching thought, where Tab completion
-  // reads as help rather than text that must be cleared before writing.
-  const completion = value.trim() && activeSuggestion && !isDismissed
+  // Empty field still shows the week's suggestion as ghost text. Hiding it
+  // until the typed prefix matched the canned sentence meant Tab completion
+  // never appeared unless the teacher already knew the prompt.
+  const completion = !isRecording && !isTranscribing && activeSuggestion && !isDismissed
     ? suggestionCompletion(value, activeSuggestion)
     : ''
 
-  // Safe to pick up newer wording now — nothing frozen is currently visible.
-  if (!completion && textSuggestion && frozenRef.current.prompt !== textSuggestion.prompt) {
+  // Grounded wording may replace the generic template while the field is
+  // still empty. Once they have typed toward the visible ghost, freeze.
+  if (!value.trim() && textSuggestion && frozenRef.current.prompt !== textSuggestion.prompt) {
     frozenRef.current = { key: suggestionKey, prompt: textSuggestion.prompt }
   }
 
@@ -475,8 +469,6 @@ export function Composer({
   const startRecording = async () => {
     if (isRecording || isTranscribing) return
     recordingDiscardedRef.current = false
-    setRecordingPreview(null)
-    setReviewText('')
     const input = textareaRef.current
     recordingCursorRef.current = {
       start: input?.selectionStart ?? value.length,
@@ -524,12 +516,7 @@ export function Composer({
         setIsTranscribing(true)
         try {
           const { text } = await api.transcribe(blob)
-          const cleaned = cleanDictation(text, voiceGlossary)
-          setReviewText(cleaned)
-          // Keep only the text after transcription; retaining the audio Blob
-          // in React state would unnecessarily pin a potentially large file
-          // until the teacher accepts or dismisses the review.
-          setRecordingPreview({ text: cleaned })
+          insertDictation(cleanDictation(text, voiceGlossary))
         } catch (err) {
           toast.error('Could not transcribe that', err.message || err.hint)
         } finally {
@@ -545,11 +532,6 @@ export function Composer({
         setSelectedDeviceId(deviceId)
         try { window.localStorage.setItem(VOICE_DEVICE_STORAGE_KEY, deviceId) } catch { /* optional persistence */ }
       }
-      // Permission has now been granted, so labels become available.
-      try {
-        const devices = await navigator.mediaDevices.enumerateDevices?.()
-        if (devices) setInputDevices(devices.filter((device) => device.kind === 'audioinput'))
-      } catch { /* labels are optional after recording has started */ }
     } catch (error) {
       toast.error(
         error?.name === 'NotAllowedError' ? 'Microphone permission needed' : 'No microphone access',
@@ -566,18 +548,6 @@ export function Composer({
     setIsPaused(false)
   }
 
-  const togglePauseRecording = () => {
-    const recorder = mediaRecorder.current
-    if (!recorder || !isRecording) return
-    if (recorder.state === 'paused') {
-      recorder.resume()
-      setIsPaused(false)
-    } else {
-      recorder.pause()
-      setIsPaused(true)
-    }
-  }
-
   const cancelRecording = () => {
     recordingDiscardedRef.current = true
     const recorder = mediaRecorder.current
@@ -590,27 +560,19 @@ export function Composer({
     setRecordingSeconds(0)
   }
 
-  const redoRecording = () => {
-    setRecordingPreview(null)
-    setReviewText('')
-    void startRecording()
-  }
-
-  const insertRecording = () => {
-    const text = cleanDictation(reviewText, voiceGlossary)
-    if (!text) return
+  const insertDictation = (text) => {
+    const spoken = String(text || '').trim()
+    if (!spoken) return
     const snapshot = recordingCursorRef.current
     const base = snapshot.value || value
     const before = base.slice(0, snapshot.start)
     const after = base.slice(snapshot.end)
     const leftSpace = before && !/[\s\n]$/.test(before) ? ' ' : ''
     const rightSpace = after && !/^[\s\n]/.test(after) ? ' ' : ''
-    const nextValue = `${before}${leftSpace}${text}${rightSpace}${after}`
+    const nextValue = `${before}${leftSpace}${spoken}${rightSpace}${after}`
     onChange(nextValue)
-    setRecordingPreview(null)
-    setReviewText('')
     requestAnimationFrame(() => {
-      const nextCursor = before.length + leftSpace.length + text.length
+      const nextCursor = before.length + leftSpace.length + spoken.length
       textareaRef.current?.focus()
       textareaRef.current?.setSelectionRange(nextCursor, nextCursor)
     })
@@ -821,6 +783,11 @@ export function Composer({
       onStop()
       return
     }
+    if (e.key === 'Escape' && isRecording) {
+      e.preventDefault()
+      cancelRecording()
+      return
+    }
     if (e.key === 'Escape' && completion) {
       e.preventDefault()
       setDismissed({ key: suggestionKey, value })
@@ -838,70 +805,6 @@ export function Composer({
     <div className="relative w-full">
       {voicePanel}
       {questionsPanel}
-
-      {isRecording ? (
-        <div className="mb-2 flex min-h-10 items-center gap-3 rounded-xl border border-mark/30 bg-mark-tint px-3 py-2 text-sm text-ink" role="status" aria-live="polite">
-          <span className="composer-mic-level flex items-end gap-0.5 text-mark" aria-hidden="true">
-            {[0, 1, 2, 3, 4].map((bar) => (
-              <span
-                key={bar}
-                ref={(node) => { visualizerBarsRef.current[bar] = node }}
-                className="composer-mic-level-bar w-1 rounded-full bg-current"
-              />
-            ))}
-          </span>
-          <span className="font-semibold tabular-nums">{`${Math.floor(recordingSeconds / 60)}:${String(recordingSeconds % 60).padStart(2, '0')}`}</span>
-          <span className="min-w-0 flex-1 truncate">{isPaused ? 'Recording paused' : 'Recording from this computer'}</span>
-          {inputDevices.length > 1 ? (
-            <select
-              className="max-w-[11rem] rounded-md border border-mark/20 bg-paper-raised px-2 py-1 text-xs text-ink outline-none"
-              value={selectedDeviceId}
-              onChange={(event) => setSelectedDeviceId(event.target.value)}
-              aria-label="Recording microphone"
-              disabled={isRecording}
-            >
-              {inputDevices.map((device, index) => <option key={device.deviceId || `mic-${index}`} value={device.deviceId}>{device.label || `Microphone ${index + 1}`}</option>)}
-            </select>
-          ) : null}
-          <button type="button" className="fa-press rounded-md p-1.5 text-ink-muted hover:bg-paper-raised hover:text-ink" onClick={togglePauseRecording} aria-label={isPaused ? 'Resume recording' : 'Pause recording'} title={isPaused ? 'Resume recording' : 'Pause recording'}>
-            {isPaused ? <Play size={15} aria-hidden="true" /> : <Pause size={15} aria-hidden="true" />}
-          </button>
-          <button type="button" className="fa-press rounded-md p-1.5 text-ink-muted hover:bg-paper-raised hover:text-ink" onClick={cancelRecording} aria-label="Cancel recording" title="Cancel recording">
-            <Trash2 size={15} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
-
-      {isTranscribing ? (
-        <div className="mb-2 flex min-h-10 items-center gap-2 rounded-xl border border-accent/20 bg-accent-tint px-3 py-2 text-sm text-ink" role="status" aria-live="polite">
-          <Loader2 size={16} className="animate-spin text-accent" aria-hidden="true" />
-          <span>Transcribing your note…</span>
-        </div>
-      ) : null}
-
-      {recordingPreview ? (
-        <div className="mb-2 rounded-xl border border-accent/25 bg-paper-raised p-3 shadow-sm" role="region" aria-label="Review dictated text">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">Review dictation</span>
-            <span className="text-xs text-ink-faint">Cleaned for punctuation and lists</span>
-          </div>
-          <textarea
-            value={reviewText}
-            onChange={(event) => setReviewText(event.target.value)}
-            rows={3}
-            className="w-full resize-y rounded-lg border border-edge bg-paper px-3 py-2 text-sm leading-6 text-ink outline-none focus:border-accent"
-            aria-label="Dictated text to insert"
-          />
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <button type="button" className="fa-press inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-ink-muted hover:bg-paper-sunken hover:text-ink" onClick={redoRecording}>
-              <RotateCcw size={14} aria-hidden="true" /> Redo
-            </button>
-            <button type="button" className="fa-press inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-semibold text-accent-on hover:bg-accent-hover" onClick={insertRecording} disabled={!reviewText.trim()}>
-              <Check size={14} aria-hidden="true" /> Insert at cursor
-            </button>
-          </div>
-        </div>
-      ) : null}
 
       {selectedStandard ? (
         <div className="mb-2 flex items-center gap-2 rounded-xl border border-accent/20 bg-accent-tint px-3 py-2 text-xs text-ink" role="status">
@@ -936,7 +839,7 @@ export function Composer({
       ) : null}
 
       <div
-        className={`composer-shell relative flex min-h-14 w-full flex-col border border-edge bg-paper-raised ${textareaHeight > 48 ? 'is-expanded' : ''} ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'ring-2 ring-mark/50 shadow-[0_0_15px_rgba(var(--mark-rgb),0.3)]' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
+        className={`composer-shell relative flex min-h-14 w-full flex-col border border-edge bg-paper-raised ${textareaHeight > 48 ? 'is-expanded' : ''} ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'is-listening' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
         style={{ height: `${Math.max(56, textareaHeight + 8)}px`, maxHeight: '152px' }}
       >
         {isDragging ? createPortal(
@@ -954,7 +857,7 @@ export function Composer({
           document.body
         ) : null}
         <div
-          className={`composer-control-row relative flex min-h-14 ${textareaHeight > 48 ? 'is-expanded items-end' : 'items-center'} px-3 py-1 transition-colors ${isRecording ? 'bg-mark-tint' : ''}`}
+          className={`composer-control-row relative flex min-h-14 ${textareaHeight > 48 ? 'is-expanded items-end' : 'items-center'} px-3 py-1 transition-colors`}
         >
           {/* Was hardcoded to "Describe the week you want to plan" — missed
               when `placeholder`/`sendLabel` below were made props specifically
@@ -974,7 +877,20 @@ export function Composer({
               this makes the actual button that size instead of just its
               hit box. */}
           <div ref={toolsMenuRef} className="composer-accessories relative shrink-0" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setToolsOpen(false) }}>
-            {!voiceModeActive ? (
+            {isRecording ? (
+              <button
+                type="button"
+                className="fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9"
+                onClick={() => {
+                  haptic('light')
+                  cancelRecording()
+                }}
+                aria-label="Cancel recording"
+                title="Cancel recording"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            ) : !voiceModeActive ? (
               <button
                 type="button"
                 className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-paper-sunken hover:text-ink md:h-9 md:w-9 ${toolsOpen ? 'bg-paper-sunken text-ink' : ''}`}
@@ -1003,9 +919,9 @@ export function Composer({
                     aria-checked={mode === 'brainstorm'}
                     className={`composer-tools-item fa-press ${mode === 'brainstorm' ? 'bg-paper-sunken text-ink' : ''}`}
                     onPointerDown={(event) => {
-                      // Coach is the only conversational mode exposed from
-                      // this compact menu. Select on pointer-down so the menu
-                      // closes before the accessories blur handler runs.
+                      // Default chat is talking through this week's plan.
+                      // Select on pointer-down so the menu closes before the
+                      // accessories blur handler runs.
                       event.preventDefault()
                       haptic('selection')
                       onModeChange('brainstorm')
@@ -1018,9 +934,9 @@ export function Composer({
                       onModeChange('brainstorm')
                       setToolsOpen(false)
                     }}
-                    title="Talk it through with a veteran teacher"
+                    title="Talk through this week's lesson plan"
                   >
-                    <span className="font-semibold">Coach</span>
+                    <span className="font-semibold">This week</span>
                   </button>
                 ) : null}
               </div>
@@ -1048,7 +964,35 @@ export function Composer({
             <span id="composer-keyboard-hint" className="sr-only">
               Press Enter to send. Press Shift+Enter for a new line.
             </span>
-            {completion ? (
+            {isRecording || isTranscribing ? (
+              <div
+                className={`composer-ghost-overlay pointer-events-none absolute inset-x-0 top-0 overflow-hidden ${COMPOSER_TEXT_METRICS}`}
+                role="status"
+                aria-live="polite"
+              >
+                {isRecording ? (
+                  <span className="composer-mic-level mr-2 flex items-end gap-0.5 text-mark" aria-hidden="true">
+                    {[0, 1, 2, 3, 4].map((bar) => (
+                      <span
+                        key={bar}
+                        ref={(node) => { visualizerBarsRef.current[bar] = node }}
+                        className="composer-mic-level-bar w-1 rounded-full bg-current"
+                      />
+                    ))}
+                  </span>
+                ) : (
+                  <Loader2 size={14} className="mr-2 animate-spin text-ink-muted" aria-hidden="true" />
+                )}
+                {isRecording ? (
+                  <span className="mr-2 font-semibold tabular-nums text-ink">
+                    {`${Math.floor(recordingSeconds / 60)}:${String(recordingSeconds % 60).padStart(2, '0')}`}
+                  </span>
+                ) : null}
+                <span className="min-w-0 truncate text-ink-muted">
+                  {isRecording ? (isPaused ? 'Paused' : 'Listening…') : 'Transcribing…'}
+                </span>
+              </div>
+            ) : completion ? (
               <div
                 key={activeSuggestion?.id || 'none'}
                 aria-hidden="true"
@@ -1056,12 +1000,13 @@ export function Composer({
                 // the real input. Vertical padding here used to make the
                 // overlay's line box taller than the fixed composer and clip
                 // the bottom of long ghost text.
-                className={`composer-ghost-overlay pointer-events-none absolute inset-0 overflow-hidden ${COMPOSER_GHOST_METRICS}`}
+                className={`composer-ghost-overlay pointer-events-none absolute inset-x-0 top-0 overflow-hidden ${COMPOSER_TEXT_METRICS}`}
               >
                 <span className="composer-ghost-prefix text-ink">{value}</span>
-                <span className="composer-ghost min-w-0 animate-slide-in-right text-ink-faint">
+                <span className={`composer-ghost min-w-0 animate-slide-in-right ${value.trim() ? 'text-ink-faint' : 'text-ink-muted'}`}>
                   {completion}
                 </span>
+                <kbd className="composer-ghost-tab">Tab</kbd>
               </div>
             ) : null}
             <textarea
@@ -1074,7 +1019,7 @@ export function Composer({
                * own text, and the native placeholder pseudo-element isn't covered
                * by the textarea's text-transparent, so both rendered stacked on
                * top of each other. */
-              placeholder={completion ? '' : isRecording ? 'Listening…' : isTranscribing ? 'Transcribing…' : placeholder}
+              placeholder={completion || isRecording || isTranscribing ? '' : placeholder}
               title="Enter to send · Shift+Enter for a new line"
               aria-keyshortcuts="Tab, Escape, Enter"
               aria-describedby="composer-keyboard-hint"
