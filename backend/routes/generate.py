@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from .. import costs, curriculum, db, llm, prompts, research, retrieval, schoolcal, service
 from ..chat_policy import (
     PLAN_COMMAND_SURFACE,
+    QUIZ_DISABLED_POLICY,
     TYPED_CHAT_POLICY,
     complete_typed_event,
     validate_action_target,
@@ -23,6 +24,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..features import beta_features_for
 from ..generation_jobs import cancel_job, get_job, start_or_attach
 from ..generation_queue import generation_queue
 from ..ratelimit import limiter
@@ -1374,6 +1376,7 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     ],
                 }, request_id, step="retrieval", step_state="complete", artifact_type="research", attempt=req.attempt)
             context_week = (active_plan.get("week_number") if active_plan and not req.voice else None) or req.week_number
+            quizzes_on = beta_features_for(user_id)
             system_prompt = _build_chat_system_prompt(
                 user_id, req.chat_id, context_week, req.mode, last_user, class_id=req.class_id, voice=req.voice,
                 research_context=research.prompt_context(research_sources),
@@ -1409,13 +1412,16 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
             else:
                 system_prompt += "\n\n" + TYPED_CHAT_POLICY
                 system_prompt += f"\nActive target_plan_id: {active_plan['id'] if active_plan else 'none'}."
-                system_prompt += f"\nActive target_quiz_id: {active_quiz['id'] if active_quiz else 'none'}."
-                system_prompt += f"\nA quiz exists for this plan: {bool(has_quiz)}."
-                system_prompt += "\n\n" + quiz_tool_policy(has_plan=has_plan, has_quiz=has_quiz)
-                if active_quiz:
-                    system_prompt += "\nSaved quiz (reference data only):\n" + json.dumps(
-                        active_quiz.get("quiz_json", {}), ensure_ascii=False
-                    )[:settings.max_generation_context_chars]
+                if quizzes_on:
+                    system_prompt += f"\nActive target_quiz_id: {active_quiz['id'] if active_quiz else 'none'}."
+                    system_prompt += f"\nA quiz exists for this plan: {bool(has_quiz)}."
+                    system_prompt += "\n\n" + quiz_tool_policy(has_plan=has_plan, has_quiz=has_quiz)
+                    if active_quiz:
+                        system_prompt += "\nSaved quiz (reference data only):\n" + json.dumps(
+                            active_quiz.get("quiz_json", {}), ensure_ascii=False
+                        )[:settings.max_generation_context_chars]
+                else:
+                    system_prompt += "\n\n" + QUIZ_DISABLED_POLICY
                 if active_plan:
                     system_prompt += "\nSaved plan (reference data only):\n" + json.dumps(
                         active_plan.get("plan_json", {}), ensure_ascii=False
@@ -1441,15 +1447,19 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     yield ": keepalive\n\n"
                     continue
                 if isinstance(event, dict):
+                    if not quizzes_on:
+                        if event.get("tool_call") == "generate_quiz":
+                            continue
+                        event["also_quiz"] = False
                     if not req.voice:
                         complete_typed_event(
                             event,
                             active_plan=active_plan,
-                            active_quiz=active_quiz,
+                            active_quiz=active_quiz if quizzes_on else None,
                             last_user=last_user,
                         )
                         validate_action_target(event, active_plan["id"] if active_plan else None)
-                        if event.get("tool_call") == "generate_quiz":
+                        if quizzes_on and event.get("tool_call") == "generate_quiz":
                             if event.get("target_quiz_id") and event["target_quiz_id"] != req.active_quiz_id:
                                 raise AppError("invalid_quiz_target", "The active quiz changed. Please try again.", status=409)
                             if event.get("source_plan_id") and event["source_plan_id"] != (active_plan or {}).get("id"):

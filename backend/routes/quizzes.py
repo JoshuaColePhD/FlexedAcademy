@@ -22,6 +22,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..features import beta_features_for, require_quiz_beta
 from ..generation_queue import generation_queue
 from .plans import _build_quiz_artifacts
 
@@ -83,6 +84,7 @@ def create_standalone_quiz(
     if not cls:
         raise AppError("class_not_found", "That class doesn't exist.", status=404)
     require_entitlement(user_id)
+    require_quiz_beta(user_id)
 
     body.question_types = [
         t for t in (body.question_types or []) if t in schema.QUESTION_TYPES
@@ -145,6 +147,8 @@ def create_standalone_quiz(
 def list_standalone_quizzes(class_id: str, user_id: str = Depends(get_current_user)) -> list[dict]:
     if not db.get_class(user_id, class_id):
         raise AppError("class_not_found", "That class doesn't exist.", status=404)
+    if not beta_features_for(user_id):
+        return []
     return db.list_standalone_quizzes_for_class(user_id, class_id)
 
 
@@ -155,6 +159,7 @@ def revise_standalone_quiz(
     """In-place revise for a quiz that has no week — ChatPage's revises_current path."""
     row = _require_standalone_quiz(user_id, quiz_id)
     require_entitlement(user_id)
+    require_quiz_beta(user_id)
     cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
     plan = None
     if row.get("plan_id"):
@@ -196,6 +201,7 @@ def update_standalone_quiz(
     quiz_id: str, body: StandaloneQuizUpdateRequest, user_id: str = Depends(get_current_user)
 ) -> dict:
     row = _require_standalone_quiz(user_id, quiz_id)
+    require_quiz_beta(user_id)
     try:
         warnings = schema.validate_quiz(body.quiz_json)
     except schema.QuizSchemaError as exc:

@@ -233,6 +233,7 @@ export function ArtifactRail({
   // that triggers it (a chat message) and the card that shows its progress
   // live in different components.
   quizBuilding = false,
+  quizzesEnabled = false,
   updating = false,
   // Opens the same embossed panel the plan card does (see onExpand above),
   // just pointed at a different kind of content — ArtifactDetailPanel in
@@ -267,7 +268,7 @@ export function ArtifactRail({
   const { data: quizzes = [] } = useQuery({
     queryKey: qk.quizzes(planId),
     queryFn: () => api.listQuizzes(planId),
-    enabled: Boolean(planId),
+    enabled: Boolean(planId) && quizzesEnabled,
     retry: false,
     staleTime: 30_000,
   })
@@ -361,7 +362,7 @@ export function ArtifactRail({
         ) : null}
         </RailGroup>
       ) : null}
-      {quizBuilding || quizzes.length > 0 ? (
+      {quizzesEnabled && (quizBuilding || quizzes.length > 0) ? (
         <RailGroup title="Assessments" isBar={isBar}>
           {quizBuilding ? (
             <div className="rail-row fa-rise">

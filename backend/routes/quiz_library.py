@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from .. import db, embeddings, quiz_library
 from ..deps import get_current_user
 from ..errors import AppError
+from ..features import beta_features_for, require_quiz_beta
 
 log = logging.getLogger("flexedacademy.routes.quiz_library")
 router = APIRouter(prefix="/api/quiz-library", tags=["quiz-library"])
@@ -58,6 +59,8 @@ def _embedding_for(*, context_text: str, quiz_json: dict, user_id: str | None = 
 
 @router.get("")
 def list_library(user_id: str = Depends(get_current_user)) -> list[dict]:
+    if not beta_features_for(user_id):
+        return []
     return [_public_row(row, user_id) for row in db.list_quiz_library_sets_for_user(user_id)]
 
 
@@ -69,6 +72,8 @@ def library_suggestions(
     plan = db.get_plan(user_id, plan_id)
     if not plan:
         raise AppError("plan_not_found", "No such plan.", status=404)
+    if not beta_features_for(user_id):
+        return []
     subject, grade = _academic_context(user_id, plan)
     plan_json = {**(plan.get("plan_json") or {}), "course": plan.get("course") or ""}
     context = quiz_library.context_values(plan=plan_json, quiz_json={}, subject=subject, grade=grade)
@@ -88,6 +93,7 @@ def library_suggestions(
 
 @router.post("/sets/{library_id}/use")
 def use_library_set(library_id: str, user_id: str = Depends(get_current_user)) -> dict:
+    require_quiz_beta(user_id)
     row = db.get_quiz_library_set(user_id, library_id)
     if not row:
         raise AppError("library_item_not_found", "That shared item is no longer available.", status=404)
@@ -149,6 +155,7 @@ def save_quiz_to_library(
     body: LibrarySaveRequest,
     user_id: str = Depends(get_current_user),
 ) -> dict:
+    require_quiz_beta(user_id)
     plan = db.get_plan(user_id, plan_id)
     quiz = db.get_quiz(user_id, quiz_id)
     if not plan or not quiz or quiz.get("plan_id") != plan_id:

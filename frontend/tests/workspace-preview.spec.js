@@ -22,7 +22,7 @@ test('desktop document spans most of the workspace under the composer and fullsc
   await page.setViewportSize({ width: 1440, height: 900 })
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto(seed)
+  await page.goto(`${seed}&beta=1`)
   await expect(page.locator('body')).not.toContainText('not retrieved')
   await expect(page.locator('.is-composer-overlay')).toBeVisible()
   const panel = page.locator('.is-composer-overlay')

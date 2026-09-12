@@ -7,7 +7,12 @@ from types import SimpleNamespace as NS
 import pytest
 
 from backend import llm, service
-from backend.chat_policy import typed_chat_tools, validate_action_target, validate_plan_action
+from backend.chat_policy import (
+    typed_chat_tools,
+    validate_action_target,
+    validate_plan_action,
+    without_quiz_tools,
+)
 from backend.errors import AppError
 
 
@@ -87,6 +92,15 @@ def test_voice_tools_unchanged_and_typed_questions_are_single():
     assert "target_quiz_id" not in quiz_required
 
 
+def test_typed_tools_omit_quiz_when_beta_is_off():
+    names = [t["function"]["name"] for t in typed_chat_tools(llm.CHAT_TOOLS, quizzes_enabled=False)]
+    assert "generate_quiz" not in names
+    assert "generate_lesson_plan" in names
+    typed = {t["function"]["name"]: t["function"] for t in typed_chat_tools(llm.CHAT_TOOLS, quizzes_enabled=False)}
+    assert "also_quiz" not in typed["generate_lesson_plan"]["parameters"]["properties"]
+    assert "generate_quiz" not in [t["function"]["name"] for t in without_quiz_tools(llm.CHAT_TOOLS)]
+
+
 def test_typed_policy_steers_greetings_to_the_week_not_a_product_menu():
     from backend.chat_policy import TYPED_CHAT_POLICY
 
@@ -131,6 +145,7 @@ def fake_stream(monkeypatch, payload, *, truncated=False):
         llm, "client", lambda: NS(chat=NS(completions=NS(create=lambda **kw: stream)))
     )
     monkeypatch.setattr(llm, "output_length_tokens_for", lambda _: 2200)
+    monkeypatch.setattr(llm, "beta_features_for", lambda _: False)
     return stream
 
 
@@ -254,6 +269,7 @@ def chat_client(monkeypatch):
     monkeypatch.setattr(generate.db, "list_plans", lambda *a, **kw: {"items": [{"id": "p1"}]})
     monkeypatch.setattr(generate.db, "get_plan", lambda user, id: plan if id == "p1" else None)
     monkeypatch.setattr(generate.db, "list_quizzes_for_plan", lambda *a: [])
+    monkeypatch.setattr(generate, "beta_features_for", lambda uid: False)
     monkeypatch.setattr(generate.llm, "extract_and_persist_coaching_memory", lambda *a: None)
 
     def stream(user, messages, **kw):
@@ -448,17 +464,31 @@ def test_quiz_contract_preserves_constraints_and_scope():
     assert validate_plan_action({"action": "create"})["also_quiz"] is False
 
 
+def test_without_beta_chat_omits_quiz_policy_and_drops_quiz_tools(chat_client):
+    from backend.chat_policy import QUIZ_DISABLED_POLICY
+    client, captured, emitted = chat_client
+    emitted.append({"tool_call": "generate_quiz", "question_types": ["multiple_choice"]})
+    result = client.post("/api/chat_stream", json={"messages": [{"role": "user", "content": "make a quiz"}], "chat_id": "chat1"})
+    assert result.status_code == 200
+    assert "generate_quiz" not in result.text
+    assert QUIZ_DISABLED_POLICY.strip()[:40] in captured[0][0]["content"]
+    assert "call `generate_quiz`" not in captured[0][0]["content"]
+
+
 def test_chat_grounds_advice_in_active_standalone_quiz(chat_client, monkeypatch):
     from backend.routes import generate
     client, captured, _ = chat_client
+    monkeypatch.setattr(generate, "beta_features_for", lambda uid: True)
     monkeypatch.setattr(generate.db, "get_quiz", lambda *a: {"id": "q1", "class_id": "c1", "quiz_json": {"title": "Inference on paper"}})
     client.post('/api/chat_stream', json={"messages": [], "chat_id": "chat1", "class_id": "c1", "active_quiz_id": "q1"})
     assert "Active target_quiz_id: q1" in captured[0][0]["content"]
     assert "Inference on paper" in captured[0][0]["content"]
 
 
-def test_wrong_quiz_target_never_leaves_chat_route(chat_client):
+def test_wrong_quiz_target_never_leaves_chat_route(chat_client, monkeypatch):
+    from backend.routes import generate
     client, _, emitted = chat_client
+    monkeypatch.setattr(generate, "beta_features_for", lambda uid: True)
     emitted.append({"tool_call": "generate_quiz", "revises_current": True, "target_quiz_id": "wrong"})
     result = client.post('/api/chat_stream', json={"messages": [], "chat_id": "chat1"})
     assert "invalid_quiz_target" in result.text

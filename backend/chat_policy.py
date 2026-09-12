@@ -131,8 +131,41 @@ Answer in prose without a tool only when they clearly ask why something already
 on the page is there, or for advice they have not asked you to apply.
 """
 
+QUIZ_DISABLED_POLICY = """
+Quizzes are not available unless the teacher has enabled Beta Features in Settings.
+Never call generate_quiz. Never set also_quiz. Never offer, suggest, pitch, or ask
+about building a quiz, test file, QTI package, or assessment-design job. If they
+ask for a quiz, say quizzes are a beta feature they can turn on in Settings, then
+continue helping with this week's lesson plan.
+"""
 
-def typed_chat_tools(legacy_tools):
+
+def without_quiz_tools(tools):
+    """Drop generate_quiz and also_quiz so the model cannot offer quizzes."""
+    out = []
+    for tool in deepcopy(tools):
+        fn = tool["function"]
+        if fn["name"] == "generate_quiz":
+            continue
+        if fn["name"] == "generate_lesson_plan":
+            props = (fn.get("parameters") or {}).get("properties") or {}
+            props.pop("also_quiz", None)
+            fn["description"] = (
+                (fn.get("description") or "")
+                .replace(
+                    "Set also_quiz true when this same message also asks for a quiz or test.",
+                    "",
+                )
+                .replace(
+                    "If this same message also asks for a quiz or test, set also_quiz true so this turn produces both.",
+                    "",
+                )
+            )
+        out.append(tool)
+    return out
+
+
+def typed_chat_tools(legacy_tools, *, quizzes_enabled=True):
     tools = deepcopy(legacy_tools)
     for tool in tools:
         fn = tool["function"]
@@ -191,6 +224,8 @@ def typed_chat_tools(legacy_tools):
             fn["parameters"]["required"] = []
             if not fn["parameters"]["required"]:
                 fn["parameters"].pop("required", None)
+    if not quizzes_enabled:
+        return without_quiz_tools(tools)
     return tools
 
 

@@ -58,6 +58,10 @@ if (sessionStorage.getItem(FRESH_KEY) === '1') {
   st.classes.forEach((c) => { c.state = null })
 }
 
+if (params.get('beta') === '1') {
+  window.__mock.state.me.beta_features = true
+}
+
 /* Start on the class root — the greeting — so the new-chat path is the first
    thing under test. Append ?at=/c/c1/chat/chat1 to land somewhere else.
    With ?fresh=1 the default is '/', so RootRedirect does the routing that a

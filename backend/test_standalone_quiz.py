@@ -15,6 +15,13 @@ import pytest
 from backend.routes import plans as plans_mod
 from backend.routes import quizzes
 
+
+@pytest.fixture(autouse=True)
+def _quiz_beta_on(monkeypatch):
+    monkeypatch.setattr(quizzes, "require_quiz_beta", lambda u: None)
+    monkeypatch.setattr(quizzes, "beta_features_for", lambda u: True)
+    monkeypatch.setattr(plans_mod, "require_quiz_beta", lambda u: None)
+
 CLASS = {"id": "c1", "name": "AP Language & Composition", "subject": "AP_Lang", "grade": "11"}
 
 FIXTURE_QUIZ = {

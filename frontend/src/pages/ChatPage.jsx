@@ -506,6 +506,8 @@ export function ChatPage() {
   // so Voice Mode's gate reads that instead of widening the auth context.
   const { data: meAccount } = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
   const betaFeaturesEnabled = Boolean(meAccount?.beta_features)
+  const betaFeaturesRef = useRef(betaFeaturesEnabled)
+  betaFeaturesRef.current = betaFeaturesEnabled
   const { data: chats = [] } = useChats()
   const currentChat = chats.find((chat) => chat.id === chatId) || null
   const { data: calendar } = useCalendar(classId)
@@ -1345,7 +1347,7 @@ export function ChatPage() {
         localFor.current = chatId
         lastSpokenRef.current = loaded.length ? loaded[loaded.length - 1].id : null
         const lastQuiz = [...loaded].reverse().find((m) => m.quizReceipt)?.quizReceipt
-        if (lastQuiz) {
+        if (lastQuiz && betaFeaturesRef.current) {
           try {
             const quizzes = lastQuiz.planId
               ? await api.listQuizzes(lastQuiz.planId)
@@ -2110,6 +2112,7 @@ export function ChatPage() {
   }
 
   const beginQuizFromRequest = async (requested, result) => {
+    if (!betaFeaturesRef.current) return
     const ctx = chatTurnRef.current
     const viewingQuiz = ctx.viewingQuiz
     const artifact = ctx.artifact
@@ -2384,7 +2387,7 @@ export function ChatPage() {
     if (!result || startedActionRef.current === result.requestId) return true
     if (result.questions?.length) return true
     const wantsPlan = Boolean(result.toolCalled && (result.planAction || (!result.quizRequested && !result.dayRevisionRequested)))
-    const wantsQuiz = Boolean(result.quizRequested)
+    const wantsQuiz = Boolean(result.quizRequested) && betaFeaturesRef.current
     const wantsDay = Boolean(result.dayRevisionRequested)
     if (!wantsPlan && !wantsQuiz && !wantsDay) return false
     startedActionRef.current = result.requestId
@@ -2746,8 +2749,8 @@ export function ChatPage() {
           mode: planning ? 'plan' : chatMode,
           weekNumber: effectiveWeek,
           referenceContext,
-          hasQuiz: Boolean(viewingQuiz?.id),
-          activeQuizId: viewingQuiz?.id,
+          hasQuiz: betaFeaturesEnabled && Boolean(viewingQuiz?.id),
+          activeQuizId: betaFeaturesEnabled ? viewingQuiz?.id : undefined,
           requestId: options.requestId,
         })
 
@@ -2814,8 +2817,8 @@ export function ChatPage() {
         weekNumber: conversationWeek,
         activePlanId: artifact?.planId,
         referenceContext,
-        hasQuiz: Boolean(viewingQuiz?.id),
-          activeQuizId: viewingQuiz?.id,
+        hasQuiz: betaFeaturesEnabled && Boolean(viewingQuiz?.id),
+          activeQuizId: betaFeaturesEnabled ? viewingQuiz?.id : undefined,
         planOpen: planCommandSurface,
         requestId: options.requestId,
       })
@@ -2823,7 +2826,7 @@ export function ChatPage() {
       if (chatResult.questions?.length) return
       actionHandlerRef.current?.(chatResult)
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, viewKind, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, viewKind, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass, betaFeaturesEnabled]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -3780,6 +3783,7 @@ export function ChatPage() {
      of data ChatPage doesn't already have some other way (the plan itself,
      the calendar, and the grounding scan are all already in scope below). */
   const openQuiz = useCallback((quiz) => {
+    if (!betaFeaturesRef.current) return
     setViewKind('quiz')
     setViewingQuiz(quiz)
     setExpanded(true)
@@ -3905,8 +3909,8 @@ export function ChatPage() {
         plan={livePlan}
         subject={activeClass?.subject}
         state={activeClass?.state}
-        quiz={viewingQuiz}
-        quizBuilding={quizBuilding}
+        quiz={betaFeaturesEnabled ? viewingQuiz : null}
+        quizBuilding={betaFeaturesEnabled && quizBuilding}
         doc={viewingDoc}
         grounded={grounded}
         ungrounded={ungrounded}
@@ -4281,7 +4285,8 @@ export function ChatPage() {
           onExpand={() => openDocument()}
           onOpenQuiz={openQuiz}
           busy={artifactBusy}
-          quizBuilding={quizBuilding}
+          quizBuilding={betaFeaturesEnabled && quizBuilding}
+          quizzesEnabled={betaFeaturesEnabled}
           updating={revising}
           variant="bar"
           artifactLoadError={artifactLoadError}
@@ -4733,7 +4738,8 @@ export function ChatPage() {
           onOpenCalendar={openCalendar}
           onOpenDocument={openDoc}
           busy={artifactBusy}
-          quizBuilding={quizBuilding}
+          quizBuilding={betaFeaturesEnabled && quizBuilding}
+          quizzesEnabled={betaFeaturesEnabled}
           updating={revising}
           artifactLoadError={artifactLoadError}
           onRetryArtifact={retryArtifactLoad}
