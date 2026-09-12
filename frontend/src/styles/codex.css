@@ -1143,13 +1143,25 @@
   border: 0;
   border-radius: 12px;
   background: transparent;
-  padding: 3px 6px;
+  padding: 3px 8px 3px 6px;
   transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
 }
 .workspace-topbar .chat-head-trigger:hover { background: var(--paper-inset); }
+.workspace-topbar .chat-head-trigger[aria-expanded="true"] { background: var(--paper-inset); }
 .workspace-topbar .chat-head-trigger:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
+}
+.chat-head-trigger-caret {
+  color: var(--ink-faint);
+  transition: color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.chat-head-trigger:hover .chat-head-trigger-caret,
+.chat-head-trigger[aria-expanded="true"] .chat-head-trigger-caret {
+  color: var(--ink-muted);
+}
+.chat-head-trigger[aria-expanded="true"] .chat-head-trigger-caret {
+  transform: rotate(180deg);
 }
 .workspace-topbar .chat-head { max-width: 45%; }
 .workspace-topbar .chat-current-thread { min-width: 0; }
@@ -1179,7 +1191,7 @@
 }
 .workspace-topbar .chat-current-thread-course {
   color: var(--ink-muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.2;
 }
 .workspace-topbar .chat-week { min-width: 0; }
@@ -2205,34 +2217,34 @@ body:has(.dialog-scrim) .composer-dock-surface {
   white-space: nowrap;
 }
 .workspace-topbar .chat-head { max-width: none; flex: 1; }
-@media (min-width: 768px) {
-  .chat-header-sheet {
-    top: auto;
-    bottom: auto;
-    left: auto;
-    right: auto;
-    width: min(680px, calc(100vw - 48px));
-    border: 1px solid var(--edge);
-    border-radius: 18px;
-    padding: 20px;
-  }
-}
-
 .chat-header-scrim { z-index: 310; }
+.chat-header-scrim--popover {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0;
+  background: rgb(0 0 0 / 0.18);
+  backdrop-filter: none;
+}
 .chat-header-sheet {
   position: relative;
   inset: auto;
   z-index: 311;
-  width: min(680px, calc(100vw - 32px));
-  max-height: min(88dvh, 820px);
-  overflow-y: auto;
-  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(520px, 72dvh);
+  overflow: hidden;
+  padding: 14px 14px 12px;
   color: var(--ink);
   background: var(--paper-raised);
   border: 1px solid var(--edge-strong);
-  border-radius: 22px;
+  border-radius: 18px;
   box-shadow: var(--shadow-pop);
   animation: dialog-in var(--t-base) var(--ease-glide) both;
+}
+.chat-header-sheet--popover {
+  position: fixed;
+  margin: 0;
 }
 .chat-header-sheet.is-closing {
   animation: dialog-out var(--t-fast) var(--ease) both;
@@ -2241,32 +2253,46 @@ body:has(.dialog-scrim) .composer-dock-surface {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 28px;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 .chat-header-sheet-heading h2 {
-  margin: 6px 0 0;
+  margin: 2px 0 0;
   color: var(--ink);
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  line-height: 1.15;
-}
-.chat-header-sheet-intro {
-  margin: 10px 0 0;
-  color: var(--ink-muted);
-  font-size: 0.95rem;
+  font-size: 1.05rem;
+  line-height: 1.2;
 }
 .chat-header-selection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.chat-header-selection-split {
   display: grid;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  min-height: 0;
+  flex: 1 1 auto;
 }
 .chat-header-selection-field {
-  padding: 18px;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding: 8px;
   background: var(--paper);
   border: 1px solid var(--edge);
-  border-radius: 16px;
+  border-radius: 12px;
+}
+.chat-header-week-field {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
 }
 .chat-header-selection-label {
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   color: var(--ink-muted);
   font-size: 0.72rem;
   font-weight: 600;
@@ -2277,8 +2303,8 @@ body:has(.dialog-scrim) .composer-dock-surface {
   padding: 0;
 }
 .chat-header-selection-field > .relative > button {
-  min-height: 52px;
-  padding-inline: 14px;
+  min-height: 44px;
+  padding-inline: 12px;
   background: var(--paper-raised);
   border: 1px solid var(--edge-strong);
   border-radius: 12px;
@@ -2288,121 +2314,70 @@ body:has(.dialog-scrim) .composer-dock-surface {
   background: var(--paper-inset);
 }
 .chat-header-sheet-menu {
-  /* These menus are opened inside a scrollable sheet. Keeping them absolute
-     makes the sheet's overflow clip the lower options instead of accounting
-     for the menu in its own scroll range. Put the open list back in flow so
-     every option remains reachable on short desktop windows and phones. */
+  /* Class list opened inside the sheet. Keep it in flow so overflow isn't
+     clipped by the dialog, without stretching the week list off-screen. */
   position: relative !important;
-  left: -18px !important;
-  width: calc(100% + 36px) !important;
-  max-height: min(48dvh, 380px);
+  left: 0 !important;
+  width: 100% !important;
+  max-height: min(28dvh, 220px);
   overscroll-behavior: contain;
 }
-/* An open picker is the task at hand. Let its options claim the remaining
-   dialog height instead of forcing a nested list to squeeze below the other
-   field, where the last weeks were clipped behind the dialog's own scroll. */
-.chat-header-sheet.is-picker-open {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.chat-header-sheet.is-picker-open .chat-header-selection {
-  flex: 1 1 auto;
+.week-picker-embedded,
+.class-switcher-embedded {
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.chat-header-sheet.is-picker-open .chat-header-selection-field {
-  display: none;
-}
-.chat-header-sheet.is-picker-open .chat-header-selection-field:has(.is-open) {
-  display: flex;
   flex: 1 1 auto;
-  min-height: 0;
-  flex-direction: column;
-}
-.chat-header-sheet.is-picker-open .chat-header-selection-field:has(.is-open) > .relative,
-.chat-header-sheet.is-picker-open .chat-header-selection-field .chat-week.is-open {
-  flex: 1 1 auto;
-  min-height: 0;
-}
-.chat-header-sheet.is-picker-open .chat-header-selection-field > .relative.is-open {
-  display: flex;
-  flex-direction: column;
-}
-.chat-header-sheet.is-picker-open .chat-header-selection-field .chat-week.is-open {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: 52px minmax(0, 1fr);
-  align-content: start;
-}
-.chat-header-sheet.is-picker-open .chat-header-sheet-menu,
-.chat-header-sheet.is-picker-open .week-picker-menu {
-  position: relative !important;
-  left: -18px !important;
-  width: calc(100% + 36px) !important;
-  flex: 1 1 auto;
-  min-height: 0;
-  max-height: none;
-}
-.chat-header-sheet.is-picker-open .week-picker-menu {
-  grid-column: 1 / -1;
-  height: 100%;
-}
-.chat-header-selection-field .chat-week {
-  position: relative;
-  display: flex;
-  min-height: 52px;
-  gap: 10px;
-  padding: 0 14px;
-  font-family: var(--font-ui);
-  font-size: 1rem;
-  letter-spacing: normal;
-  text-transform: none;
-  color: var(--ink);
+  max-height: 320px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 2px 0;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
   background: var(--paper-raised);
-  border: 1px solid var(--edge-strong);
-  border-radius: 12px;
 }
-.week-picker-trigger {
+.week-picker-option {
   display: flex;
-  min-width: 0;
   width: 100%;
-  min-height: 50px;
+  min-height: 34px;
   align-items: center;
-  gap: 8px;
-  padding: 0;
-  color: var(--ink);
+  gap: 6px;
+  padding: 6px 8px;
+  color: var(--ink-soft);
   text-align: left;
+  font-size: 0.8rem;
   background: transparent;
   border: 0;
-  border-radius: 10px;
 }
-.week-picker-trigger:focus-visible {
+.week-picker-option:hover,
+.week-picker-option:focus-visible {
+  color: var(--ink);
+  background: var(--paper-sunken);
   outline: none;
-  box-shadow: var(--focus-ring);
 }
-.week-picker-menu {
-  max-height: min(45vh, 360px);
-  overflow-y: auto;
-}
-.week-picker-menu button:focus-visible {
-  outline: none;
+.week-picker-option.is-selected {
+  color: var(--ink);
+  background: var(--paper-inset);
+  font-weight: 600;
 }
 .chat-header-sheet-school {
-  margin: 8px 2px 0;
+  margin: 4px 2px 0;
   color: var(--ink-muted);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 @media (max-width: 767.98px) {
   .chat-header-sheet {
-    width: calc(100vw - 16px);
-    max-height: calc(100dvh - 32px);
-    padding: 24px;
-    border-radius: 20px;
+    width: 100%;
+    max-height: min(78dvh, 640px);
+    padding: 20px 16px calc(16px + var(--safe-b, 0px));
+    border-radius: 20px 20px 0 0;
   }
-  .chat-header-sheet-heading { gap: 12px; margin-bottom: 22px; }
-  .chat-header-sheet-heading h2 { font-size: 1.45rem; }
+  .chat-header-sheet-heading { gap: 12px; margin-bottom: 14px; }
+  .chat-header-sheet-heading h2 { font-size: 1.2rem; }
+  .chat-header-selection-split {
+    grid-template-columns: 1fr;
+  }
+  .week-picker-embedded,
+  .class-switcher-embedded { max-height: min(32dvh, 240px); }
 }
 .workspace-sidebar-toggle:focus-visible,
 .workspace-artifact-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

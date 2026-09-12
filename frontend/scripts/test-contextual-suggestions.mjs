@@ -111,6 +111,7 @@ assert.equal(noTargetAtAll[0].id, 'prepare-next-week')
 const primary = currentWeek[0]
 assert.equal(suggestionCompletion('Help me', primary), primary.prompt.slice('Help me'.length))
 assert.equal(suggestionCompletion('unrelated', primary), '')
+// Empty composer shows this full line as ghost text; Tab accepts it.
 assert.equal(suggestionCompletion('', primary), primary.prompt)
 
 const contextual = getContextualSuggestions({

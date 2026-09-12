@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { ClassSwitcher } from './ClassSwitcher'
 import { WeekPicker } from './WeekPicker'
+
+const POPOVER_WIDTH = 400
+const POPOVER_MAX_HEIGHT = 520
 
 /* Class and week controls shared by the desktop chat header and phone title. */
 export function ChatHeaderSheet({
@@ -19,13 +22,13 @@ export function ChatHeaderSheet({
   conversationWeek,
   changeWeek,
   busy,
+  variant = 'sheet',
+  anchorRef,
 }) {
   const { mounted, closing } = useExitTransition(open, 180)
   const sheetRef = useRef(null)
-  const [openPicker, setOpenPicker] = useState(null)
-  useEffect(() => {
-    if (!open) setOpenPicker(null)
-  }, [open])
+  const [popoverStyle, setPopoverStyle] = useState(null)
+  const isPopover = variant === 'popover'
   /* Keyed on `open`, not `mounted`. `mounted` stays true through the 180ms
      exit transition, so trapping on it kept Tab captured inside a sheet that
      was already visually gone — and Escape still bound to a dialog the
@@ -34,12 +37,37 @@ export function ChatHeaderSheet({
      screen; it stays mounted a beat longer purely to play its own exit. */
   useFocusTrap(sheetRef, { active: open, trap: true, initialFocus: sheetRef, onEscape: onClose })
 
+  useLayoutEffect(() => {
+    if (!open || !isPopover) {
+      setPopoverStyle(null)
+      return undefined
+    }
+
+    const place = () => {
+      const anchor = anchorRef?.current
+      if (!anchor) return
+      const rect = anchor.getBoundingClientRect()
+      const width = Math.min(POPOVER_WIDTH, window.innerWidth - 24)
+      const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))
+      const top = Math.min(rect.bottom + 8, window.innerHeight - 24)
+      const maxHeight = Math.min(POPOVER_MAX_HEIGHT, Math.max(280, window.innerHeight - top - 12))
+      setPopoverStyle({ top, left, width, maxHeight })
+    }
+
+    place()
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => {
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+    }
+  }, [open, isPopover, anchorRef])
+
   if (!mounted) return null
-  const classPath = `/c/${classId}`
 
   return (
     <div
-      className={`dialog-scrim chat-header-scrim${closing ? ' is-closing' : ''}`}
+      className={`dialog-scrim chat-header-scrim${isPopover ? ' chat-header-scrim--popover' : ''}${closing ? ' is-closing' : ''}`}
       role="presentation"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose()
@@ -51,13 +79,13 @@ export function ChatHeaderSheet({
         role="dialog"
         aria-modal="true"
         aria-label="Class and week"
-        className={`chat-header-sheet${openPicker ? ' is-picker-open' : ''}${closing ? ' is-closing' : ''}`}
+        className={`chat-header-sheet${isPopover ? ' chat-header-sheet--popover' : ''}${closing ? ' is-closing' : ''}`}
+        style={isPopover ? popoverStyle || undefined : undefined}
       >
         <div className="chat-header-sheet-heading">
           <div>
-            <p className="eyebrow">FlexEd Academy</p>
-            <h2>Choose your class and week</h2>
-            <p className="chat-header-sheet-intro">Set the course context for this conversation.</p>
+            <p className="eyebrow">This conversation</p>
+            <h2>Change class or week</h2>
           </div>
           <button type="button" className="btn-icon tap-target" aria-label="Close" onClick={onClose}>
             <X size={16} aria-hidden="true" />
@@ -65,34 +93,33 @@ export function ChatHeaderSheet({
         </div>
 
         <div className="chat-header-selection">
-          <section className="chat-header-selection-field" aria-labelledby="chat-header-course-label">
-            <p id="chat-header-course-label" className="chat-header-selection-label">Course</p>
-            <ClassSwitcher
-              classes={classes}
-              activeClass={activeClass}
-              classPath={classPath}
-              fullWidthMenu
-              onOpenChange={(isOpen) => setOpenPicker(isOpen ? 'course' : null)}
-            />
-          </section>
-
-          {classId && classId !== 'default' && classes.length > 0 ? (
-            <section className="chat-header-selection-field" aria-labelledby="chat-header-week-label">
-              <p id="chat-header-week-label" className="chat-header-selection-label">Week</p>
-              <WeekPicker
-                options={weekOptions}
-                value={conversationWeek}
-                onChange={(week) => {
-                  changeWeek(week)
-                  onClose()
-                }}
-                schoolName={calendar?.school?.name}
-                disabled={busy}
-                fullWidthMenu
-                onOpenChange={(isOpen) => setOpenPicker(isOpen ? 'week' : null)}
+          <div className="chat-header-selection-split">
+            <section className="chat-header-selection-field" aria-labelledby="chat-header-course-label">
+              <p id="chat-header-course-label" className="chat-header-selection-label">Course</p>
+              <ClassSwitcher
+                classes={classes}
+                activeClass={activeClass}
+                embedded
+                onSelect={onClose}
               />
             </section>
-          ) : null}
+
+            {classId && classId !== 'default' && classes.length > 0 ? (
+              <section className="chat-header-selection-field chat-header-week-field" aria-labelledby="chat-header-week-label">
+                <p id="chat-header-week-label" className="chat-header-selection-label">Week</p>
+                <WeekPicker
+                  options={weekOptions}
+                  value={conversationWeek}
+                  onChange={(week) => {
+                    changeWeek(week)
+                    onClose()
+                  }}
+                  schoolName={calendar?.school?.name}
+                  disabled={busy}
+                />
+              </section>
+            ) : null}
+          </div>
 
           {!hasPacingGuide ? (
             <Link
