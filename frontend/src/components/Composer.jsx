@@ -1003,9 +1003,9 @@ export function Composer({
                     aria-checked={mode === 'brainstorm'}
                     className={`composer-tools-item fa-press ${mode === 'brainstorm' ? 'bg-paper-sunken text-ink' : ''}`}
                     onPointerDown={(event) => {
-                      // Coach is the only conversational mode exposed from
-                      // this compact menu. Select on pointer-down so the menu
-                      // closes before the accessories blur handler runs.
+                      // Default chat is talking through this week's plan.
+                      // Select on pointer-down so the menu closes before the
+                      // accessories blur handler runs.
                       event.preventDefault()
                       haptic('selection')
                       onModeChange('brainstorm')
@@ -1018,9 +1018,9 @@ export function Composer({
                       onModeChange('brainstorm')
                       setToolsOpen(false)
                     }}
-                    title="Talk it through with a veteran teacher"
+                    title="Talk through this week's lesson plan"
                   >
-                    <span className="font-semibold">Coach</span>
+                    <span className="font-semibold">This week</span>
                   </button>
                 ) : null}
               </div>

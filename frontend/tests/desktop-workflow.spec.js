@@ -39,8 +39,8 @@ test.describe('desktop teacher workflow', () => {
     await expect(composer).toBeVisible()
 
     await page.getByRole('button', { name: /more composer actions/i }).click()
-    await expect(page.getByRole('menuitemradio', { name: /Coach.*veteran teacher/i })).toBeVisible()
-    await page.getByRole('menuitemradio', { name: /Coach.*veteran teacher/i }).click()
+    await expect(page.getByRole('menuitemradio', { name: /This week.*lesson plan/i })).toBeVisible()
+    await page.getByRole('menuitemradio', { name: /This week.*lesson plan/i }).click()
 
     // Keep this test cheap and deterministic: it verifies the browser's
     // submit/stream lifecycle without spending a model call. The real
