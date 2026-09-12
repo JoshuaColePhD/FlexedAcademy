@@ -110,7 +110,7 @@ test('desktop document spans most of the workspace under the composer and fullsc
 test('system appearance updates without visiting settings', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   // Default account appearance is charcoal; this spec is the system-follow path.
-  await page.addInitScript(() => localStorage.setItem('aplang.theme', 'system'))
+  await page.addInitScript(() => localStorage.setItem('flexed.theme', 'system'))
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
   await page.goto(seed)
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-const KEY = 'aplang.skin'
+const KEY = 'flexed.skin'
 const SKINS = ['neo', 'skeu']
 
 /* Same shape as useTheme.js (persist to localStorage, write a data-*

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 
-const FONT_SIZE_KEY = 'aplang.editor-text'
-const HIGH_CONTRAST_KEY = 'aplang.high-contrast'
-const AUTO_SAVE_KEY = 'aplang.auto-save'
+const FONT_SIZE_KEY = 'flexed.editor-text'
+const HIGH_CONTRAST_KEY = 'flexed.high-contrast'
+const AUTO_SAVE_KEY = 'flexed.auto-save'
 const FONT_SIZES = ['small', 'normal', 'large']
 
 function readFontSize() {

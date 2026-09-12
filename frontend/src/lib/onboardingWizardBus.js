@@ -6,7 +6,7 @@
  * context: this is a single fire-and-forget "open it" signal, not state
  * anything needs to read continuously.
  */
-const EVENT = 'aplang:open-onboarding-wizard'
+const EVENT = 'flexed:open-onboarding-wizard'
 
 export function openOnboardingWizard() {
   window.dispatchEvent(new CustomEvent(EVENT))
@@ -34,7 +34,7 @@ export function onOpenOnboardingWizard(handler) {
  * requires a real account; it only stops a bookkeeping write nobody can
  * retry from holding the app hostage.
  */
-const DEFERRED_KEY = 'aplang:onboardingDeferred'
+const DEFERRED_KEY = 'flexed:onboardingDeferred'
 
 function keyFor(accountId) {
   return accountId ? `${DEFERRED_KEY}:${encodeURIComponent(String(accountId))}` : null

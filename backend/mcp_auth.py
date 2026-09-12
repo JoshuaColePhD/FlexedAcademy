@@ -1,6 +1,6 @@
 """User-scoped bearer tokens for the FlexEd MCP connector.
 
-The MCP server cannot rely on the browser's ``aplang_session`` cookie because
+The MCP server cannot rely on the browser's ``flexed_session`` cookie because
 ChatGPT and Claude call it as remote clients. These tokens are signed,
 short-lived capabilities that carry the FlexEd user id and current session
 version. They are deliberately separate from browser cookies, but revocation

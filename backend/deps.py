@@ -16,10 +16,10 @@ from .auth import verify_session_token
 from .config import settings
 from .errors import AppError
 
-COOKIE_NAME = "aplang_session"
+COOKIE_NAME = "flexed_session"
 
 
-def _verify_current(aplang_session: str | None) -> str | None:
+def _verify_current(flexed_session: str | None) -> str | None:
     """The uid a session cookie names, or None — checking not just the
     signature/expiry (verify_session_token's job) but that the token's "sv"
     still matches the account's CURRENT session_version. This is the other
@@ -27,9 +27,9 @@ def _verify_current(aplang_session: str | None) -> str | None:
     only changes one column, so every already-issued cookie has to be
     rechecked against it here, on every request, for the change to mean
     anything."""
-    if not aplang_session:
+    if not flexed_session:
         return None
-    payload = verify_session_token(aplang_session)
+    payload = verify_session_token(flexed_session)
     if not payload:
         return None
     user = db.get_user_by_id(payload["uid"])
@@ -44,7 +44,7 @@ def _verify_current(aplang_session: str | None) -> str | None:
     # separate gate some route could forget to call. Past this timestamp the
     # cookie is treated exactly like an expired one: this returns None, the
     # caller 401s, and the frontend's existing "your session ended" handling
-    # (AuthProvider's aplang:unauthorized listener) takes it from there — no
+    # (AuthProvider's flexed:unauthorized listener) takes it from there — no
     # separate UI needed for "the trial is over" versus "please log back in".
     expires = user.get("beta_expires_at")
     if expires and expires <= datetime.now(UTC).isoformat(timespec="seconds"):
@@ -52,7 +52,7 @@ def _verify_current(aplang_session: str | None) -> str | None:
     return payload["uid"]
 
 
-def get_current_user(aplang_session: str | None = Cookie(default=None, alias=COOKIE_NAME)) -> str:
+def get_current_user(flexed_session: str | None = Cookie(default=None, alias=COOKIE_NAME)) -> str:
     """The logged-in user's id, or a 401 if there isn't one. Use on every route
     that reads or writes a teacher's own data.
 
@@ -60,7 +60,7 @@ def get_current_user(aplang_session: str | None = Cookie(default=None, alias=COO
     cookie resolves to 'default_user' instead of failing — a temporary,
     single-flag bypass, not a design decision.
     """
-    user_id = _verify_current(aplang_session)
+    user_id = _verify_current(flexed_session)
     if not user_id:
         if not settings.require_login:
             db.current_user_id.set("default_user")
@@ -74,11 +74,11 @@ def get_current_user(aplang_session: str | None = Cookie(default=None, alias=COO
     return user_id
 
 
-def get_current_user_optional(aplang_session: str | None = Cookie(default=None, alias=COOKIE_NAME)) -> str | None:
+def get_current_user_optional(flexed_session: str | None = Cookie(default=None, alias=COOKIE_NAME)) -> str | None:
     """Same, but None instead of a 401 — for routes that behave differently
     when logged out rather than refusing outright (there are none of these
     yet, but /api/auth/me and future public routes want this shape)."""
-    return _verify_current(aplang_session)
+    return _verify_current(flexed_session)
 
 
 def get_current_admin(user_id: str = Depends(get_current_user)) -> str:

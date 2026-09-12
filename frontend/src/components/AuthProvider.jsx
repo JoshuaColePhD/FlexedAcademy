@@ -129,7 +129,7 @@ export function AuthProvider({ children }) {
      so the app hangs on the boot screen forever.
 
      That is not theoretical: it shipped. A logged-out visitor loads the site,
-     some account-scoped request 401s, api.js dispatches aplang:unauthorized,
+     some account-scoped request 401s, api.js dispatches flexed:unauthorized,
      this runs, clear() orphans the observer, and the landing page never
      renders — no sign-in, no marketing page, nothing. Every new visitor and
      everyone whose session had expired got a permanent blank boot screen.
@@ -155,8 +155,8 @@ export function AuthProvider({ children }) {
   // needing its own "you got logged out" handling.
   useEffect(() => {
     const onUnauthorized = () => applyIdentity(null)
-    window.addEventListener('aplang:unauthorized', onUnauthorized)
-    return () => window.removeEventListener('aplang:unauthorized', onUnauthorized)
+    window.addEventListener('flexed:unauthorized', onUnauthorized)
+    return () => window.removeEventListener('flexed:unauthorized', onUnauthorized)
   }, [applyIdentity])
 
   const login = useCallback(

@@ -51,7 +51,7 @@ const BetaPage = lazyNamed(() => import('./pages/legal/BetaPage.jsx'), 'BetaPage
 const SharedPlanPage = lazyNamed(() => import('./pages/SharedPlanPage.jsx'), 'SharedPlanPage')
 const NotFoundPage = lazyNamed(() => import('./pages/NotFoundPage.jsx'), 'NotFoundPage')
 
-const LAST_CLASS_KEY = 'aplang.lastClassId'
+const LAST_CLASS_KEY = 'flexed.lastClassId'
 
 /* Shell() is gone.
  *
@@ -409,7 +409,7 @@ function AfterAuthRedirect() {
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      // A 401 is handled globally by api.js dispatching aplang:unauthorized;
+      // A 401 is handled globally by api.js dispatching flexed:unauthorized;
       // retrying it three times first just delays the login screen.
       retry: (count, err) => err?.status !== 401 && err?.status !== 404 && count < 2,
       refetchOnWindowFocus: false,

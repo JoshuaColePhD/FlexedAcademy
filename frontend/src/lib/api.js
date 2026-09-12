@@ -73,7 +73,7 @@ async function toError(res) {
   // screen. Excludes /api/auth/* itself: a wrong password on the login form is
   // not a session expiring, and should stay on the form as a normal error.
   if (res.status === 401 && !res.url.includes('/api/auth/')) {
-    window.dispatchEvent(new CustomEvent('aplang:unauthorized'))
+    window.dispatchEvent(new CustomEvent('flexed:unauthorized'))
   }
   return apiErrorFromBody(body, res.status)
 }
