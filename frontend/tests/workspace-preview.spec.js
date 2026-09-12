@@ -1,7 +1,6 @@
 import { expect, test } from '@playwright/test'
 
 const seed = '/preview.html?fresh=0&at=/c/c1/chat/seed1'
-const weekPlanName = 'Open Week 03 — Aug 17-21, 2026'
 
 /* Seeded chats already have a week, so Outputs should already be open.
    Keep this helper for tests that run before the artifact fetch lands, or
@@ -9,10 +8,14 @@ const weekPlanName = 'Open Week 03 — Aug 17-21, 2026'
 async function openArtifactsPanel(page) {
   const closeRail = page.getByRole('button', { name: 'Close artifacts panel', exact: true })
   const openRail = page.getByRole('button', { name: 'Open artifacts panel', exact: true })
+  const drawer = page.locator('.artifact-drawer')
   await expect(closeRail.or(openRail)).toBeVisible()
-  if (await closeRail.isVisible()) return
+  if (await closeRail.isVisible()) {
+    await expect(drawer).toBeVisible()
+    return
+  }
   await openRail.click()
-  await expect(page.locator('.artifact-drawer')).toBeVisible()
+  await expect(drawer).toBeVisible()
 }
 
 test('desktop document spans most of the workspace under the composer and fullscreen restores it', async ({ page }) => {
@@ -125,10 +128,9 @@ test('composer stays centered between the navigation and materials rails', async
   const composer = page.locator('.composer-shell')
   await expect(composer).toBeVisible()
   const overlay = page.locator('.is-composer-overlay')
-  if (await overlay.isVisible()) {
-    await overlay.getByRole('button', { name: 'Close document' }).click()
-    await expect(overlay).toHaveCount(0)
-  }
+  await expect(overlay).toBeVisible()
+  await overlay.getByRole('button', { name: 'Close document' }).click()
+  await expect(overlay).toHaveCount(0)
   await openArtifactsPanel(page)
   await expect(page.locator('.artifact-drawer')).toBeVisible()
   await expect(page.locator('.artifact-drawer-handle')).toHaveCount(0)
