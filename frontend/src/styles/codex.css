@@ -2231,10 +2231,10 @@ body:has(.dialog-scrim) .composer-dock-surface {
   z-index: 311;
   display: flex;
   flex-direction: column;
-  width: min(420px, calc(100vw - 32px));
-  max-height: min(72dvh, 640px);
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(520px, 72dvh);
   overflow: hidden;
-  padding: 20px 20px 16px;
+  padding: 14px 14px 12px;
   color: var(--ink);
   background: var(--paper-raised);
   border: 1px solid var(--edge-strong);
@@ -2253,27 +2253,37 @@ body:has(.dialog-scrim) .composer-dock-surface {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 .chat-header-sheet-heading h2 {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   color: var(--ink);
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   line-height: 1.2;
 }
 .chat-header-selection {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.chat-header-selection-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
   min-height: 0;
   flex: 1 1 auto;
 }
 .chat-header-selection-field {
-  padding: 12px;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding: 8px;
   background: var(--paper);
   border: 1px solid var(--edge);
-  border-radius: 14px;
+  border-radius: 12px;
 }
 .chat-header-week-field {
   display: flex;
@@ -2312,28 +2322,29 @@ body:has(.dialog-scrim) .composer-dock-surface {
   max-height: min(28dvh, 220px);
   overscroll-behavior: contain;
 }
-.week-picker-embedded {
+.week-picker-embedded,
+.class-switcher-embedded {
   min-height: 0;
   flex: 1 1 auto;
-  max-height: min(48dvh, 360px);
+  max-height: 320px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  margin: 0 -4px;
+  margin: 0;
   padding: 2px 0;
   border: 1px solid var(--edge);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--paper-raised);
 }
 .week-picker-option {
   display: flex;
   width: 100%;
-  min-height: 40px;
+  min-height: 34px;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  gap: 6px;
+  padding: 6px 8px;
   color: var(--ink-soft);
   text-align: left;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   background: transparent;
   border: 0;
 }
@@ -2362,7 +2373,11 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
   .chat-header-sheet-heading { gap: 12px; margin-bottom: 14px; }
   .chat-header-sheet-heading h2 { font-size: 1.2rem; }
-  .week-picker-embedded { max-height: min(42dvh, 320px); }
+  .chat-header-selection-split {
+    grid-template-columns: 1fr;
+  }
+  .week-picker-embedded,
+  .class-switcher-embedded { max-height: min(32dvh, 240px); }
 }
 .workspace-sidebar-toggle:focus-visible,
 .workspace-artifact-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

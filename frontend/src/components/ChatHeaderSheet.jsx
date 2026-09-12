@@ -6,7 +6,8 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { ClassSwitcher } from './ClassSwitcher'
 import { WeekPicker } from './WeekPicker'
 
-const POPOVER_WIDTH = 380
+const POPOVER_WIDTH = 400
+const POPOVER_MAX_HEIGHT = 520
 
 /* Class and week controls shared by the desktop chat header and phone title. */
 export function ChatHeaderSheet({
@@ -49,7 +50,7 @@ export function ChatHeaderSheet({
       const width = Math.min(POPOVER_WIDTH, window.innerWidth - 24)
       const left = Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))
       const top = Math.min(rect.bottom + 8, window.innerHeight - 24)
-      const maxHeight = Math.max(240, window.innerHeight - top - 12)
+      const maxHeight = Math.min(POPOVER_MAX_HEIGHT, Math.max(280, window.innerHeight - top - 12))
       setPopoverStyle({ top, left, width, maxHeight })
     }
 
@@ -92,30 +93,33 @@ export function ChatHeaderSheet({
         </div>
 
         <div className="chat-header-selection">
-          <section className="chat-header-selection-field" aria-labelledby="chat-header-course-label">
-            <p id="chat-header-course-label" className="chat-header-selection-label">Course</p>
-            <ClassSwitcher
-              classes={classes}
-              activeClass={activeClass}
-              fullWidthMenu
-            />
-          </section>
-
-          {classId && classId !== 'default' && classes.length > 0 ? (
-            <section className="chat-header-selection-field chat-header-week-field" aria-labelledby="chat-header-week-label">
-              <p id="chat-header-week-label" className="chat-header-selection-label">Week</p>
-              <WeekPicker
-                options={weekOptions}
-                value={conversationWeek}
-                onChange={(week) => {
-                  changeWeek(week)
-                  onClose()
-                }}
-                schoolName={calendar?.school?.name}
-                disabled={busy}
+          <div className="chat-header-selection-split">
+            <section className="chat-header-selection-field" aria-labelledby="chat-header-course-label">
+              <p id="chat-header-course-label" className="chat-header-selection-label">Course</p>
+              <ClassSwitcher
+                classes={classes}
+                activeClass={activeClass}
+                embedded
+                onSelect={onClose}
               />
             </section>
-          ) : null}
+
+            {classId && classId !== 'default' && classes.length > 0 ? (
+              <section className="chat-header-selection-field chat-header-week-field" aria-labelledby="chat-header-week-label">
+                <p id="chat-header-week-label" className="chat-header-selection-label">Week</p>
+                <WeekPicker
+                  options={weekOptions}
+                  value={conversationWeek}
+                  onChange={(week) => {
+                    changeWeek(week)
+                    onClose()
+                  }}
+                  schoolName={calendar?.school?.name}
+                  disabled={busy}
+                />
+              </section>
+            ) : null}
+          </div>
 
           {!hasPacingGuide ? (
             <Link

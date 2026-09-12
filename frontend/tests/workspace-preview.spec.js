@@ -242,6 +242,12 @@ test('chat header shows the week and opens a list instead of a nested dropdown',
   const dialogBox = await dialog.boundingBox()
   expect(dialogBox.y).toBeGreaterThan(triggerBox.y)
   expect(dialogBox.y).toBeLessThan(triggerBox.y + 80)
-  expect(dialogBox.width).toBeLessThan(480)
+  expect(dialogBox.width).toBeLessThanOrEqual(420)
+  expect(dialogBox.height).toBeLessThanOrEqual(540)
+
+  const courseBox = await dialog.getByRole('listbox', { name: 'Your classes' }).boundingBox()
+  const weekBox = await dialog.getByRole('listbox', { name: /weeks/i }).boundingBox()
+  expect(courseBox.x).toBeLessThan(weekBox.x)
+  expect(Math.abs(courseBox.y - weekBox.y)).toBeLessThan(24)
 })
 
