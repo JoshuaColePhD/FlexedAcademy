@@ -7540,6 +7540,9 @@
       inset -2px -2px 6px rgb(var(--neo-light-rgb) / 0.84),
       0 0 0 3px rgb(var(--accent-rgb) / 0.16);
   }
+  .composer-shell.is-listening {
+    border-color: rgb(var(--mark-rgb) / 0.45);
+  }
 
   /* The controls should feel attached to the same embossed surface instead
      of floating as flat icons inside it. The pressed inset is especially
@@ -9599,8 +9602,21 @@
     display: flex;
     align-items: center;
     min-width: 0;
-    padding: 0;
     white-space: nowrap;
+  }
+  .composer-ghost-tab {
+    margin-left: auto;
+    flex-shrink: 0;
+    font-family: inherit;
+    font-size: 0.625rem;
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-muted);
+    border: 1px solid var(--edge);
+    border-radius: 0.35rem;
+    padding: 0.12rem 0.38rem;
+    line-height: 1.2;
   }
   /* The attachment rail already gets its layout from the utility classes in
      Composer; this named hook keeps the class checker aware of that surface
