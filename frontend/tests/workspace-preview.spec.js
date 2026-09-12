@@ -221,3 +221,27 @@ test('phone lesson-plan peek follows a long thumb pull to the transcript edge', 
   expect(closedBody.height).toBeLessThanOrEqual(2)
   expect(closedSheet.y).toBeGreaterThan(openSheet.y + 200)
 })
+
+test('chat header shows the week and opens a list instead of a nested dropdown', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto(seed)
+  const trigger = page.getByRole('button', { name: /Change course or week/i })
+  await expect(trigger).toBeVisible()
+  await expect(trigger).toContainText(/Week 03/i)
+
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: 'Class and week' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('Course')).toBeVisible()
+  await expect(dialog.getByRole('listbox', { name: /weeks/i })).toBeVisible()
+  await expect(dialog.getByRole('option', { name: /Week 03/i })).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByRole('combobox')).toHaveCount(0)
+  await expect(dialog.getByRole('option', { name: /Week 03/i })).toBeInViewport()
+
+  const triggerBox = await trigger.boundingBox()
+  const dialogBox = await dialog.boundingBox()
+  expect(dialogBox.y).toBeGreaterThan(triggerBox.y)
+  expect(dialogBox.y).toBeLessThan(triggerBox.y + 80)
+  expect(dialogBox.width).toBeLessThan(480)
+})
+

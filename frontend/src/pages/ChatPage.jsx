@@ -5,7 +5,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -499,6 +499,7 @@ export function ChatPage() {
   // ChatHeaderSheet — phone's stand-in for the header row's own
   // ClassSwitcher/WeekPicker/status, given room to breathe there instead.
   const [headerSheetOpen, setHeaderSheetOpen] = useState(false)
+  const headerTriggerRef = useRef(null)
   const { classes, activeClass } = useActiveClass()
   // useAuth().user is deliberately the small {id,email,name} shape (see
   // authContext.js) — beta_features lives on the fuller /api/auth/me payload,
@@ -4016,10 +4017,16 @@ export function ChatPage() {
             </button>
             <button
               type="button"
-              className="tap-target flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left"
+              ref={headerTriggerRef}
+              className="chat-head-trigger tap-target flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left"
               onClick={() => setHeaderSheetOpen(true)}
               aria-haspopup="dialog"
               aria-expanded={headerSheetOpen}
+              aria-label={
+                displayWeek
+                  ? `Change course or week. Currently ${activeClass?.name || 'no course'}, Week ${displayWeek.week}.`
+                  : 'Change course or week'
+              }
             >
               <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
                 {activeClass?.name || 'Choose a class'}
@@ -4035,17 +4042,23 @@ export function ChatPage() {
                   title="School calendar needs to be uploaded"
                 />
               ) : null}
+              <ChevronDown size={16} aria-hidden="true" className="chat-head-trigger-caret shrink-0" />
             </button>
           </>
         ) : (
           <button
             type="button"
+            ref={headerTriggerRef}
             className="chat-head chat-head-trigger pointer-events-auto flex min-w-0 max-w-[52%] flex-1 flex-nowrap items-center text-left"
             onClick={() => setHeaderSheetOpen(true)}
             aria-haspopup="dialog"
             aria-expanded={headerSheetOpen}
-            aria-label="Choose course and week"
-            title="Choose course and week"
+            aria-label={
+              displayWeek
+                ? `Change course or week. Currently ${activeClass?.name || 'no course'}, Week ${displayWeek.week}.`
+                : 'Change course or week'
+            }
+            title="Change course or week"
           >
             <div className="chat-current-thread flex min-w-0 items-center gap-2">
               <span
@@ -4057,8 +4070,12 @@ export function ChatPage() {
               </span>
               <span className="chat-current-thread-copy min-w-0">
                 <span className="chat-current-thread-title truncate">{currentChat?.title || 'New chat'}</span>
-                <span className="chat-current-thread-course truncate">{activeClass?.name || 'Choose a course'}</span>
+                <span className="chat-current-thread-course truncate">
+                  {activeClass?.name || 'Choose a course'}
+                  {displayWeek ? ` · Week ${String(displayWeek.week).padStart(2, '0')}` : ' · Choose a week'}
+                </span>
               </span>
+              <ChevronDown size={16} aria-hidden="true" className="chat-head-trigger-caret shrink-0" />
             </div>
           </button>
         )}
@@ -4100,6 +4117,8 @@ export function ChatPage() {
           conversationWeek={conversationWeek}
           changeWeek={changeWeek}
           busy={busy}
+          variant={isPhone || isLandscapePhone ? 'sheet' : 'popover'}
+          anchorRef={headerTriggerRef}
         />, document.body
       )}
 

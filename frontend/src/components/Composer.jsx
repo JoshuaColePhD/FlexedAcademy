@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom'
 // list — the overlay only renders while a file is actually being dragged over
 // the composer, so the ReferenceError sat there unnoticed by anything but a
 // linter until someone dragged a file.
-import { ArrowUp, BookOpen, FileText, Loader2, Mic, Paperclip, Plus, Square, Upload, X } from 'lucide-react'
+import { ArrowUp, BookOpen, FileText, Loader2, Mic, Paperclip, Pause, Plus, Square, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { haptic } from '../lib/haptics'
 import { useToast } from '../lib/toastContext'
