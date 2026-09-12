@@ -10,7 +10,7 @@ import { shortRange } from '../lib/dates'
  * generic fallback pair) — removed because the teacher didn't want a new chat
  * opening with a wall of pre-filled options; it should just be an empty
  * screen waiting for whatever they type. The text stays un-prefilled — the
- * composer's own ghost text is where a real week/topic suggestion lives now.
+ * composer's own ghost text is a pair of fixed boilerplate prompts now.
  *
  * What removing them cost, and what `week` below puts back: this screen said
  * "I'll build THE week" without ever saying which one, while ChatPage had
