@@ -18,6 +18,7 @@ assert.ok(!COMPOSER_GHOST_PROMPTS.some((prompt) => /week\s+\d+/i.test(prompt)))
 assert.ok(!COMPOSER_GHOST_PROMPTS.includes("I want to revise this week's plan."))
 assert.ok(!COMPOSER_GHOST_PROMPTS.includes("Help me plan tomorrow's lesson."))
 
+assert.ok(!COMPOSER_GHOST_PROMPTS.some((prompt) => /quiz/i.test(prompt)))
 assert.equal(pickComposerGhost('').prompt, 'Write a lesson for this week')
 assert.equal(pickComposerGhost('   ').prompt, 'Write a lesson for this week')
 assert.equal(pickComposerGhost('Write a').prompt, 'Write a lesson for this week')

@@ -613,6 +613,7 @@ export function installMockApi() {
       email_verified: state.me.email_verified,
       trial_started_at: state.me.trial_started_at,
       read_only: Boolean(state.me.read_only),
+      beta_features: Boolean(state.me.beta_features),
       entitlement: state.entitlement,
     })
 
@@ -1212,6 +1213,7 @@ export function installMockApi() {
     const quizListMatch = path.match(/^\/api\/plans\/([^/]+)\/quizzes$/)
     if (quizListMatch && method === 'GET') {
       await wait(150)
+      if (!state.me.beta_features) return json([])
       return json(state.quizzes[quizListMatch[1]] || [])
     }
 
@@ -1271,8 +1273,12 @@ export function installMockApi() {
     }
 
     const standaloneQuizCreate = path.match(/^\/api\/classes\/([^/]+)\/quizzes$/)
-    if (standaloneQuizCreate && method === 'GET') return json(state.standaloneQuizzes?.[standaloneQuizCreate[1]] || [])
+    if (standaloneQuizCreate && method === 'GET') {
+      if (!state.me.beta_features) return json([])
+      return json(state.standaloneQuizzes?.[standaloneQuizCreate[1]] || [])
+    }
     if (standaloneQuizCreate && method === 'POST') {
+      if (!state.me.beta_features) return new Response(JSON.stringify({ error: { code: 'quizzes_disabled', message: 'Quizzes are a beta feature.' } }), { status: 403 })
       await wait(800)
       const classId = standaloneQuizCreate[1]
       const types = body.question_types || ['multiple_choice']
@@ -1294,6 +1300,7 @@ export function installMockApi() {
 
     const standaloneQuizRevise = path.match(/^\/api\/quizzes\/([^/]+)\/revise$/)
     if (standaloneQuizRevise && method === 'POST') {
+      if (!state.me.beta_features) return new Response(JSON.stringify({ error: { code: 'quizzes_disabled', message: 'Quizzes are a beta feature.' } }), { status: 403 })
       await wait(600)
       const quizId = standaloneQuizRevise[1]
       const all = Object.values(state.standaloneQuizzes || {}).flat()
@@ -1305,6 +1312,7 @@ export function installMockApi() {
 
     const quizCreateMatch = path.match(/^\/api\/plans\/([^/]+)\/quiz$/)
     if (quizCreateMatch && method === 'POST') {
+      if (!state.me.beta_features) return new Response(JSON.stringify({ error: { code: 'quizzes_disabled', message: 'Quizzes are a beta feature.' } }), { status: 403 })
       // Slower than most mock writes on purpose — this is a real model call
       // (llm.generate_quiz) plus a local zip write in production, and the
       // "Building quiz…" row in ArtifactRail is the thing under test here,
@@ -1493,7 +1501,8 @@ export function installMockApi() {
        anything else just talks back, so both branches are drivable. */
     if (path === '/api/chat_stream') {
       const last = [...(body?.messages || [])].reverse().find((m) => m.role === 'user')?.content || ''
-      const wantsQuiz = /\bquiz\b/i.test(last)
+      const quizzesOn = Boolean(state.me.beta_features)
+      const wantsQuiz = quizzesOn && /\bquiz\b/i.test(last)
       const quizTypeNamed = /\b(multiple.choice|true.false|short.answer|matching|a mix)\b/i.test(last)
       const countMatch = last.match(/\b(\d+)\b/)
       const quizCount = countMatch ? Math.min(40, Math.max(1, Number(countMatch[1]))) : 5

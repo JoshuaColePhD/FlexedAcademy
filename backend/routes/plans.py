@@ -27,6 +27,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..features import beta_features_for, require_quiz_beta
 from ..generation_queue import generation_queue
 from ..template_context import day_names_for_school, has_template_field
 from .drive import get_valid_access_token
@@ -632,6 +633,8 @@ def get_plan_shares(plan_id: str, user_id: str = Depends(get_current_user)) -> d
 @router.get("/{plan_id}/quizzes")
 def list_quizzes(plan_id: str, user_id: str = Depends(get_current_user)) -> list[dict]:
     _require_plan(user_id, plan_id)
+    if not beta_features_for(user_id):
+        return []
     return db.list_quizzes_for_plan(user_id, plan_id)
 
 
@@ -652,6 +655,7 @@ def create_quiz(
     """
     row = _require_plan(user_id, plan_id)
     require_entitlement(user_id)
+    require_quiz_beta(user_id)
 
     body.question_types = [
         t for t in (body.question_types or []) if t in schema.QUESTION_TYPES
@@ -721,6 +725,7 @@ def revise_quiz_route(
     """
     row = _require_plan(user_id, plan_id)
     require_entitlement(user_id)
+    require_quiz_beta(user_id)
     quiz_row = _require_quiz(user_id, plan_id, quiz_id)
 
     with generation_queue.slot(user_id):
@@ -760,6 +765,7 @@ def update_quiz(
 ) -> dict:
     row = _require_plan(user_id, plan_id)
     _require_quiz(user_id, plan_id, quiz_id)
+    require_quiz_beta(user_id)
 
     try:
         warnings = schema.validate_quiz(body.quiz_json)

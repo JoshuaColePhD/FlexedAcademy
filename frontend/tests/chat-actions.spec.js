@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test'
 
-async function openChat(page, fresh = false) {
-  await page.goto(`/preview.html?fresh=0&trial=3&at=/c/c1${fresh ? '' : '/chat/seed1'}`)
+async function openChat(page, fresh = false, { beta = false } = {}) {
+  const at = `/c/c1${fresh ? '' : '/chat/seed1'}`
+  await page.goto(`/preview.html?fresh=0&trial=3${beta ? '&beta=1' : ''}&at=${at}`)
   await expect(page.locator('#composer-input')).toBeVisible()
   if (!fresh) await expect(page.getByText('Grounded:', { exact: true })).toBeVisible()
   await page.evaluate(() => {
@@ -219,7 +220,7 @@ async function trackQuizzes(page) {
 }
 
 test('standalone quiz with a plan open preserves the plan and carries constraints into revision', async ({ page }) => {
-  await openChat(page)
+  await openChat(page, false, { beta: true })
   await trackQuizzes(page)
   const before = await page.evaluate(() => structuredClone(window.__mock.state.plans.plan1))
   await events(page, [quizAction(), done])
@@ -240,7 +241,7 @@ test('standalone quiz with a plan open preserves the plan and carries constraint
 })
 
 test('a week and a quiz in one turn builds the plan then the quiz', async ({ page }) => {
-  await openChat(page, true)
+  await openChat(page, true, { beta: true })
   await page.evaluate(() => {
     const original = window.fetch
     window.fetch = async (input, init = {}) => {
@@ -287,7 +288,7 @@ test('clicking a question answer preserves the full question and previous constr
 })
 
 test('failed quiz revision retains the saved quiz and never reports updated', async ({ page }) => {
-  await openChat(page, true)
+  await openChat(page, true, { beta: true })
   await trackQuizzes(page)
   await events(page, [quizAction(), done])
   await send(page, 'Make a five-question multiple-choice inference quiz.')
@@ -302,7 +303,7 @@ test('failed quiz revision retains the saved quiz and never reports updated', as
 })
 
 test('unspecified quiz uses a 5-question default instead of interviewing', async ({ page }) => {
-  await page.goto('/preview.html?fresh=0&trial=3&at=/c/c1/chat/seed1')
+  await page.goto('/preview.html?fresh=0&trial=3&beta=1&at=/c/c1/chat/seed1')
   await expect(page.locator('#composer-input')).toBeVisible()
   await send(page, 'make a quiz')
   await expect(page.getByText(/5-question multiple-choice/i)).toBeVisible()
@@ -310,4 +311,19 @@ test('unspecified quiz uses a 5-question default instead of interviewing', async
   await expect(page.getByText(/Built "/).last()).toBeVisible()
   await page.locator('#composer-input').fill('Could a debate help?')
   await expect(page.locator('#composer-input')).toHaveValue('Could a debate help?')
+})
+
+test('without beta features a quiz request does not build a quiz', async ({ page }) => {
+  await openChat(page, true)
+  await trackQuizzes(page)
+  await events(page, [quizAction(), done])
+  await send(page, 'Make a five-question multiple-choice inference quiz.')
+  await expect.poll(() => page.evaluate(() => window.chatCalls.filter((c) => c.path === 'quiz').length)).toBe(0)
+  await expect(page.getByText(/Built "/)).toHaveCount(0)
+})
+
+test('without beta features the rail does not show existing quizzes', async ({ page }) => {
+  await openChat(page)
+  await expect(page.getByText(/Quiz ·/)).toHaveCount(0)
+  await expect(page.getByText('Week 03 Quiz — Voice & Tone')).toHaveCount(0)
 })

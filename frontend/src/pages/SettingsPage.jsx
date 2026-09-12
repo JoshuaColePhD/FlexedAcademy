@@ -2173,7 +2173,7 @@ export function SettingsPage() {
                 <div className="max-w-xl border border-edge rounded-xl p-4">
                   <Toggle
                     label="Enable Beta Features"
-                    description="Opt-in to use experimental AI models and cutting-edge features — for example, Voice Mode."
+                    description="Opt-in to experimental features before they are widely released — Voice Mode and quizzes."
                     checked={betaFeatures}
                     onChange={toggleBetaFeatures}
                   />
