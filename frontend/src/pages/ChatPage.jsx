@@ -26,7 +26,6 @@ import { splitDecisions } from '../lib/decisionChecklist'
 import { dayLabel, isSameDay } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import * as perf from '../lib/performanceMetrics'
-import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useComposerDraft, clearComposerDraft } from '../hooks/useComposerDraft'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useInterfacePreferences } from '../hooks/useInterfacePreferences'
@@ -511,8 +510,7 @@ export function ChatPage() {
   const { data: calendar } = useCalendar(classId)
   // Same check ClassPage runs to gate its own "Add a pacing guide" suggestion —
   // without it, getContextualSuggestions defaults to assuming one exists and
-  // the composer's "using my pacing guide" wording goes out regardless of
-  // whether a class has ever had one uploaded.
+  // the empty-state Greeting hint would not offer to upload one.
   const classDocuments = useQuery({
     queryKey: qk.classDocuments(classId),
     queryFn: () => api.listClassDocuments(classId),
@@ -3837,77 +3835,13 @@ export function ChatPage() {
     ]
   )
 
-  // Upgrades the composer's one suggestion from its generic "using my pacing
-  // guide" template to a version grounded in what the pacing guide actually
-  // says that week covers — but only for plan-current-week, the primary
-  // "build this week" action. prepare-next-week (a secondary, look-ahead
-  // suggestion) isn't worth a network round-trip: it only ever surfaces when
-  // there's no more specific week in play, so there's nothing to ground it
-  // against with any confidence. Debounced and cached per class+week so
-  // navigating around the same week doesn't refire; falls back to the
-  // generic template (contextualSuggestions unmodified) on any error, cold
-  // cache, or missing pacing guide — this is a visual polish layer, never
-  // something the composer should wait on or break over.
-  const groundableSuggestion = contextualSuggestions.find((s) => s.id === 'plan-current-week') || null
-  const suggestionKey = groundableSuggestion ? `${activeClass?.id || 'none'}:${groundableSuggestion.weekNumber}` : null
-  const debouncedSuggestionKey = useDebouncedValue(suggestionKey, 400)
-  const suggestionCacheRef = useRef(new Map())
-  // {prompt, reason} together — grounding the message without also
-  // grounding its caption left the row reading like two different
-  // suggestions stapled together (a specific headline over a generic "this
-  // is the current unplanned teaching week").
-  const [aiSuggestion, setAiSuggestion] = useState(null)
-
-  useEffect(() => {
-    if (!debouncedSuggestionKey || debouncedSuggestionKey !== suggestionKey || !groundableSuggestion) {
-      setAiSuggestion(null)
-      return undefined
-    }
-    if (suggestionCacheRef.current.has(debouncedSuggestionKey)) {
-      setAiSuggestion(suggestionCacheRef.current.get(debouncedSuggestionKey))
-      return undefined
-    }
-    let cancelled = false
-    api
-      .getSuggestion({
-        class_id: activeClass?.id || null,
-        week_number: groundableSuggestion.weekNumber,
-        week_label: groundableSuggestion.label,
-      })
-      .then((res) => {
-        if (cancelled) return
-        const grounded = res.prompt ? { prompt: res.prompt, reason: res.reason || null } : null
-        suggestionCacheRef.current.set(debouncedSuggestionKey, grounded)
-        setAiSuggestion(grounded)
-      })
-      .catch(() => {
-        if (!cancelled) setAiSuggestion(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [debouncedSuggestionKey, suggestionKey, groundableSuggestion, activeClass?.id])
-
-  const enhancedSuggestions = useMemo(() => {
-    if (!aiSuggestion || !groundableSuggestion) return contextualSuggestions
-    return contextualSuggestions.map((s) =>
-      s.id === groundableSuggestion.id
-        ? { ...s, prompt: aiSuggestion.prompt, reason: aiSuggestion.reason || s.reason }
-        : s
-    )
-  }, [contextualSuggestions, aiSuggestion, groundableSuggestion])
-
-  // An open-settings suggestion (add-pacing-guide, add-school-calendar)
-  // isn't a chat message — there's no sentence to type, send, or Tab-
-  // complete for "go upload a file." The composer never sees one; it
-  // lives in the Greeting's own sentence instead, and only there, since
-  // Greeting itself only renders in the empty state (see `isEmpty` below).
+  // Composer Tab-completions are a fixed boilerplate pair now (see
+  // composerGhosts.js). Contextual + LLM week wording no longer feeds the
+  // input overlay. add-pacing-guide / add-school-calendar still live here
+  // because they are not chat messages — Greeting shows them as a settings
+  // hint in the empty state only.
   const emptyStateHint =
-    !messages.length && enhancedSuggestions[0]?.action === 'open-settings' ? enhancedSuggestions[0] : null
-  const composerSuggestions = useMemo(
-    () => enhancedSuggestions.filter((s) => s.action !== 'open-settings'),
-    [enhancedSuggestions]
-  )
+    !messages.length && contextualSuggestions[0]?.action === 'open-settings' ? contextualSuggestions[0] : null
 
   const artifactEl =
     viewKind === 'plan' ? (
@@ -4576,7 +4510,6 @@ export function ChatPage() {
             selectedStandardStatus={selectedStandardStatus}
             onSaveAttachmentAsDocument={activeClass && !hasPacingGuide ? saveAttachmentAsDocument : undefined}
             voiceModeActive={voiceOpen}
-            suggestions={composerSuggestions}
             mode={chatMode}
             onModeChange={changeChatMode}
             voiceGlossary={[activeClass?.name, activeClass?.subject, selectedStandard?.code].filter(Boolean)}

@@ -10,6 +10,7 @@ import { haptic } from '../lib/haptics'
 import { useToast } from '../lib/toastContext'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { suggestionCompletion } from '../lib/contextualSuggestions'
+import { pickComposerGhost } from '../lib/composerGhosts'
 
 // A guardrail, not a technical ceiling — bounds how many extractText calls
 // one drop/pick can fire at once. See attachFiles' own comment for why the
@@ -157,10 +158,6 @@ export function Composer({
   // null (no offer shown) whenever there's no class in scope, or it already
   // has a pacing guide — see ChatPage's own gating.
   onSaveAttachmentAsDocument = null,
-  suggestions = [],
-  /* Kept for callers outside the main chat surface while they migrate to the
-     shared suggestion model. It is converted into the same shape below. */
-  suggestion = null,
   /* True while ChatPage's own voice-dock panel is open. That panel already
      has its own always-on mic listening for speech — letting the
      composer's separate dictate-into-text mic run at the same time meant
@@ -367,47 +364,12 @@ export function Composer({
     return () => document.removeEventListener('keydown', onKey)
   }, [isRecording])
 
-  // Always 0 or 1 items — the composer has exactly one caller (ChatPage),
-  // and contextualSuggestions.js's MAX_SUGGESTIONS caps `suggestions` at 1;
-  // the legacy `suggestion` string fallback is a single item by construction
-  // too. The `.slice(0, 1)` below enforces that invariant rather than just
-  // happening to hold, now that nothing upstream produces more than one.
-  const candidateSuggestions = useMemo(() => {
-    const normalized = suggestions.length
-      ? suggestions
-      : suggestion
-        ? [{ id: 'legacy-suggestion', label: suggestion, prompt: suggestion, reason: '', priority: 99 }]
-        : []
-    const query = value.trim().toLocaleLowerCase()
-    if (!query) return normalized.slice(0, 1)
-    return normalized
-      .filter((item) => item.prompt?.toLocaleLowerCase().startsWith(query))
-      .slice(0, 1)
-  }, [suggestion, suggestions, value])
-
-  // ChatPage never hands this an action: 'open-settings' suggestion
-  // (add-pacing-guide, add-school-calendar) — those have no sentence to
-  // type or send, so they're the Greeting's own inline hint instead (see
-  // ChatPage's emptyStateHint). Whatever's here is always a real ghost-
-  // text candidate for the composer.
-  const textSuggestion = candidateSuggestions[0] || null
-  // A stable identity for "which suggestion is this" that survives the
-  // LLM-grounding call swapping in better wording later (see ChatPage's
-  // aiSuggestion), but changes the moment the teacher moves to a different
-  // week/class — see frozenRef below for what that buys.
-  const suggestionKey = textSuggestion ? `${textSuggestion.id}:${textSuggestion.weekNumber ?? ''}` : null
-
-  // The grounded wording can arrive ~400ms+ of network latency after the
-  // instant deterministic suggestion is already showing as ghost text.
-  // Without this, that swap happens while a teacher is mid-read, which reads
-  // as the box glitching rather than "got smarter." Freezes the prompt text
-  // the moment it's on screen; only refreshes to newer wording while nothing
-  // is currently visible, or once the suggestion itself changes.
-  const frozenRef = useRef({ key: null, prompt: '' })
-  if (suggestionKey !== frozenRef.current.key) {
-    frozenRef.current = { key: suggestionKey, prompt: textSuggestion?.prompt || '' }
-  }
-  const activeSuggestion = textSuggestion ? { ...textSuggestion, prompt: frozenRef.current.prompt } : null
+  // Two fixed prompts — never week numbers, day names, or last-turn wording.
+  // Empty field shows the first; a matching typed prefix can surface the
+  // second. ChatPage used to feed heuristic + LLM ghosts through here.
+  const textSuggestion = useMemo(() => pickComposerGhost(value), [value])
+  const suggestionKey = textSuggestion?.id || null
+  const activeSuggestion = textSuggestion
 
   // Escape hides the ghost text without touching what's typed — the same
   // dismiss gesture VS Code's own inline completion uses. Keyed to the exact
@@ -415,18 +377,12 @@ export function Composer({
   // rather than requiring a specific "prove it's stale" keystroke.
   const [dismissed, setDismissed] = useState(null)
   const isDismissed = dismissed && dismissed.key === suggestionKey && dismissed.value === value
-  // Empty field still shows the week's suggestion as ghost text. Hiding it
+  // Empty field still shows the first boilerplate as ghost text. Hiding it
   // until the typed prefix matched the canned sentence meant Tab completion
   // never appeared unless the teacher already knew the prompt.
   const completion = !isRecording && !isTranscribing && activeSuggestion && !isDismissed
     ? suggestionCompletion(value, activeSuggestion)
     : ''
-
-  // Grounded wording may replace the generic template while the field is
-  // still empty. Once they have typed toward the visible ghost, freeze.
-  if (!value.trim() && textSuggestion && frozenRef.current.prompt !== textSuggestion.prompt) {
-    frozenRef.current = { key: suggestionKey, prompt: textSuggestion.prompt }
-  }
 
   // The ghost-text overlay below is aria-hidden — its whole point is to sit
   // behind the real text, not be read as a second copy of it — so without
