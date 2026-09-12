@@ -3,7 +3,7 @@
 # This exports metadata and commit subjects only; it never copies source code.
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
-IRIS_ROOT=$(cd "$REPO_ROOT/../.." && pwd)
+IRIS_ROOT="/Users/JoshuaCole/Developer/Iris_OS"
 python3 "$IRIS_ROOT/Scripts/sync_iris_obsidian.py" \
   --repo "$REPO_ROOT" \
   --project flexed-academy \
