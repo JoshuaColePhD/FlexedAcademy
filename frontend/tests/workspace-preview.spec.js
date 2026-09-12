@@ -235,6 +235,8 @@ test('chat header shows the week and opens a list instead of a nested dropdown',
   await expect(dialog.getByText('Course')).toBeVisible()
   await expect(dialog.getByRole('listbox', { name: /weeks/i })).toBeVisible()
   await expect(dialog.getByRole('option', { name: /Week 03/i })).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByText('Earlier weeks')).toBeVisible()
+  await expect(dialog.getByRole('option', { name: /Week 02/i })).toBeVisible()
   await expect(dialog.getByRole('combobox')).toHaveCount(0)
   await expect(dialog.getByRole('option', { name: /Week 03/i })).toBeInViewport()
 
@@ -249,5 +251,30 @@ test('chat header shows the week and opens a list instead of a nested dropdown',
   const weekBox = await dialog.getByRole('listbox', { name: /weeks/i }).boundingBox()
   expect(courseBox.x).toBeLessThan(weekBox.x)
   expect(Math.abs(courseBox.y - weekBox.y)).toBeLessThan(24)
+})
+
+test('new chat targets the upcoming week and earlier weeks reopen existing chats', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/preview.html?fresh=0&at=/c/c1')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(page.locator('.workspace-chat')).toContainText(/Week 04/)
+
+  const trigger = page.getByRole('button', { name: /Change course or week/i })
+  await expect(trigger).toContainText(/Week 04/i)
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: 'Class and week' })
+  await expect(dialog.getByRole('option', { name: /Week 04/i })).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByRole('option', { name: /Week 02/i })).toBeVisible()
+  await dialog.getByRole('option', { name: /Week 02/i }).click()
+  await expect(page).toHaveURL(/\/c\/c1\/chat\/seedWeek2/)
+  await expect(page.getByRole('button', { name: /Change course or week/i })).toContainText(/Week 02/i)
+})
+
+test('library opens a previous week chat without starting a new one', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/preview.html?fresh=0&at=/c/c1/plans')
+  await expect(page.getByRole('heading', { name: /Library/i })).toBeVisible()
+  await page.getByRole('link', { name: /Week 02/i }).first().click()
+  await expect(page).toHaveURL(/\/c\/c1\/chat\/seedWeek2/)
 })
 

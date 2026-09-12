@@ -2359,6 +2359,20 @@ body:has(.dialog-scrim) .composer-dock-surface {
   background: var(--paper-inset);
   font-weight: 600;
 }
+.week-picker-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--edge);
+}
+.week-picker-group-label {
+  margin: 0;
+  padding: 6px 8px 2px;
+  color: var(--ink-muted);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 .chat-header-sheet-school {
   margin: 4px 2px 0;
   color: var(--ink-muted);
