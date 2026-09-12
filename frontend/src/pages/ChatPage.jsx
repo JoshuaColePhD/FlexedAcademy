@@ -1952,13 +1952,19 @@ export function ChatPage() {
 
   const busy = stream.isStreaming || revising || quizBuilding || chatStream.isStreaming || preparing
   const generationBusy = preparing || stream.isStreaming || chatStream.isStreaming || quizBuilding || revising
+  // A conversational reply (including "hello") uses chat_stream. That is a
+  // turn in progress, not a week being written — folding it into the Outputs
+  // "Writing the week" row made greetings look like a stalled plan build.
+  const artifactBusy = stream.isStreaming || revising
   const generationStatus = stream.isStreaming
     ? { label: 'Building your lesson plan', detail: stream.status?.label || 'Matching standards and shaping the week.' }
-    : chatStream.isStreaming
-      ? { label: 'Working on your request', detail: 'Reading the context and preparing the next step.' }
-      : preparing
-        ? { label: 'Getting your request ready', detail: 'Starting a workspace for this conversation.' }
-        : null
+    : revising
+      ? { label: 'Updating your lesson plan', detail: 'Changing only the requested part of the week.' }
+      : quizBuilding
+        ? { label: 'Building your quiz', detail: 'Writing questions from this week’s plan.' }
+        : preparing && !chatStream.isStreaming
+          ? { label: 'Getting your request ready', detail: 'Starting a workspace for this conversation.' }
+          : null
   useEffect(() => {
     if (!isPhone) {
       planBuildStartedRef.current = false
@@ -1967,15 +1973,15 @@ export function ChatPage() {
     // Only the initial build opens the peek. A revision keeps the teacher's
     // chosen collapsed/open state, and a plan fetched while reopening a chat
     // never looks like a new completion.
-    if (busy && !artifact?.planId) {
+    if (artifactBusy && !artifact?.planId) {
       planBuildStartedRef.current = true
       return
     }
-    if (!busy && artifact?.planId && planBuildStartedRef.current) {
+    if (!artifactBusy && artifact?.planId && planBuildStartedRef.current) {
       planBuildStartedRef.current = false
       setPlanPeekOpen(true)
     }
-  }, [artifact?.planId, busy, isPhone])
+  }, [artifact?.planId, artifactBusy, isPhone])
 
   /* Opening the panel is itself a real click — the one gesture VoiceProvider
      needs to unlock playback on THIS page load (see its own comment on
@@ -3698,11 +3704,13 @@ export function ChatPage() {
   // Stop under the teacher's thumb, while Outputs opens to the live document
   // row. Do this only for a lesson-plan build, never for ordinary chat or a
   // revision, so an intentionally closed workspace stays closed otherwise.
+  // `preparing` is true for every send, including greetings, so it must not
+  // open Outputs or the panel looks like a week has already started.
   useEffect(() => {
-    if (!isPhone && !isLandscapePhone && (preparing || stream.isStreaming) && !artifact?.planId) {
+    if (!isPhone && !isLandscapePhone && stream.isStreaming && !artifact?.planId) {
       setRailOpen(true)
     }
-  }, [artifact?.planId, isLandscapePhone, isPhone, preparing, stream.isStreaming])
+  }, [artifact?.planId, isLandscapePhone, isPhone, stream.isStreaming])
 
   useEffect(() => {
     if (!stream.isStreaming) {
@@ -3914,8 +3922,8 @@ export function ChatPage() {
         onEditDay={artifact?.planId ? editDay : undefined}
         onPickStandard={artifact?.planId ? pickStandard : undefined}
         onPlanRevised={onPlanRevised}
-        busy={busy}
-        preparing={preparing}
+        busy={artifactBusy}
+        preparing={preparing && artifactBusy}
         planSaveState={planSaveState}
         streamingText={stream.text}
         openTweak={openTweak}
@@ -4292,7 +4300,7 @@ export function ChatPage() {
           classId={classId}
           onExpand={() => openDocument()}
           onOpenQuiz={openQuiz}
-          busy={busy}
+          busy={artifactBusy}
           quizBuilding={quizBuilding}
           updating={revising}
           variant="bar"
@@ -4520,8 +4528,8 @@ export function ChatPage() {
                 onEditDay={editDay}
                 onPickStandard={pickStandard}
                 onPlanRevised={onPlanRevised}
-                busy={busy}
-                preparing={preparing}
+                busy={artifactBusy}
+                preparing={preparing && artifactBusy}
                 planSaveState={planSaveState}
                 streamingText={stream.text}
                 openTweak={openTweak}
@@ -4745,7 +4753,7 @@ export function ChatPage() {
           onOpenStandards={openStandards}
           onOpenCalendar={openCalendar}
           onOpenDocument={openDoc}
-          busy={busy}
+          busy={artifactBusy}
           quizBuilding={quizBuilding}
           updating={revising}
           artifactLoadError={artifactLoadError}
