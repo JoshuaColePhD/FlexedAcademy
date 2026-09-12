@@ -273,7 +273,7 @@ test('new chat targets the upcoming week and earlier weeks reopen existing chats
 test('library opens a previous week chat without starting a new one', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/preview.html?fresh=0&at=/c/c1/plans')
-  await expect(page.getByRole('heading', { name: /Library/i })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Library \// })).toBeVisible()
   await page.getByRole('link', { name: /Week 02/i }).first().click()
   await expect(page).toHaveURL(/\/c\/c1\/chat\/seedWeek2/)
 })
