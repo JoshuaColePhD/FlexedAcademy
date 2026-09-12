@@ -93,6 +93,17 @@ test('selected-day revision routes exact days and preserves the rest', async ({ 
   await expect(page.getByText(/Done — .* is updated/)).toBeVisible()
 })
 
+test('confirming a change still revises when the model copies a stale plan id', async ({ page }) => {
+  await openChat(page)
+  await events(page, [planAction('revise_week', { target_plan_id: 'stale-from-history' }), done])
+  await send(page, 'yes')
+  await expect.poll(() => page.evaluate(() => window.chatCalls.filter((c) => c.path === 'week').length)).toBe(1)
+  const call = await page.evaluate(() => window.chatCalls.find((c) => c.path === 'week'))
+  expect(call.body.revise_plan_id).toBe('plan1')
+  await expect(page.getByText(/Done — .* is updated/)).toBeVisible()
+  await expect(page.getByText(/no longer active/)).toHaveCount(0)
+})
+
 test('whole-week request streams a revision onto the open plan', async ({ page }) => {
   await openChat(page)
   await events(page, [planAction('revise_week'), done])

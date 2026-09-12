@@ -67,8 +67,11 @@ test('advice does not dispatch an artifact; explicit creation wins over open pla
   assert.equal(planOperation({ toolCalled: true }, 'p1', { voice: true }).action, 'revise_week')
 })
 
-test('mismatched targets and missing days never become whole-plan revisions', () => {
-  assert.throws(() => planOperation({ toolCalled: true, planAction: { ...action, action: 'revise_days', target_plan_id: 'p2' } }, 'p1'), /active plan changed/)
+test('stale revision targets bind to the open plan instead of failing the turn', () => {
+  const bound = planOperation({ toolCalled: true, planAction: { ...action, action: 'revise_week', target_plan_id: 'stale-plan' } }, 'p1')
+  assert.equal(bound.action, 'revise_week')
+  assert.equal(bound.target_plan_id, 'p1')
+  assert.throws(() => planOperation({ toolCalled: true, planAction: { ...action, action: 'revise_days', target_plan_id: 'p2' } }, null), /active plan changed/)
   const plan = { days: [{ name: 'Wednesday' }, { name: 'Friday' }] }
   assert.deepEqual(revisionDayIndices(plan, ['Friday']), [1])
   assert.throws(() => revisionDayIndices(plan, ['Monday']), /no Monday/)

@@ -324,10 +324,13 @@ def validate_quiz_action(args):
 
 
 def complete_typed_event(event, *, active_plan=None, active_quiz=None, last_user=""):
-    """Attach the open artifact when the model omitted it, and drop leaked IDs on create.
+    """Attach the open artifact when the model omitted it or copied a stale id.
 
     stream_chat validates shape; this runs on the route, which is the only
     place that knows which plan and quiz the teacher is actually looking at.
+    Revision tools must bind to that open plan: models often copy an older
+    target_plan_id from history, and treating that as "the plan is no longer
+    active" aborted a confirmed change (for example, "yes" after an offer).
     """
     if not isinstance(event, dict):
         return event
@@ -344,13 +347,13 @@ def complete_typed_event(event, *, active_plan=None, active_quiz=None, last_user
             event["days"] = []
             event["field"] = None
         elif action in ("revise_week", "revise_days"):
-            if not event.get("target_plan_id") and active_plan_id:
+            if active_plan_id:
                 event["target_plan_id"] = active_plan_id
         if action == "revise_week":
             event["days"] = []
             event["field"] = None
     elif tool == "update_lesson_day":
-        if not event.get("target_plan_id") and active_plan_id:
+        if active_plan_id:
             event["target_plan_id"] = active_plan_id
         if not event.get("feedback") and fallback:
             event["feedback"] = fallback
