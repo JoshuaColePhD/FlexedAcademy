@@ -31,10 +31,10 @@ from .chat_policy import (
     validate_quiz_action,
     without_quiz_tools,
 )
-from .features import beta_features_for
 from .config import settings
 from .embeddings import embed_query
 from .errors import AppError
+from .features import beta_features_for
 from .prompts import (
     day_field_system_prompt,
     day_system_prompt,

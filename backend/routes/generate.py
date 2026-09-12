@@ -20,11 +20,11 @@ from ..chat_policy import (
     complete_typed_event,
     validate_action_target,
 )
-from ..features import beta_features_for
 from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..features import beta_features_for
 from ..generation_jobs import cancel_job, get_job, start_or_attach
 from ..generation_queue import generation_queue
 from ..ratelimit import limiter

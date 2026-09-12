@@ -7,7 +7,12 @@ from types import SimpleNamespace as NS
 import pytest
 
 from backend import llm, service
-from backend.chat_policy import typed_chat_tools, validate_action_target, validate_plan_action, without_quiz_tools
+from backend.chat_policy import (
+    typed_chat_tools,
+    validate_action_target,
+    validate_plan_action,
+    without_quiz_tools,
+)
 from backend.errors import AppError
 
 
