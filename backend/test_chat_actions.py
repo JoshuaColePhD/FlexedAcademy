@@ -326,19 +326,49 @@ def test_route_rejects_foreign_plan_before_model_call(chat_client):
     assert not captured
 
 
-def test_route_does_not_emit_wrong_target_action(chat_client):
+def test_route_binds_stale_revision_target_to_open_plan(chat_client):
     client, _, emitted = chat_client
     emitted.append(
         {
             "tool_call": "generate_lesson_plan",
             **action(),
             "action": "revise_week",
-            "target_plan_id": "wrong",
+            "target_plan_id": "stale-from-history",
+            "instruction": "Add turn-and-talks across the week.",
         }
     )
     response = client.post(
         "/api/chat_stream",
-        json={"messages": [], "chat_id": "chat1", "class_id": "c1", "active_plan_id": "p1"},
+        json={
+            "messages": [{"role": "user", "content": "yes"}],
+            "chat_id": "chat1",
+            "class_id": "c1",
+            "active_plan_id": "p1",
+        },
+    )
+    assert response.status_code == 200
+    assert "invalid_plan_target" not in response.text
+    assert '"tool_call": "generate_lesson_plan"' in response.text
+    assert '"target_plan_id": "p1"' in response.text
+    assert "stale-from-history" not in response.text
+
+
+def test_revision_without_open_plan_is_still_rejected(chat_client, monkeypatch):
+    from backend.routes import generate
+
+    client, _, emitted = chat_client
+    monkeypatch.setattr(generate.db, "list_plans", lambda *a, **kw: {"items": []})
+    emitted.append(
+        {
+            "tool_call": "generate_lesson_plan",
+            **action(),
+            "action": "revise_week",
+            "target_plan_id": "p1",
+        }
+    )
+    response = client.post(
+        "/api/chat_stream",
+        json={"messages": [{"role": "user", "content": "yes"}], "chat_id": "chat1", "class_id": "c1"},
     )
     assert "invalid_plan_target" in response.text
     assert '"tool_call"' not in response.text
@@ -395,6 +425,17 @@ def test_quiz_contract_preserves_constraints_and_scope():
     complete_typed_event(revision, active_plan={"id": "p1"}, last_user="Shorten Thursday.")
     assert revision["target_plan_id"] == "p1"
     assert revision["instruction"] == "Shorten Thursday."
+    stale = {
+        "tool_call": "generate_lesson_plan",
+        "action": "revise_week",
+        "target_plan_id": "old-plan",
+        "instruction": "Add turn-and-talks.",
+    }
+    complete_typed_event(stale, active_plan={"id": "p1"}, last_user="yes")
+    assert stale["target_plan_id"] == "p1"
+    day = {"tool_call": "update_lesson_day", "target_plan_id": "old-plan", "day": "Wednesday", "field": "during"}
+    complete_typed_event(day, active_plan={"id": "p1"})
+    assert day["target_plan_id"] == "p1"
     omitted = validate_quiz_action({})
     assert omitted["num_questions"] == 5
     assert omitted["target_quiz_id"] is None

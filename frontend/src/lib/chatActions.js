@@ -9,8 +9,16 @@ export function planOperation(result, activePlanId, { voice = false } = {}) {
   if (!['create', 'revise_week', 'revise_days'].includes(action.action)) {
     throw new Error('The plan action was not recognized. Please try again.')
   }
-  if (action.action !== 'create' && (!activePlanId || action.target_plan_id !== activePlanId)) {
-    throw new Error('The active plan changed. Open the intended plan and try again.')
+  if (action.action !== 'create') {
+    // The model often copies a stale target_plan_id from earlier in the
+    // chat. A confirmation like "yes" still means the open week — bind to
+    // that instead of failing because the id drifted mid-turn.
+    if (!activePlanId) {
+      throw new Error('The active plan changed. Open the intended plan and try again.')
+    }
+    if (action.target_plan_id !== activePlanId) {
+      return { ...action, target_plan_id: activePlanId }
+    }
   }
   return action
 }

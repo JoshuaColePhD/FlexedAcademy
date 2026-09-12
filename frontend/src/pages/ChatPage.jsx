@@ -2333,11 +2333,11 @@ export function ChatPage() {
       liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current,
     )
     const { day: dayName, field, feedback } = requested
-    const targetPlanId = requested.targetPlanId || ctx.artifact?.planId
+    const targetPlanId = ctx.artifact?.planId
     const dayIndex = ctx.artifact?.plan?.days?.findIndex((day) => day.name === dayName) ?? -1
     const days = (ctx.artifact?.plan || stream.preview)?.days || []
     const day = dayIndex >= 0 ? days[dayIndex] : null
-    if (!ctx.artifact?.planId || !day || (!ctx.voiceOpen && targetPlanId !== ctx.artifact.planId)) {
+    if (!targetPlanId || !day) {
       finishWorkActivity(result.requestId, { status: 'error', error: 'The requested day or plan is no longer active.' })
       setMessages((prev) => [
         ...prev,
