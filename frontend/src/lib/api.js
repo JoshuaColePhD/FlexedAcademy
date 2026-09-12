@@ -245,10 +245,11 @@ async function downloadFile(url, { signal, fallbackName = 'lesson-plan.docx' } =
   if ('download' in anchor) {
     anchor.click()
   } else {
-    // Older iPad Safari can omit support for the download attribute. Opening
-    // the already-validated Blob is safe and lets Safari's share sheet save it.
-    const opened = window.open(objectUrl, '_blank', 'noopener,noreferrer')
-    if (!opened) window.location.href = objectUrl
+    // Older iPad Safari can omit support for the download attribute. Blob
+    // URLs only resolve inside the document that created them, so opening
+    // one in a new tab via window.open fails there with "WebKitBlobResource
+    // error 1" — navigate the current tab instead, where it's still valid.
+    window.location.href = objectUrl
   }
   anchor.remove()
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
