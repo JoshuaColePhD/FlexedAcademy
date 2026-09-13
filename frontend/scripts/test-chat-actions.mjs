@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import test from 'node:test'
 import { recoverDumpedToolsFromText } from '../src/lib/chatToolRecovery.js'
-import { planOperation, quizReceipt, quizRevisionId, readQuizReceipt, revisionDayIndices, shouldStreamPlanRevision } from '../src/lib/chatActions.js'
+import { optionalFollowUpProps, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, requestedOptionalNextStep, revisionDayIndices, shouldOfferOptionalFollowUp, shouldStreamPlanRevision } from '../src/lib/chatActions.js'
 import { isClearlySpecifiedPlanRequest } from '../src/lib/planIntent.js'
 
 // Run the actual hook's streaming code without a DOM. Only React state storage,
@@ -51,6 +51,21 @@ test('whole-day edits stream instead of blocking on a REST rewrite', () => {
   assert.equal(shouldStreamPlanRevision({ action: 'revise_days', field: null, days: ['Wednesday'] }), true)
   assert.equal(shouldStreamPlanRevision({ action: 'revise_days', field: 'during', days: ['Wednesday'] }), false)
   assert.equal(shouldStreamPlanRevision({ action: 'create' }), false)
+})
+
+test('optional next-step cards stay off unless asked and nothing else is queued', () => {
+  assert.equal(requestedOptionalNextStep('Build a week on inference with paper materials.'), false)
+  assert.equal(requestedOptionalNextStep("what's next for next week"), false)
+  assert.equal(requestedOptionalNextStep("what's next"), true)
+  assert.equal(requestedOptionalNextStep('next steps'), true)
+  assert.equal(requestedOptionalNextStep('Optional next steps for this lesson plan'), true)
+  assert.equal(shouldOfferOptionalFollowUp({ asked: true }), true)
+  assert.equal(shouldOfferOptionalFollowUp({ asked: true, queuedTurn: true }), false)
+  assert.equal(shouldOfferOptionalFollowUp({ asked: true, voiceOpen: true }), false)
+  assert.equal(shouldOfferOptionalFollowUp({ asked: false }), false)
+  assert.deepEqual(optionalFollowUpProps('plan', {}, { asked: false }), {})
+  assert.equal(optionalFollowUpProps('plan', {}, { asked: true }).questionPurpose, 'optional')
+  assert.equal(optionalFollowUpProps('plan', {}, { asked: true }).questions[0].text, 'Optional next step for this lesson plan')
 })
 
 test('clear first requests skip the routing hop', () => {

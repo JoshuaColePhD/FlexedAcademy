@@ -260,15 +260,19 @@ test('a week and a quiz in one turn builds the plan then the quiz', async ({ pag
   expect(quiz.url).toMatch(/\/plans\/[^/]+\/quiz$/)
 })
 
-test('optional suggestions can be skipped or typed past without starting work', async ({ page }) => {
+test('optional suggestions stay off after a build unless the teacher asks', async ({ page }) => {
   await openChat(page, true)
   await events(page, [planAction('create'), done])
   await send(page, 'Build a week on inference with paper materials and 45-minute periods.')
-  await expect(page.getByText('Optional next step for this lesson plan', { exact: true })).toBeVisible()
+  await expect(page.getByText(/is built/).last()).toBeVisible()
+  await expect(page.getByText('Optional next step for this lesson plan', { exact: true })).toHaveCount(0)
+  expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'create').length)).toBe(1)
   const calls = await page.evaluate(() => window.chatCalls.length)
+  await send(page, "what's next")
+  await expect(page.getByText('Optional next step for this lesson plan', { exact: true })).toBeVisible()
+  expect(await page.evaluate(() => window.chatCalls.length)).toBe(calls)
   await page.getByRole('button', { name: 'Skip', exact: true }).click()
   await expect(page.getByText('Optional next step for this lesson plan', { exact: true })).toHaveCount(0)
-  expect(await page.evaluate(() => window.chatCalls.length)).toBe(calls)
   await send(page, 'Why start with modeling?')
   await expect(page.getByText('Try a short modeled example, then check an independent response.', { exact: true })).toBeVisible()
   expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'create').length)).toBe(1)
