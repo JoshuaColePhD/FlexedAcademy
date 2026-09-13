@@ -1,4 +1,4 @@
-import { chatMessageText, completionSuggestions, optionalFollowUpProps, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, requestedOptionalNextStep, revisionDayIndices, shouldStreamPlanRevision } from '../lib/chatActions'
+import { chatMessageText, optionalFollowUpProps, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, requestedOptionalNextStep, revisionDayIndices, shouldStreamPlanRevision } from '../lib/chatActions'
 import { isClearlySpecifiedPlanRequest } from '../lib/planIntent'
 import { chatAvatarColor } from '../lib/chatPresentation'
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
