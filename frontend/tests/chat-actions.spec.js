@@ -291,7 +291,7 @@ test('a queued next-step request can still open the overlay after the build', as
   })
   await events(page, [planAction('create'), done])
   await send(page, 'Build a week on inference with paper materials and 45-minute periods.')
-  await expect(page.getByText('Building your lesson plan')).toBeVisible()
+  await expect(page.locator('.composer-writing-status-label')).toHaveText('Building your lesson plan')
   await send(page, 'next steps')
   await expect(page.locator('.composer-queued-message')).toBeVisible()
   await expect(page.getByText('Optional next step for this lesson plan', { exact: true })).toHaveCount(0)

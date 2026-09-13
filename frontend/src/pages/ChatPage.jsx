@@ -2680,9 +2680,7 @@ export function ChatPage() {
           const assistant = {
             id: nextId(),
             role: 'assistant',
-            content: kind === 'quiz'
-              ? `Optional next step for ${viewingQuiz?.title || 'this quiz'}`
-              : 'Optional next step for this lesson plan',
+            content: 'Here are a couple of optional next steps — skip if you don’t need them.',
             ...followUp,
           }
           setMessages((prev) => [...prev, assistant])
