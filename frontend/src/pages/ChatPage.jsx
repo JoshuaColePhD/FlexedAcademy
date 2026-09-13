@@ -1,4 +1,4 @@
-import { chatMessageText, completionSuggestions, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, revisionDayIndices, shouldStreamPlanRevision } from '../lib/chatActions'
+import { chatMessageText, completionSuggestions, optionalFollowUpProps, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, requestedOptionalNextStep, revisionDayIndices, shouldStreamPlanRevision } from '../lib/chatActions'
 import { isClearlySpecifiedPlanRequest } from '../lib/planIntent'
 import { chatAvatarColor } from '../lib/chatPresentation'
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -414,6 +414,11 @@ function speakableQuestions(intro, questions) {
   return [intro, ...questions.map((q) => q.text)].filter(Boolean).join(' ')
 }
 
+function lastTeacherText(messages) {
+  const lastUser = [...(messages || [])].reverse().find((message) => message.role === 'user')
+  return lastUser?.youSaid || lastUser?.content
+}
+
 function chatPayloadFromMessage(m) {
   const content = chatMessageText(m)
   return {
@@ -640,6 +645,8 @@ export function ChatPage() {
      send made while offline—lives here until it can be accepted by the
      server. The matching local outbox below makes this survive a reload. */
   const [queuedMessage, setQueuedMessage] = useState(null)
+  const queuedMessageRef = useRef(queuedMessage)
+  queuedMessageRef.current = queuedMessage
   const [outboxRestored, setOutboxRestored] = useState(false)
   const setQueuedTurn = useCallback((next) => {
     setQueuedMessage(next)
@@ -1649,7 +1656,11 @@ export function ChatPage() {
           id: nextId(),
           role: 'assistant',
           content,
-          ...(!voiceOpen ? { questions: completionSuggestions('plan', done.plan), questionPurpose: 'optional' } : {}),
+          ...optionalFollowUpProps('plan', done.plan, {
+            asked: requestedOptionalNextStep(lastTeacherText(messages)),
+            voiceOpen,
+            queuedTurn: Boolean(queuedMessageRef.current),
+          }),
           planId: done.plan_id,
           weekLabel: done.plan?.week_of,
           plan: done.plan,
@@ -2171,7 +2182,11 @@ export function ChatPage() {
         {
           id: nextId(),
           role: 'assistant',
-          ...(!voiceOpen && !revisingQuizId ? { questions: completionSuggestions('quiz', quiz), questionPurpose: 'optional' } : {}),
+          ...(!revisingQuizId ? optionalFollowUpProps('quiz', quiz, {
+            asked: requestedOptionalNextStep(lastTeacherText(messages)),
+            voiceOpen,
+            queuedTurn: Boolean(queuedMessageRef.current),
+          }) : {}),
           content: revisingQuizId
             ? `Updated "${quiz.title}." Download the Word document or QTI package from the panel.`
             : `Built "${quiz.title}." Download the Word document or QTI package from the panel.`,
@@ -2649,6 +2664,30 @@ export function ChatPage() {
               )))
             }
           })
+        }
+      }
+
+      /* Optional next-step cards are opt-in. A queued follow-up that asks
+         for them still lands here after busy clears — that queue is the
+         other way the overlay is allowed to appear. */
+      if (!planning && !atts.length && !voiceTurn && requestedOptionalNextStep(promptText)) {
+        const kind = viewKind === 'quiz' && viewingQuiz ? 'quiz' : artifact?.plan ? 'plan' : null
+        const followUp = kind
+          ? optionalFollowUpProps(kind, kind === 'quiz' ? viewingQuiz : artifact.plan, { asked: true, voiceOpen })
+          : {}
+        if (followUp.questions) {
+          finishPreparing()
+          const assistant = {
+            id: nextId(),
+            role: 'assistant',
+            content: kind === 'quiz'
+              ? `Optional next step for ${viewingQuiz?.title || 'this quiz'}`
+              : 'Optional next step for this lesson plan',
+            ...followUp,
+          }
+          setMessages((prev) => [...prev, assistant])
+          if (activeChatId) void persistMessage(activeChatId, { role: 'assistant', content: assistant.content })
+          return
         }
       }
 

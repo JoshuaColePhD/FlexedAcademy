@@ -68,6 +68,33 @@ export function completionSuggestions(kind, artifact) {
   }]
 }
 
+// The cards are opt-in. "What's next for next week" is a planning request,
+// not a request for this overlay.
+export function requestedOptionalNextStep(text) {
+  const value = String(text || '').replace(/^you said:\s*/i, '').trim()
+  if (!value || /\bnext week\b/i.test(value)) return false
+  return (
+    /^(?:(?:please|hey|ok|okay)[,.]?\s+)?(?:can you |could you )?(?:show(?: me)? |give(?: me)? )?(?:an? )?(?:optional )?next steps?\??$/i.test(value)
+    || /^(?:what(?:'s| is) next\??)$/i.test(value)
+    || /^(?:what else(?: can| should)?(?: we| i)?(?: do)?\??)$/i.test(value)
+    || /\boptional next steps?\b/i.test(value)
+    || /\bnext steps? for (?:this|the) (?:lesson )?plan\b/i.test(value)
+    || /\bnext steps? for (?:this|the) quiz\b/i.test(value)
+  )
+}
+
+export function shouldOfferOptionalFollowUp({ asked = false, voiceOpen = false, queuedTurn = false } = {}) {
+  return Boolean(asked) && !voiceOpen && !queuedTurn
+}
+
+export function optionalFollowUpProps(kind, artifact, flags) {
+  if (!shouldOfferOptionalFollowUp(flags)) return {}
+  return {
+    questions: completionSuggestions(kind, artifact),
+    questionPurpose: 'optional',
+  }
+}
+
 // Versioned metadata in the existing message text envelope keeps old clients
 // compatible; workflow state never depends on the visible completion wording.
 export function quizReceipt(quiz, content) {
