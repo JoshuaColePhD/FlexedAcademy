@@ -388,11 +388,13 @@ class Settings(BaseSettings):
     # Lower is also FASTER here: 30 jobs took 5.0s at 8 workers and 2.3s at 2,
     # because the workers were contending for a pool of the same size and for
     # Supabase's pooler behind it. Concurrency past the pool buys nothing.
-    # Two workers use the two available database connections without creating
-    # an unbounded memory spike. This was the measured fastest stable setting
-    # for the hybrid standards retrieval; more workers only contend for the
-    # same pool and grow each query's transient buffers.
-    retrieval_workers: int = 2
+    # One in-flight hybrid query leaves the second pool slot for auth, health,
+    # and document-job claims. Two workers on a pool of two is what filled
+    # every slot during generate_stream and cascaded into
+    # "Timed out waiting for a database connection slot" on 2026-09-13.
+    # retrieval.py also hard-caps concurrency at pool_size - 1 when the pool
+    # is larger than 1, so a dashboard RETRIEVAL_WORKERS=2 cannot reopen that.
+    retrieval_workers: int = 1
 
     # Short-term backpressure for LLM work. Requests that arrive in a burst are
     # queued instead of being mistaken for a subscription/usage failure. Default

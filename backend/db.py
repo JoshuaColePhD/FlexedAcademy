@@ -4010,8 +4010,18 @@ def _ensure_pool() -> ThreadedConnectionPool:
     return _pool
 
 
+# Background pollers (the in-process document worker) must not sit on this
+# semaphore for the full request timeout. A 15s wait there is what turned a
+# busy generate/DOCX pair into auth 500s on 2026-09-13: both pool slots were
+# held, claim_next blocked for 15s, then retried, and get_current_user lost
+# the same race. Interactive routes keep the 15s bound; workers pass a short
+# timeout and treat TimeoutError as "try later".
+_BORROW_TIMEOUT_S = 15.0
+_DOCUMENT_CLAIM_TIMEOUT_S = 0.2
+
+
 @contextmanager
-def borrow():
+def borrow(*, timeout: float = _BORROW_TIMEOUT_S):
     """Borrow a connection for the duration of one statement, and always give it
     back — including on the error paths, which is the failure mode that turns a
     pool into an outage."""
@@ -4019,7 +4029,7 @@ def borrow():
     # A bounded wait: if every slot is leaked (e.g. a worker thread killed
     # mid-request never released one), callers should get a 500 instead of
     # blocking forever with no exception and no response ever sent.
-    if not _slots.acquire(timeout=15):
+    if not _slots.acquire(timeout=max(0.0, float(timeout))):
         raise TimeoutError("Timed out waiting for a database connection slot.")
     try:
         conn = pool.getconn()
@@ -4059,6 +4069,16 @@ def borrow():
             pass
         raise
     finally:
+        # Reads used to return the connection still inside the SET LOCAL
+        # transaction. An idle pooled connection holding that transaction can
+        # keep row locks and session state alive, which is how a later
+        # UPDATE ... FOR UPDATE (document claim) or a short auth lookup waits
+        # out the whole slot budget. Writers already commit; this rollback is
+        # then a no-op.
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001, S110 — connection may already be closed
+            pass
         pool.putconn(conn)
         _slots.release()
 
@@ -5704,18 +5724,30 @@ def claim_next_document_build() -> dict | None:
     # while the rest of the app still sees it as queued (and the row lock can
     # block the worker's later status update).  Commit the claim before handing
     # it to the document builder.
-    return _write_returning(
-        """
-        UPDATE document_build_jobs SET status = 'building', attempts = attempts + 1, updated_at = ?
-        WHERE plan_id = (
-          SELECT plan_id FROM document_build_jobs
-          WHERE status = 'queued' AND COALESCE(available_at, updated_at) <= ?
-          ORDER BY COALESCE(available_at, updated_at) FOR UPDATE SKIP LOCKED LIMIT 1
-        )
-        RETURNING *
-        """,
-        (now(), now()),
-    )
+    #
+    # Short borrow timeout: the worker polls every couple of seconds. Waiting
+    # the full interactive 15s here is what starved get_current_user when both
+    # pool slots were already held (2026-09-13 FlexedAcademy restart).
+    try:
+        with borrow(timeout=_DOCUMENT_CLAIM_TIMEOUT_S) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE document_build_jobs SET status = 'building', attempts = attempts + 1, updated_at = %s
+                    WHERE plan_id = (
+                      SELECT plan_id FROM document_build_jobs
+                      WHERE status = 'queued' AND COALESCE(available_at, updated_at) <= %s
+                      ORDER BY COALESCE(available_at, updated_at) FOR UPDATE SKIP LOCKED LIMIT 1
+                    )
+                    RETURNING *
+                    """,
+                    (now(), now()),
+                )
+                row = cur.fetchone()
+            conn.commit()
+            return dict(row) if row else None
+    except TimeoutError:
+        return None
 
 
 def finish_document_build(plan_id: str, user_id: str, *, error_message: str | None = None) -> None:

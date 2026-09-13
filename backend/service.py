@@ -6,6 +6,7 @@ eval harness — which is how they stay consistent.
 """
 from __future__ import annotations
 
+import gc
 import json
 import logging
 import re
@@ -296,10 +297,47 @@ def _build_docx_bg(user_id: str, plan: dict, out_path: Path, plan_id: str):
     db.enqueue_document_build(plan_id, user_id)
 
 
+DOCUMENT_BUILD_QUEUE_USER = "__document_build__"
+
+
+def release_process_memory() -> None:
+    """Return leftover allocator pages after a large in-process build.
+
+    python-docx and the plan JSON stay alive until the next GC. On Linux
+    (Render) malloc_trim gives those pages back to the OS so RSS does not
+    stair-step toward the 2GB limit across successive generate+DOCX pairs.
+    """
+    gc.collect()
+    try:
+        import ctypes
+
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
+
+
 def run_document_build_job(job: dict) -> None:
     """Run a build with the job owner bound to transaction-local RLS."""
     with db.as_user(job.get("user_id")):
         _run_document_build_job(job)
+
+
+def run_claimed_document_build(job: dict) -> None:
+    """Build one claimed DOCX only when no generation is using the heavy slot.
+
+    The document worker used to start immediately after finalize() released
+    the generation lease. A follow-up generate_stream (or chat) could then
+    overlap python-docx with retrieval buffers on the same 1c-2g process.
+    Waiting here keeps peak RSS to one of those workloads at a time. Teacher
+    tickets win: enqueue_background sits behind the teacher-facing queue.
+    """
+    lease = generation_queue.enqueue_background(DOCUMENT_BUILD_QUEUE_USER)
+    try:
+        lease.wait()
+        run_document_build_job(job)
+    finally:
+        lease.release()
+        release_process_memory()
 
 
 def _run_document_build_job(job: dict) -> None:
