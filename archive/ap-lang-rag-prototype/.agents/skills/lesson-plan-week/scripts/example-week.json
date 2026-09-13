@@ -1,0 +1,57 @@
+{
+  "teacher": "Josh Cole",
+  "grade_subject": "Grade 11 / AP Language & Composition",
+  "week_of": "Week 02 — Aug 10-14, 2026",
+  "days": [
+    {
+      "name": "Monday",
+      "no_school": false,
+      "curriculum": "A Rose for Emily (Faulkner) — close reread of the opening; SPACE CAT graphic organizer.",
+      "standards": "2.A",
+      "learning_targets": "I can describe the rhetorical situation of a text using SPACE CAT.",
+      "do_now": "Cold-read the first paragraph of A Rose for Emily and write one sentence on the narrator's attitude toward Emily.",
+      "learning_looks_like": "Explicit: Model SPACE CAT on paragraph 1.\nStudent: Groups complete SPACE CAT for an assigned section.\nIndependent: Write a 4-sentence rhetorical-situation summary.",
+      "assessment": "Formative — SPACE CAT organizer + summary paragraph."
+    },
+    {
+      "name": "Tuesday",
+      "no_school": false,
+      "curriculum": "A Rose for Emily — diction & tone; DIDLS framework.",
+      "standards": "2.B",
+      "learning_targets": "I can analyze how diction and detail create tone.",
+      "do_now": "List three words from yesterday's reading that carry a strong connotation.",
+      "learning_looks_like": "Explicit: Model DIDLS on a key passage.\nStudent: Collaborative DIDLS annotation.\nIndependent: One paragraph on how diction shapes tone.",
+      "assessment": "Formative — DIDLS annotation + analysis paragraph."
+    },
+    {
+      "name": "Wednesday",
+      "no_school": false,
+      "curriculum": "Released FRQ 2 passage (nonfiction) — apply SPACE CAT + DIDLS to a new text.",
+      "standards": "2.A, 2.B",
+      "learning_targets": "I can transfer rhetorical-analysis skills to an unfamiliar passage.",
+      "do_now": "Predict the speaker's purpose from the passage's title and first line.",
+      "learning_looks_like": "Explicit: Walk through the FRQ 2 prompt structure.\nStudent: Groups annotate the passage.\nIndependent (even week): MCQ practice set on the passage.",
+      "assessment": "Formative — MCQ practice set."
+    },
+    {
+      "name": "Thursday",
+      "no_school": false,
+      "curriculum": "Full timed rhetorical-analysis essay (Week B — even week) on the FRQ 2 passage.",
+      "standards": "4.A, 4.C, 6.A",
+      "learning_targets": "I can write a full rhetorical-analysis essay under timed conditions.",
+      "do_now": "Draft a one-sentence defensible thesis for the FRQ 2 passage.",
+      "learning_looks_like": "Explicit: Review thesis + line-of-reasoning expectations.\nStudent: 2-minute thesis peer check.\nIndependent: 35-minute timed essay (AP conditions).",
+      "assessment": "Summative — full timed rhetorical-analysis essay (1-6 rubric)."
+    },
+    {
+      "name": "Friday",
+      "no_school": false,
+      "curriculum": "Peer review + AP rubric scoring; Columnist Journal entry #2.",
+      "standards": "6.A",
+      "learning_targets": "I can evaluate an essay against the 1-6 rubric and reflect on my own writing.",
+      "do_now": "Write down one strength and one goal from yesterday's essay.",
+      "learning_looks_like": "Explicit: Model rubric scoring on an anchor paper.\nStudent: Peer review using the 1-6 rubric.\nIndependent: Columnist Journal entry #2 (SPACE CAT + DIDLS + pre-write).",
+      "assessment": "Formative — peer review form + Columnist Journal entry."
+    }
+  ]
+}

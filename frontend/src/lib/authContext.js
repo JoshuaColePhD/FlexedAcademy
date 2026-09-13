@@ -12,8 +12,8 @@ export const AuthContext = createContext(null)
  *  that could hold state above both of them without either drilling it
  *  through every consumer of useAuth() or (worse) making AuthContext itself
  *  carry routing concerns. */
-export const EXPLICIT_SIGNOUT_KEY = 'aplang:explicit-signout'
-export const KNOWN_AUTHED_KEY = 'aplang:known-authed'
+export const EXPLICIT_SIGNOUT_KEY = 'flexed:explicit-signout'
+export const KNOWN_AUTHED_KEY = 'flexed:known-authed'
 
 export function useAuth() {
   const ctx = useContext(AuthContext)

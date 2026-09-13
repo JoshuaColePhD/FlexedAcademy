@@ -1,0 +1,16 @@
+# Python environment
+venv/
+__pycache__/
+*.pyc
+
+# Secrets — never commit
+.env
+
+# Vector store (rebuildable from source_docs via scripts/02_embed_store.py)
+chroma_db/
+
+# Local model cache
+.cache/
+
+# macOS
+.DS_Store

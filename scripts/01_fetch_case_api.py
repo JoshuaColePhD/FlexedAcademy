@@ -24,7 +24,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.config import settings
 
-log = logging.getLogger("aplang.fetch")
+log = logging.getLogger("flexed.fetch")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "chunks.json"

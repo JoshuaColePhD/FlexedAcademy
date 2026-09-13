@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 
-const KEY = 'aplang.theme'
+const KEY = 'flexed.theme'
 const MODES = ['light', 'dark', 'system']
 
 function systemTheme() {

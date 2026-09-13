@@ -18,6 +18,7 @@ import { useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
 import { useActiveClass, useCalendar, useChats, useClasses } from '../hooks/useAppData'
 import { FIELD_LABELS, SHORT_DAY, dayTitle, unitSuffix } from '../lib/planShape'
 import { firstUnplanned } from '../lib/queue'
+import { existingChatForWeek, newChatWeekOptions, pinWeekForNewChat, priorWeeksWithWork } from '../lib/weekAccess'
 import { qk } from '../lib/queryKeys'
 import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
@@ -26,7 +27,6 @@ import { splitDecisions } from '../lib/decisionChecklist'
 import { dayLabel, isSameDay } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import * as perf from '../lib/performanceMetrics'
-import { useDebouncedValue } from '../hooks/useDebouncedValue'
 import { useComposerDraft, clearComposerDraft } from '../hooks/useComposerDraft'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useInterfacePreferences } from '../hooks/useInterfacePreferences'
@@ -506,13 +506,14 @@ export function ChatPage() {
   // so Voice Mode's gate reads that instead of widening the auth context.
   const { data: meAccount } = useQuery({ queryKey: qk.me, queryFn: () => api.me() })
   const betaFeaturesEnabled = Boolean(meAccount?.beta_features)
+  const betaFeaturesRef = useRef(betaFeaturesEnabled)
+  betaFeaturesRef.current = betaFeaturesEnabled
   const { data: chats = [] } = useChats()
   const currentChat = chats.find((chat) => chat.id === chatId) || null
   const { data: calendar } = useCalendar(classId)
   // Same check ClassPage runs to gate its own "Add a pacing guide" suggestion —
   // without it, getContextualSuggestions defaults to assuming one exists and
-  // the composer's "using my pacing guide" wording goes out regardless of
-  // whether a class has ever had one uploaded.
+  // the empty-state Greeting hint would not offer to upload one.
   const classDocuments = useQuery({
     queryKey: qk.classDocuments(classId),
     queryFn: () => api.listClassDocuments(classId),
@@ -1031,7 +1032,10 @@ export function ChatPage() {
   useDocumentTitle(activeChat?.title || (chatId ? 'New plan' : null))
 
   const autoWeek = useMemo(() => firstUnplanned(calendar?.weeks), [calendar])
-  const effectiveWeek = selectedWeek ?? autoWeek?.week ?? null
+  const effectiveWeek = useMemo(
+    () => pinWeekForNewChat(calendar?.weeks, selectedWeek ?? autoWeek?.week ?? null),
+    [calendar, selectedWeek, autoWeek]
+  )
   /* Which week THIS CONVERSATION is about — the one stable answer, read back
      off the chat rather than recomputed.
 
@@ -1057,15 +1061,18 @@ export function ChatPage() {
      trusted until the source file is uploaded. Keep this as one derived fact
      so every header layout shows the same state. */
   const calendarMissing = Boolean(calendar?.school && calendar.school.has_calendar === false)
-  /* Every week worth offering: never a week the school is shut, never one
-     already behind us — EXCEPT the one this chat is already pinned to, which
-     stays listed however old it is. Dropping it would leave the select with
-     no matching option and render blank, which is the one thing this control
-     exists to prevent. */
-  const weekOptions = useMemo(() => {
-    const weeks = calendar?.weeks || []
-    return weeks.filter((w) => !w.no_school && (!w.is_past || w.week === conversationWeek))
-  }, [calendar, conversationWeek])
+  /* Upcoming teaching weeks a new chat may pin to, plus this conversation's
+     own week if it is already in the past (so the select still has a match).
+     Earlier weeks with existing chats live in priorWeekOptions and open that
+     work rather than retargeting a new chat. */
+  const weekOptions = useMemo(
+    () => newChatWeekOptions(calendar?.weeks, conversationWeek),
+    [calendar, conversationWeek]
+  )
+  const priorWeekOptions = useMemo(
+    () => priorWeeksWithWork(calendar?.weeks, conversationWeek),
+    [calendar, conversationWeek]
+  )
 
   /* Change which week this conversation is planning. Three cases, because
      "the week" means something different depending on how far along the chat
@@ -1086,6 +1093,16 @@ export function ChatPage() {
   const changeWeek = useCallback(
     async (week) => {
       if (!week || week === conversationWeek) return
+      const row = (calendar?.weeks || []).find((item) => item.week === week)
+      const existingChatId = existingChatForWeek(row)
+      // Past weeks are history: reopen the chat that built them. Never pin a
+      // brand-new conversation onto a week the calendar has already left.
+      if (row?.is_past) {
+        if (existingChatId && existingChatId !== chatId) {
+          navigate(`/c/${classId}/chat/${existingChatId}`)
+        }
+        return
+      }
       if (!chatId) {
         setSelectedWeek(week)
         return
@@ -1121,7 +1138,7 @@ export function ChatPage() {
         toast.apiError('Could not change the week', err)
       }
     },
-    [chatId, classId, conversationWeek, artifact?.planId, navigate, qc, toast]
+    [chatId, classId, conversationWeek, artifact?.planId, calendar, navigate, qc, toast]
   )
 
   /* Which chat the in-memory transcript currently belongs to.
@@ -1330,7 +1347,7 @@ export function ChatPage() {
         localFor.current = chatId
         lastSpokenRef.current = loaded.length ? loaded[loaded.length - 1].id : null
         const lastQuiz = [...loaded].reverse().find((m) => m.quizReceipt)?.quizReceipt
-        if (lastQuiz) {
+        if (lastQuiz && betaFeaturesRef.current) {
           try {
             const quizzes = lastQuiz.planId
               ? await api.listQuizzes(lastQuiz.planId)
@@ -1457,16 +1474,25 @@ export function ChatPage() {
   useEffect(() => {
     const weekParam = searchParams.get('week')
     if (chatId || !weekParam) return
-    setSelectedWeek(Number(weekParam))
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev)
-        next.delete('week')
-        return next
-      },
-      { replace: true }
-    )
-  }, [chatId, searchParams, setSearchParams])
+    // Wait for the calendar so a past-week handoff can open the existing
+    // chat instead of pinning a new conversation to a finished week.
+    if (!calendar) return
+    const requested = Number(weekParam)
+    const row = (calendar.weeks || []).find((item) => item.week === requested)
+    const stripWeek = (prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('week')
+      return next
+    }
+    if (row?.is_past) {
+      setSearchParams(stripWeek, { replace: true })
+      const existingChatId = existingChatForWeek(row)
+      if (existingChatId) navigate(`/c/${classId}/chat/${existingChatId}`, { replace: true })
+      return
+    }
+    setSelectedWeek(requested)
+    setSearchParams(stripWeek, { replace: true })
+  }, [chatId, classId, calendar, navigate, searchParams, setSearchParams])
 
   /* Back from Google's consent screen (routes/drive.py's /callback) — the
      browser lands right back on this same chat with ?drive=connected,
@@ -2086,6 +2112,7 @@ export function ChatPage() {
   }
 
   const beginQuizFromRequest = async (requested, result) => {
+    if (!betaFeaturesRef.current) return
     const ctx = chatTurnRef.current
     const viewingQuiz = ctx.viewingQuiz
     const artifact = ctx.artifact
@@ -2333,11 +2360,11 @@ export function ChatPage() {
       liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current,
     )
     const { day: dayName, field, feedback } = requested
-    const targetPlanId = requested.targetPlanId || ctx.artifact?.planId
+    const targetPlanId = ctx.artifact?.planId
     const dayIndex = ctx.artifact?.plan?.days?.findIndex((day) => day.name === dayName) ?? -1
     const days = (ctx.artifact?.plan || stream.preview)?.days || []
     const day = dayIndex >= 0 ? days[dayIndex] : null
-    if (!ctx.artifact?.planId || !day || (!ctx.voiceOpen && targetPlanId !== ctx.artifact.planId)) {
+    if (!targetPlanId || !day) {
       finishWorkActivity(result.requestId, { status: 'error', error: 'The requested day or plan is no longer active.' })
       setMessages((prev) => [
         ...prev,
@@ -2360,7 +2387,7 @@ export function ChatPage() {
     if (!result || startedActionRef.current === result.requestId) return true
     if (result.questions?.length) return true
     const wantsPlan = Boolean(result.toolCalled && (result.planAction || (!result.quizRequested && !result.dayRevisionRequested)))
-    const wantsQuiz = Boolean(result.quizRequested)
+    const wantsQuiz = Boolean(result.quizRequested) && betaFeaturesRef.current
     const wantsDay = Boolean(result.dayRevisionRequested)
     if (!wantsPlan && !wantsQuiz && !wantsDay) return false
     startedActionRef.current = result.requestId
@@ -2722,8 +2749,8 @@ export function ChatPage() {
           mode: planning ? 'plan' : chatMode,
           weekNumber: effectiveWeek,
           referenceContext,
-          hasQuiz: Boolean(viewingQuiz?.id),
-          activeQuizId: viewingQuiz?.id,
+          hasQuiz: betaFeaturesEnabled && Boolean(viewingQuiz?.id),
+          activeQuizId: betaFeaturesEnabled ? viewingQuiz?.id : undefined,
           requestId: options.requestId,
         })
 
@@ -2790,8 +2817,8 @@ export function ChatPage() {
         weekNumber: conversationWeek,
         activePlanId: artifact?.planId,
         referenceContext,
-        hasQuiz: Boolean(viewingQuiz?.id),
-          activeQuizId: viewingQuiz?.id,
+        hasQuiz: betaFeaturesEnabled && Boolean(viewingQuiz?.id),
+          activeQuizId: betaFeaturesEnabled ? viewingQuiz?.id : undefined,
         planOpen: planCommandSurface,
         requestId: options.requestId,
       })
@@ -2799,7 +2826,7 @@ export function ChatPage() {
       if (chatResult.questions?.length) return
       actionHandlerRef.current?.(chatResult)
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, viewKind, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, viewKind, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass, betaFeaturesEnabled]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -3778,6 +3805,7 @@ export function ChatPage() {
      of data ChatPage doesn't already have some other way (the plan itself,
      the calendar, and the grounding scan are all already in scope below). */
   const openQuiz = useCallback((quiz) => {
+    if (!betaFeaturesRef.current) return
     setViewKind('quiz')
     setViewingQuiz(quiz)
     setExpanded(true)
@@ -3859,77 +3887,13 @@ export function ChatPage() {
     ]
   )
 
-  // Upgrades the composer's one suggestion from its generic "using my pacing
-  // guide" template to a version grounded in what the pacing guide actually
-  // says that week covers — but only for plan-current-week, the primary
-  // "build this week" action. prepare-next-week (a secondary, look-ahead
-  // suggestion) isn't worth a network round-trip: it only ever surfaces when
-  // there's no more specific week in play, so there's nothing to ground it
-  // against with any confidence. Debounced and cached per class+week so
-  // navigating around the same week doesn't refire; falls back to the
-  // generic template (contextualSuggestions unmodified) on any error, cold
-  // cache, or missing pacing guide — this is a visual polish layer, never
-  // something the composer should wait on or break over.
-  const groundableSuggestion = contextualSuggestions.find((s) => s.id === 'plan-current-week') || null
-  const suggestionKey = groundableSuggestion ? `${activeClass?.id || 'none'}:${groundableSuggestion.weekNumber}` : null
-  const debouncedSuggestionKey = useDebouncedValue(suggestionKey, 400)
-  const suggestionCacheRef = useRef(new Map())
-  // {prompt, reason} together — grounding the message without also
-  // grounding its caption left the row reading like two different
-  // suggestions stapled together (a specific headline over a generic "this
-  // is the current unplanned teaching week").
-  const [aiSuggestion, setAiSuggestion] = useState(null)
-
-  useEffect(() => {
-    if (!debouncedSuggestionKey || debouncedSuggestionKey !== suggestionKey || !groundableSuggestion) {
-      setAiSuggestion(null)
-      return undefined
-    }
-    if (suggestionCacheRef.current.has(debouncedSuggestionKey)) {
-      setAiSuggestion(suggestionCacheRef.current.get(debouncedSuggestionKey))
-      return undefined
-    }
-    let cancelled = false
-    api
-      .getSuggestion({
-        class_id: activeClass?.id || null,
-        week_number: groundableSuggestion.weekNumber,
-        week_label: groundableSuggestion.label,
-      })
-      .then((res) => {
-        if (cancelled) return
-        const grounded = res.prompt ? { prompt: res.prompt, reason: res.reason || null } : null
-        suggestionCacheRef.current.set(debouncedSuggestionKey, grounded)
-        setAiSuggestion(grounded)
-      })
-      .catch(() => {
-        if (!cancelled) setAiSuggestion(null)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [debouncedSuggestionKey, suggestionKey, groundableSuggestion, activeClass?.id])
-
-  const enhancedSuggestions = useMemo(() => {
-    if (!aiSuggestion || !groundableSuggestion) return contextualSuggestions
-    return contextualSuggestions.map((s) =>
-      s.id === groundableSuggestion.id
-        ? { ...s, prompt: aiSuggestion.prompt, reason: aiSuggestion.reason || s.reason }
-        : s
-    )
-  }, [contextualSuggestions, aiSuggestion, groundableSuggestion])
-
-  // An open-settings suggestion (add-pacing-guide, add-school-calendar)
-  // isn't a chat message — there's no sentence to type, send, or Tab-
-  // complete for "go upload a file." The composer never sees one; it
-  // lives in the Greeting's own sentence instead, and only there, since
-  // Greeting itself only renders in the empty state (see `isEmpty` below).
+  // Composer Tab-completions are a fixed boilerplate pair now (see
+  // composerGhosts.js). Contextual + LLM week wording no longer feeds the
+  // input overlay. add-pacing-guide / add-school-calendar still live here
+  // because they are not chat messages — Greeting shows them as a settings
+  // hint in the empty state only.
   const emptyStateHint =
-    !messages.length && enhancedSuggestions[0]?.action === 'open-settings' ? enhancedSuggestions[0] : null
-  const composerSuggestions = useMemo(
-    () => enhancedSuggestions.filter((s) => s.action !== 'open-settings'),
-    [enhancedSuggestions]
-  )
+    !messages.length && contextualSuggestions[0]?.action === 'open-settings' ? contextualSuggestions[0] : null
 
   const artifactEl =
     viewKind === 'plan' ? (
@@ -3967,8 +3931,8 @@ export function ChatPage() {
         plan={livePlan}
         subject={activeClass?.subject}
         state={activeClass?.state}
-        quiz={viewingQuiz}
-        quizBuilding={quizBuilding}
+        quiz={betaFeaturesEnabled ? viewingQuiz : null}
+        quizBuilding={betaFeaturesEnabled && quizBuilding}
         doc={viewingDoc}
         grounded={grounded}
         ungrounded={ungrounded}
@@ -4136,6 +4100,7 @@ export function ChatPage() {
           hasPacingGuide={hasPacingGuide}
           calendar={calendar}
           weekOptions={weekOptions}
+          priorWeekOptions={priorWeekOptions}
           conversationWeek={conversationWeek}
           changeWeek={changeWeek}
           busy={busy}
@@ -4343,7 +4308,8 @@ export function ChatPage() {
           onExpand={() => openDocument()}
           onOpenQuiz={openQuiz}
           busy={artifactBusy}
-          quizBuilding={quizBuilding}
+          quizBuilding={betaFeaturesEnabled && quizBuilding}
+          quizzesEnabled={betaFeaturesEnabled}
           updating={revising}
           variant="bar"
           artifactLoadError={artifactLoadError}
@@ -4599,7 +4565,6 @@ export function ChatPage() {
             selectedStandardStatus={selectedStandardStatus}
             onSaveAttachmentAsDocument={activeClass && !hasPacingGuide ? saveAttachmentAsDocument : undefined}
             voiceModeActive={voiceOpen}
-            suggestions={composerSuggestions}
             mode={chatMode}
             onModeChange={changeChatMode}
             voiceGlossary={[activeClass?.name, activeClass?.subject, selectedStandard?.code].filter(Boolean)}
@@ -4796,7 +4761,8 @@ export function ChatPage() {
           onOpenCalendar={openCalendar}
           onOpenDocument={openDoc}
           busy={artifactBusy}
-          quizBuilding={quizBuilding}
+          quizBuilding={betaFeaturesEnabled && quizBuilding}
+          quizzesEnabled={betaFeaturesEnabled}
           updating={revising}
           artifactLoadError={artifactLoadError}
           onRetryArtifact={retryArtifactLoad}

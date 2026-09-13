@@ -22,7 +22,7 @@ test('desktop document spans most of the workspace under the composer and fullsc
   await page.setViewportSize({ width: 1440, height: 900 })
   const errors = []
   page.on('pageerror', (error) => errors.push(error.message))
-  await page.goto(seed)
+  await page.goto(`${seed}&beta=1`)
   await expect(page.locator('body')).not.toContainText('not retrieved')
   await expect(page.locator('.is-composer-overlay')).toBeVisible()
   const panel = page.locator('.is-composer-overlay')
@@ -110,7 +110,7 @@ test('desktop document spans most of the workspace under the composer and fullsc
 test('system appearance updates without visiting settings', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   // Default account appearance is charcoal; this spec is the system-follow path.
-  await page.addInitScript(() => localStorage.setItem('aplang.theme', 'system'))
+  await page.addInitScript(() => localStorage.setItem('flexed.theme', 'system'))
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
   await page.goto(seed)
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
@@ -235,6 +235,8 @@ test('chat header shows the week and opens a list instead of a nested dropdown',
   await expect(dialog.getByText('Course')).toBeVisible()
   await expect(dialog.getByRole('listbox', { name: /weeks/i })).toBeVisible()
   await expect(dialog.getByRole('option', { name: /Week 03/i })).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByText('Earlier weeks')).toBeVisible()
+  await expect(dialog.getByRole('option', { name: /Week 02/i })).toBeVisible()
   await expect(dialog.getByRole('combobox')).toHaveCount(0)
   await expect(dialog.getByRole('option', { name: /Week 03/i })).toBeInViewport()
 
@@ -249,5 +251,30 @@ test('chat header shows the week and opens a list instead of a nested dropdown',
   const weekBox = await dialog.getByRole('listbox', { name: /weeks/i }).boundingBox()
   expect(courseBox.x).toBeLessThan(weekBox.x)
   expect(Math.abs(courseBox.y - weekBox.y)).toBeLessThan(24)
+})
+
+test('new chat targets the upcoming week and earlier weeks reopen existing chats', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/preview.html?fresh=0&at=/c/c1')
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(page.locator('.workspace-chat')).toContainText(/Week 04/)
+
+  const trigger = page.getByRole('button', { name: /Change course or week/i })
+  await expect(trigger).toContainText(/Week 04/i)
+  await trigger.click()
+  const dialog = page.getByRole('dialog', { name: 'Class and week' })
+  await expect(dialog.getByRole('option', { name: /Week 04/i })).toHaveAttribute('aria-selected', 'true')
+  await expect(dialog.getByRole('option', { name: /Week 02/i })).toBeVisible()
+  await dialog.getByRole('option', { name: /Week 02/i }).click()
+  await expect(page).toHaveURL(/\/c\/c1\/chat\/seedWeek2/)
+  await expect(page.getByRole('button', { name: /Change course or week/i })).toContainText(/Week 02/i)
+})
+
+test('library opens a previous week chat without starting a new one', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.goto('/preview.html?fresh=0&at=/c/c1/plans')
+  await expect(page.getByRole('heading', { name: /Library \// })).toBeVisible()
+  await page.getByRole('link', { name: /Week 02/i }).first().click()
+  await expect(page).toHaveURL(/\/c\/c1\/chat\/seedWeek2/)
 })
 

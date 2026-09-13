@@ -73,7 +73,7 @@ async function toError(res) {
   // screen. Excludes /api/auth/* itself: a wrong password on the login form is
   // not a session expiring, and should stay on the form as a normal error.
   if (res.status === 401 && !res.url.includes('/api/auth/')) {
-    window.dispatchEvent(new CustomEvent('aplang:unauthorized'))
+    window.dispatchEvent(new CustomEvent('flexed:unauthorized'))
   }
   return apiErrorFromBody(body, res.status)
 }
@@ -543,10 +543,8 @@ export const api = {
      just keeps whatever it already had. */
   getDecisions: (messages) => request('/api/decisions', { method: 'POST', body: { messages } }),
 
-  /* The composer's empty-state Tab suggestion, upgraded from the generic
-     rule-based template with what the pacing guide actually says the week
-     covers. Never worth a toast on failure; the caller just keeps the
-     generic suggestion it already had. */
+  /* Unused by the chat composer (ghosts are a fixed boilerplate pair now).
+     Kept for the existing /api/suggestion endpoint. */
   getSuggestion: (payload) => request('/api/suggestion', { method: 'POST', body: payload }),
 
   reviseDay: (payload) => request('/api/revise_day', { method: 'POST', body: payload, timeoutMs: 60000 }),

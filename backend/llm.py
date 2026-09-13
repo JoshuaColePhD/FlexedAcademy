@@ -35,10 +35,12 @@ from .chat_policy import (
     typed_chat_tools,
     validate_plan_action,
     validate_quiz_action,
+    without_quiz_tools,
 )
 from .config import settings
 from .embeddings import embed_query
 from .errors import AppError
+from .features import beta_features_for
 from .prompts import (
     day_field_system_prompt,
     day_system_prompt,
@@ -2170,7 +2172,7 @@ def sanitize_clarifying_questions(questions: list[dict]) -> list[dict]:
     }]
 
 
-def realtime_tool_defs() -> list[dict]:
+def realtime_tool_defs(*, quizzes_enabled: bool = False) -> list[dict]:
     """CHAT_TOOLS, translated to the Realtime API's flat tool shape.
 
     Chat Completions nests a tool's name/description/parameters under a
@@ -2179,11 +2181,20 @@ def realtime_tool_defs() -> list[dict]:
     each — only the JSON shape a session.update/client_secrets call expects
     differs, so this is a reshape, not a re-description.
     """
+    tools = CHAT_TOOLS if quizzes_enabled else without_quiz_tools(CHAT_TOOLS)
     return [
         {"type": "function", **t["function"]}
-        for t in CHAT_TOOLS
+        for t in tools
         if t.get("type") == "function"
     ]
+
+
+def _chat_tools_for(user_id: str, *, voice: bool, quizzes_on: bool | None = None) -> list[dict]:
+    if quizzes_on is None:
+        quizzes_on = beta_features_for(user_id)
+    if voice:
+        return CHAT_TOOLS if quizzes_on else without_quiz_tools(CHAT_TOOLS)
+    return typed_chat_tools(CHAT_TOOLS, quizzes_enabled=quizzes_on)
 
 
 def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> Iterator[dict]:
@@ -2199,6 +2210,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
     """
 
     started_at = time.perf_counter()
+    quizzes_on = beta_features_for(user_id)
     stream = _OPENAI_BREAKER.call(
         lambda: client().chat.completions.create(
             model=settings.openai_model,
@@ -2217,7 +2229,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
             max_completion_tokens=700 if voice else output_length_tokens_for(user_id),
             messages=messages,
             stream=True,
-            tools=CHAT_TOOLS if voice else typed_chat_tools(CHAT_TOOLS),
+            tools=_chat_tools_for(user_id, voice=voice, quizzes_on=quizzes_on),
             parallel_tool_calls=False,
             # See stream_plan's identical option — without it this call, which
             # runs on every non-generating chat turn too, went unmetered.
@@ -2276,6 +2288,8 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
                 except ValueError:
                     args = None
                 action = validate_plan_action(args)
+                if not quizzes_on:
+                    action["also_quiz"] = False
                 yielded_anything = True
                 tool_completed = True
                 yield {"tool_call": "generate_lesson_plan", **action}
@@ -2313,6 +2327,8 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
             # for finish_reason rather than firing on first sighting like
             # generate_lesson_plan does.
             if choice.finish_reason == "tool_calls" and tool_name == "generate_quiz":
+                if not quizzes_on:
+                    break
                 try:
                     args = json.loads(tool_args)
                 except ValueError:

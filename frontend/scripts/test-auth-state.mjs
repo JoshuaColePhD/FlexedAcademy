@@ -59,7 +59,7 @@ function mountAuth(initialMe) {
 // ── the regression, reproduced as it actually happened ────────────────────
 // A logged-out visitor loads the site. qk.me is still in flight (undefined),
 // and an account-scoped request 401s first — api.js dispatches
-// aplang:unauthorized, which runs applyIdentity(null). The observer must come
+// flexed:unauthorized, which runs applyIdentity(null). The observer must come
 // out of that reporting null, so Gate can send them to /login.
 {
   const auth = mountAuth(undefined)

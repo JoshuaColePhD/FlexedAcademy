@@ -19,6 +19,7 @@ export function ChatHeaderSheet({
   hasPacingGuide,
   calendar,
   weekOptions,
+  priorWeekOptions = [],
   conversationWeek,
   changeWeek,
   busy,
@@ -109,6 +110,7 @@ export function ChatHeaderSheet({
                 <p id="chat-header-week-label" className="chat-header-selection-label">Week</p>
                 <WeekPicker
                   options={weekOptions}
+                  priorOptions={priorWeekOptions}
                   value={conversationWeek}
                   onChange={(week) => {
                     changeWeek(week)

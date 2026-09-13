@@ -22,6 +22,7 @@ node_modules/
 # useful only locally while diagnosing a failed staging run and must not enter
 # version control.
 frontend/test-results/
+/test-results/
 frontend/playwright-report/
 
 # Wrangler's own local cache (Cloudflare account id + email for whoever ran

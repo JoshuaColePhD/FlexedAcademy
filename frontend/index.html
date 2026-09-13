@@ -86,7 +86,7 @@
     <!-- Use charcoal before first paint, honoring any saved preference. -->
     <script>
       try {
-        var saved = localStorage.getItem('aplang.theme') || 'dark'
+        var saved = localStorage.getItem('flexed.theme') || 'dark'
         if (!['light', 'dark', 'system'].includes(saved)) saved = 'dark'
         var dark =
           saved === 'dark' ||
@@ -105,7 +105,7 @@
       // (useDesignSkin.js) — set before first paint so switching skins and
       // reloading doesn't flash the OTHER one for a frame.
       try {
-        var savedSkin = localStorage.getItem('aplang.skin')
+        var savedSkin = localStorage.getItem('flexed.skin')
         document.documentElement.setAttribute('data-skin', savedSkin === 'skeu' ? 'skeu' : 'neo')
       } catch (e) {
         document.documentElement.setAttribute('data-skin', 'neo')

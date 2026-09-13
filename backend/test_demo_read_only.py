@@ -9,7 +9,7 @@ from backend import server
 def _run_request(middleware, method: str, path: str, *, cookie: bool = True):
     messages = []
     downstream_called = False
-    headers = [(b"cookie", b"aplang_session=demo-token")] if cookie else []
+    headers = [(b"cookie", b"flexed_session=demo-token")] if cookie else []
     scope = {
         "type": "http",
         "method": method,

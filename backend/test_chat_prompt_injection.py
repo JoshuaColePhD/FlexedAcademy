@@ -34,6 +34,7 @@ def _stub_common(monkeypatch, *, last_user: str = "") -> None:
     monkeypatch.setattr(generate, "weekly_template_context", lambda *a, **kw: "Weekly plan uses Mon-Fri.")
     monkeypatch.setattr(generate.llm, "custom_instructions_for", lambda *a, **kw: "")
     monkeypatch.setattr(generate.llm, "coaching_context_for", lambda *a, **kw: "")
+    monkeypatch.setattr(generate, "beta_features_for", lambda uid: False)
 
 
 def test_attached_document_content_is_framed_as_untrusted(monkeypatch):

@@ -36,7 +36,7 @@ export function deriveAuthStatus(me) {
  *  from under its own live observer leaves the observer reporting
  *  `data: undefined`, which deriveAuthStatus reads as 'loading', and nothing
  *  ever re-attaches it. That is the blank-boot-screen outage above: an
- *  ordinary logged-out visit 401s, api.js dispatches aplang:unauthorized, this
+ *  ordinary logged-out visit 401s, api.js dispatches flexed:unauthorized, this
  *  runs, and the app hangs.
  *
  *  Removing the OTHER queries still matters and is not optional: the cache
