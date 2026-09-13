@@ -370,11 +370,24 @@ class Settings(BaseSettings):
     # concurrent reads measured 1.36x faster than nine sequential ones. A pool is
     # what lets two teachers generate at once.
     #
-    # Default matches render.yaml's Render budget (2). A missing env var used
-    # to open 8 connections per process; raise DB_POOL_SIZE only after a load
-    # test shows both RAM and Supabase pooler headroom. The work is
-    # I/O-bound on OpenAI rather than on Postgres.
-    db_pool_size: int = 2
+    # Default matches render.yaml's Render budget (2 at first, now 3 — see
+    # below). A missing env var used to open 8 connections per process; the
+    # work is I/O-bound on OpenAI rather than on Postgres.
+    #
+    # Raised 2 -> 3 on 2026-09-10 after production logs showed repeating
+    # "document build worker: unexpected error" bursts (every ~2s, the
+    # worker's own poll interval) alongside unrelated request failures in the
+    # same windows. RETRIEVAL_WORKERS=2 already claims both connections
+    # during any active retrieval; the document-build worker, the builder
+    # codegen worker, and decision-extraction all compete for the SAME two
+    # connections with no dedicated budget of their own, so any overlap
+    # produces exactly this shape of transient failure. Unlike
+    # RETRIEVAL_WORKERS, this is not a memory lever — an idle Postgres
+    # connection costs kilobytes, not the 50-135MB a retrieval buffer holds —
+    # so one extra connection is a low-risk way to give background work its
+    # own headroom without touching the memory-bounded knobs below. Confirm
+    # Supabase's pooler connection ceiling has room before raising further.
+    db_pool_size: int = 3
 
     # How many retrieval queries may be IN FLIGHT at once.
     #
@@ -389,10 +402,26 @@ class Settings(BaseSettings):
     # because the workers were contending for a pool of the same size and for
     # Supabase's pooler behind it. Concurrency past the pool buys nothing.
     # Two workers use the two available database connections without creating
-    # an unbounded memory spike. This was the measured fastest stable setting
-    # for the hybrid standards retrieval; more workers only contend for the
-    # same pool and grow each query's transient buffers.
-    retrieval_workers: int = 2
+    # an unbounded memory spike. render.yaml pins RETRIEVAL_WORKERS=2 in
+    # production to this measured value.
+    #
+    # The bare default below is intentionally the MORE conservative 1, not
+    # render.yaml's tuned 2: this is the value the app falls back to if the
+    # env var is ever missing (a blank dashboard field, a blueprint sync
+    # gap), and a missing-config fallback should fail toward the memory-safe
+    # extreme, not toward the exact concurrency that caused the 2026-08-07
+    # OOM. test_memory_defaults.py pins this invariant; it had drifted to 2
+    # here (while still correctly documented as 1 in SCALING_ROADMAP.md)
+    # with nothing catching it, because this test was not yet wired into CI —
+    # fixed alongside this comment on 2026-09-10.
+    #
+    # Not raised further on 2026-09-10 despite live reports of slowness and
+    # crashes: production memory metrics that day showed the running
+    # instance holding ~1.3GB of its 2GB limit (vs. a normal ~120MB
+    # baseline) for hours after a retrieval burst — materially less
+    # headroom than the 2026-08-07 measurement had. If concurrency needs to
+    # go up, that is a bigger Render plan first, this number second.
+    retrieval_workers: int = 1
 
     # Short-term backpressure for LLM work. Requests that arrive in a burst are
     # queued instead of being mistaken for a subscription/usage failure. Default
@@ -459,10 +488,42 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     sentry_environment: str = "development"
 
-    @field_validator("allowed_origins")
+    # Every one of these is pasted by hand into the Render dashboard from
+    # another dashboard (Stripe, Resend, Supabase, Turnstile, Google Cloud,
+    # Sentry...). A copy that carries a trailing newline or space is a normal
+    # terminal/browser paste artifact, and no legitimate value here is
+    # whitespace-sensitive — but the failure mode is brutal: STRIPE_SECRET_KEY
+    # shipped with a trailing "\n" once and every Stripe call failed for hours
+    # with an opaque "Invalid leading whitespace... in header value" error
+    # instead of a clear "bad credential" one. Stripping at load time turns
+    # that whole class of incident into a no-op. OWNER_EMAIL is included
+    # because it gates admin access by exact string match (see above) — a
+    # stray trailing space there would silently lock out the one admin
+    # account instead of erroring.
+    @field_validator(
+        "allowed_origins",
+        "owner_email",
+        "openai_api_key",
+        "common_standards_api_key",
+        "resend_api_key",
+        "support_inbound_webhook_secret",
+        "turnstile_site_key",
+        "turnstile_secret",
+        "stripe_secret_key",
+        "stripe_price_id",
+        "stripe_webhook_secret",
+        "google_client_secret",
+        "google_client_id",
+        "database_url",
+        "supabase_url",
+        "supabase_service_role_key",
+        "mcp_access_token",
+        "sentry_dsn",
+        "session_secret",
+    )
     @classmethod
-    def _strip(cls, v: str) -> str:
-        return v.strip()
+    def _strip(cls, v: str | None) -> str | None:
+        return v.strip() if isinstance(v, str) else v
 
     @property
     def retrieval_floors(self) -> dict[str, float]:

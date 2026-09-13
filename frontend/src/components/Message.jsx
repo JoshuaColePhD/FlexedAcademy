@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowUpRight, Check, Copy, Pencil, RotateCcw } from 'lucide-react'
+import { ArrowUpRight, Check, Copy, Flag, Pencil, RotateCcw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { scanGrounding } from '../lib/grounding'
 import { dayTitle, orderedDays, DAYS } from '../lib/planShape'
@@ -79,8 +79,10 @@ function MessageImpl({
   onApplyAdvice,
   onOpenDay,
   onUndo,
+  onFlag,
 }) {
   const { copied, copy } = useCopy()
+  const [flagged, setFlagged] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
   const ref = useRef(null)
@@ -472,6 +474,30 @@ function MessageImpl({
               aria-label="Edit and send again"
             >
               <Pencil size={14} aria-hidden="true" />
+            </button>
+          ) : null}
+          {/* Every settled assistant reply gets this, not just the last one —
+              a teacher rereading the transcript later should be able to flag
+              something that looked fine in the moment and doesn't now.
+              Deliberately no confirmation dialog: the whole point of a
+              one-tap escalation is that it costs one tap. */}
+          {!isUser && onFlag ? (
+            <button
+              type="button"
+              className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink disabled:cursor-default"
+              disabled={flagged}
+              onClick={() => {
+                setFlagged(true)
+                onFlag(message)
+              }}
+              aria-label={flagged ? 'Flagged for review' : 'Flag this response as wrong or unhelpful'}
+              title={flagged ? 'Flagged for review' : 'Flag this response'}
+            >
+              {flagged ? (
+                <Check key="flagged" size={14} className="fa-pop" aria-hidden="true" />
+              ) : (
+                <Flag size={14} aria-hidden="true" />
+              )}
             </button>
           ) : null}
           {!isUser && isLast && onUndo ? (

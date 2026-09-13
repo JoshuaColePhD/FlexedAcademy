@@ -78,6 +78,7 @@ def health(user_id: str | None = Depends(get_current_user_optional)):
         # malformed DATABASE_URL, and each one cost a round trip through the
         # logs to identify. 110 is correct; 160 means the host is in there twice.
         "database_url_len": len(settings.database_url or ""),
+        "openai_circuit": llm.openai_breaker_status(),
     }
     try:
         out["builder_found"] = True
@@ -406,6 +407,47 @@ def send_support_message(request: Request, body: SupportMessageBody, user_id: st
     """Compatibility endpoint for the original one-shot support composer."""
     thread = _create_support_thread(user_id, body.subject, body.message)
     return {"ok": True, "thread": thread, "email_sent": thread.get("email_sent", False)}
+
+
+class FlagChatMessageBody(BaseModel):
+    chat_id: str | None = Field(default=None, max_length=64)
+    message_content: str = Field(min_length=1, max_length=8000)
+    context: str = Field(default="", max_length=4000)
+    note: str = Field(default="", max_length=1000)
+
+
+FLAGGED_CHAT_SUBJECT = "Flagged AI response"
+
+
+def _flag_message_body(body: FlagChatMessageBody) -> str:
+    """Pure string assembly, split out of the route so scripts/export_flagged_chat_reports.py
+    can be tested against the exact format it has to parse back apart, without
+    going through the rate-limited route function to do it."""
+    parts = ["A teacher flagged this AI response for review."]
+    if body.chat_id:
+        parts.append(f"Chat: {body.chat_id}")
+    if body.context.strip():
+        parts.append(f"Teacher's request:\n{body.context.strip()}")
+    parts.append(f"Flagged response:\n{body.message_content.strip()}")
+    if body.note.strip():
+        parts.append(f"Teacher's note:\n{body.note.strip()}")
+    return "\n\n".join(parts)
+
+
+@router.post("/chat/flag")
+@limiter.limit("20/hour")
+def flag_chat_message(request: Request, body: FlagChatMessageBody, user_id: str = Depends(get_current_user)):
+    """One-click escalation for a reply a teacher doesn't trust.
+
+    Reuses the existing support-thread pipeline rather than a parallel
+    review queue: a flagged reply lands in the same admin inbox
+    (`/api/admin/support/threads`) any other teacher message would, with a
+    distinguishing subject and the flagged content + the request that
+    produced it assembled automatically so the teacher never has to
+    retype anything to report a bad answer.
+    """
+    thread = _create_support_thread(user_id, FLAGGED_CHAT_SUBJECT, _flag_message_body(body))
+    return {"ok": True, "thread_id": thread["id"]}
 
 
 @router.post("/support/inbound")

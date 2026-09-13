@@ -29,6 +29,7 @@ from ..entitlement import require_entitlement
 from ..errors import AppError
 from ..features import beta_features_for, require_quiz_beta
 from ..generation_queue import generation_queue
+from ..plan_locks import plan_write_lock
 from ..template_context import day_names_for_school, has_template_field
 from .drive import get_valid_access_token
 
@@ -450,7 +451,9 @@ def patch_plan(plan_id: str, body: PatchPlan, bg_tasks: BackgroundTasks, user_id
 
     if not fields:
         return row
-    return db.update_plan(user_id, plan_id, **fields)
+    with plan_write_lock(plan_id):
+        service._reload_unchanged_or_conflict(user_id, plan_id, row["plan_json"])
+        return db.update_plan(user_id, plan_id, **fields)
 
 
 @router.post("/{plan_id}/rebuild")
