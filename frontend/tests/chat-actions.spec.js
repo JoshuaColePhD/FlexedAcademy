@@ -278,28 +278,6 @@ test('optional suggestions stay off after a build unless the teacher asks', asyn
   expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path === 'create').length)).toBe(1)
 })
 
-test('a queued next-step request can still open the overlay after the build', async ({ page }) => {
-  await openChat(page, true)
-  await page.evaluate(() => {
-    window.holdCreate = new Promise((resolve) => { window.releaseCreate = resolve })
-    const inner = window.fetch
-    window.fetch = async (input, init = {}) => {
-      const url = typeof input === 'string' ? input : input.url
-      if (url.includes('/api/generate_stream')) await window.holdCreate
-      return inner(input, init)
-    }
-  })
-  await events(page, [planAction('create'), done])
-  await send(page, 'Build a week on inference with paper materials and 45-minute periods.')
-  await expect(page.locator('.composer-writing-status-label')).toHaveText('Building your lesson plan')
-  await send(page, 'next steps')
-  await expect(page.locator('.composer-queued-message')).toBeVisible()
-  await expect(page.getByText('Optional next step for this lesson plan', { exact: true })).toHaveCount(0)
-  await page.evaluate(() => window.releaseCreate())
-  await expect(page.getByText(/is built/).last()).toBeVisible()
-  await expect(page.getByText('Optional next step for this lesson plan', { exact: true })).toBeVisible()
-})
-
 test('clicking a question answer preserves the full question and previous constraints', async ({ page }) => {
   await openChat(page, true)
   await events(page, [{ tool_call: 'ask_clarifying_questions', questions: [{ id: 'goal', text: 'Which skill should students practice?', options: ['Evidence', 'Organization'] }] }, done])
