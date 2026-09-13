@@ -23,7 +23,7 @@ def test_document_jobs_have_a_scheduled_retry_column():
 
 
 def test_document_jobs_claim_only_when_retry_is_due():
-    assert "COALESCE(available_at, updated_at) <= ?" in DB_SOURCE
+    assert "COALESCE(available_at, updated_at) <= %s" in DB_SOURCE
 
 
 def test_document_jobs_bound_automatic_retries():
