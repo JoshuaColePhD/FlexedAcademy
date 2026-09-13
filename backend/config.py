@@ -43,6 +43,13 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-luna"
+    # expand_query()'s own docstring calls for "a cheap model" but the code was
+    # passing openai_model — the full generation model — making query expansion
+    # a second full-price, full-latency call on the critical path before
+    # retrieval even starts. This is that cheap tier, the same -mini pattern
+    # already used for tts_model below. Verify this model id is enabled on the
+    # OpenAI account before deploying; costs.py has its estimated pricing.
+    openai_fast_model: str = "gpt-5.6-luna-mini"
     # Operating guardrails. These thresholds are surfaced in the admin usage
     # report; configure matching notifications in the OpenAI billing dashboard.
     openai_monthly_alert_usd: float = Field(default=50.0, ge=0)
@@ -395,11 +402,16 @@ class Settings(BaseSettings):
     retrieval_workers: int = 2
 
     # Short-term backpressure for LLM work. Requests that arrive in a burst are
-    # queued instead of being mistaken for a subscription/usage failure. Default
-    # 1 so a missing env var cannot run two generations (and two retrieval
-    # spikes) at once on a small Render box. Raise only after a load test
-    # confirms RAM and database headroom.
-    generation_max_concurrent: int = 1
+    # queued instead of being mistaken for a subscription/usage failure.
+    # Raised from 1 to 2 (2026-09) after confirming the retrieval semaphore
+    # (retrieval.py:_INFLIGHT) already caps total concurrent standards queries
+    # process-wide at min(retrieval_workers, db_pool_size), independent of how
+    # many generations are in flight — so this no longer doubles DB/retrieval
+    # pressure the way it would have before that semaphore existed. Still
+    # doubles concurrent OpenAI streaming + DOCX memory, so watch RAM and DB
+    # pool wait after deploy (see docs/SCALING_ROADMAP.md) before raising
+    # further.
+    generation_max_concurrent: int = 2
     generation_max_per_user: int = 1
     generation_max_queue: int = 40
     generation_max_queue_per_user: int = 6

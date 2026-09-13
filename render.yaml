@@ -95,8 +95,16 @@ services:
       # Keep model work bounded on the 2GB web instance. Requests beyond this
       # run in the per-user/global queue instead of multiplying retrieval and
       # streaming memory until Render restarts the service.
+      #
+      # Raised 1 -> 2 (2026-09): retrieval's own _INFLIGHT semaphore already
+      # caps total concurrent standards queries process-wide, so this mainly
+      # trades RAM headroom (two concurrent OpenAI streams + DOCX builds) for
+      # less queue wait. Validated with
+      # `venv/bin/python scripts/load_test_generation_queue.py --max-concurrent 2`
+      # locally; watch Render memory and DB pool wait after this deploys and
+      # roll back to "1" if either climbs.
       - key: GENERATION_MAX_CONCURRENT
-        value: "1"
+        value: "2"
       - key: GENERATION_MAX_PER_USER
         value: "1"
       - key: GENERATION_MAX_QUEUE
