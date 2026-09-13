@@ -60,6 +60,21 @@ log = logging.getLogger("flexedacademy")
 _codegen_worker_task: asyncio.Task | None = None
 _CODEGEN_POLL_INTERVAL_S = 15
 _DOCUMENT_BUILD_POLL_INTERVAL_S = 2
+# A transient DB blip (a Supabase pooler hiccup, a momentary connection-pool
+# exhaustion) used to retry every fixed poll interval forever — production
+# logs on 2026-09-06 and 2026-09-09 both show ~10 "unexpected error" log
+# lines in under 20 seconds, i.e. the loop hammering a dependency that
+# hadn't recovered yet instead of backing off. Capped exponential backoff
+# (poll interval, doubling, capped) turns that into a handful of attempts
+# tapering off instead of a burst, and resets to the normal cadence the
+# instant a poll succeeds — no restart or manual intervention needed.
+_WORKER_MAX_BACKOFF_S = 60
+
+
+def _worker_poll_delay(base_interval_s: float, consecutive_errors: int) -> float:
+    if not consecutive_errors:
+        return base_interval_s
+    return min(_WORKER_MAX_BACKOFF_S, base_interval_s * (2 ** consecutive_errors))
 
 
 async def _builder_codegen_worker_loop() -> None:
@@ -82,9 +97,11 @@ async def _builder_codegen_worker_loop() -> None:
     except Exception:
         log.exception("builder codegen: startup staleness sweep failed")
 
+    consecutive_errors = 0
     while True:
         try:
             job = await loop.run_in_executor(None, db.claim_next_builder_codegen_job)
+            consecutive_errors = 0
             if job:
                 log.info("builder codegen: claimed job %s (school %s)", job["id"], job["school_id"])
                 await loop.run_in_executor(None, run_codegen_job, job["id"])
@@ -92,8 +109,9 @@ async def _builder_codegen_worker_loop() -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            log.exception("builder codegen worker loop: unexpected error")
-        await asyncio.sleep(_CODEGEN_POLL_INTERVAL_S)
+            consecutive_errors += 1
+            log.exception("builder codegen worker loop: unexpected error (consecutive=%d)", consecutive_errors)
+        await asyncio.sleep(_worker_poll_delay(_CODEGEN_POLL_INTERVAL_S, consecutive_errors))
 
 
 async def _document_build_worker_loop() -> None:
@@ -111,9 +129,11 @@ async def _document_build_worker_loop() -> None:
     except Exception:
         log.exception("document build worker: startup database sweep failed; will retry")
     log.info("document build worker loop started")
+    consecutive_errors = 0
     while True:
         try:
             job = await loop.run_in_executor(None, db.claim_next_document_build)
+            consecutive_errors = 0
             if job:
                 log.info("document build worker: claimed plan_id=%s", job["plan_id"])
                 await loop.run_in_executor(None, service.run_document_build_job, job)
@@ -121,8 +141,9 @@ async def _document_build_worker_loop() -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            log.exception("document build worker: unexpected error")
-        await asyncio.sleep(_DOCUMENT_BUILD_POLL_INTERVAL_S)
+            consecutive_errors += 1
+            log.exception("document build worker: unexpected error (consecutive=%d)", consecutive_errors)
+        await asyncio.sleep(_worker_poll_delay(_DOCUMENT_BUILD_POLL_INTERVAL_S, consecutive_errors))
 
 if settings.sentry_dsn:
     import sentry_sdk

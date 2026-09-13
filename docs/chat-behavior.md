@@ -44,3 +44,33 @@ Before publishing, use an approved live-model evaluation to review these convers
 Judge goal alignment, usable scaffolding, realistic pacing, assessment quality, and grounded claims individually; reject any wrong-target mutation, fabricated citation, or false completion. Paid model evaluation and deployment were not performed during local implementation.
 
 Implementation verification: the focused backend suite passed 72 tests (4 existing skips), all 9 chat browser scenarios passed, and the 9 stream/action unit checks, voice queue check, work-activity tests, frontend lint/design-token checks, and production build passed. Desktop and phone previews were inspected against an unchanged Git baseline with no runtime errors. Three existing workspace-preview tests fail on both versions: an obsolete plan-button selector, an outdated rail color expectation, and an expectation that the artifacts drawer opens by default. Those unrelated visual expectations were left unchanged.
+
+## Closing the loop: a flagged reply becomes a regression test
+
+Any settled assistant reply can be flagged from the transcript (the Flag icon
+next to Copy). `POST /api/chat/flag` lands it in the ordinary support inbox
+with subject "Flagged AI response" — deliberately no new admin surface, since
+the person reading it is the same person reading every other teacher message.
+
+To review the population of flagged replies rather than one thread at a time:
+
+```bash
+./venv/bin/python scripts/export_flagged_chat_reports.py
+```
+
+This writes every flagged thread's context, the flagged response, and any
+admin reply to `flagged_chat_reports.json`, and prints the ones with no admin
+reply yet. It needs the production `DATABASE_URL`, same as any other script
+in `scripts/` that reads live data — this does not touch the eval corpus or
+require an API key.
+
+When a flagged reply turns out to be a genuine bug (not a one-off model
+hiccup or a misunderstanding worth a support reply instead), the fix follows
+this repo's existing convention: add the fixed case as a new test alongside
+the code it exercises — `backend/test_chat_*.py` for a routing/policy bug
+like the ones this file documents, or a new `eval/` case for a retrieval or
+grounding miss — the same way every other bug fix in this codebase ships
+with the test that would have caught it. There is no separate "eval
+promotion" pipeline to learn; the flagged-reports export just makes the
+population of real failures visible enough to triage instead of getting
+buried in a support inbox alongside billing questions.

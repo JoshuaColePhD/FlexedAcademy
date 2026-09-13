@@ -21,7 +21,13 @@ import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, wait
 
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 
 from . import costs, curriculum, db
 from .chat_policy import (
@@ -40,6 +46,7 @@ from .prompts import (
     day_system_prompt,
     week_system_prompt,
 )
+from .resilience import CircuitBreaker
 from .retrieval import RetrievalResult
 from .schema import (
     BUILDER_LAYOUT_JSON_SCHEMA,
@@ -99,6 +106,39 @@ PATCH_COMPLETION_CEILING = 2_500
 # degrades to "no map context" instead of stalling the first token.
 _MAP_CONTEXT_TIMEOUT_S = 4.0
 _context_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="map-context")
+
+# generate_plan/stream_plan's setup phase runs several independent DB lookups
+# (the class row, the school's day names, the account's output-length
+# preference) before the model call can start. Sequentially these are pure
+# added latency on the critical path of every generation; a dedicated small
+# pool lets them run concurrently instead. Kept separate from _context_pool
+# because that one is reserved for map_context_for's own embedding/retrieval
+# fan-out -- these tasks always resolve before map_context_for is even
+# called, so sharing would add no benefit, only a reason to reason about both
+# together.
+_setup_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix="plan-setup")
+
+# Shared across every conversational/generation call (stream_plan,
+# stream_plan_revision, stream_chat) rather than one breaker per call site:
+# if OpenAI itself is down or rate-limiting hard, that is one fact about the
+# dependency, not a separate fact per feature. Connection/timeout/5xx/429
+# trip it; a bad request or an auth error does not — those are a config bug
+# to surface immediately and repeatedly, not an outage to wait out.
+_OPENAI_BREAKER = CircuitBreaker("openai_chat", failure_threshold=4, reset_after_s=30.0)
+_OPENAI_TRIPS_ON = (APIConnectionError, APITimeoutError, RateLimitError, InternalServerError)
+
+
+def openai_breaker_status() -> dict:
+    """For /api/health — a live, no-Sentry-required answer to "is the AI
+    dependency degraded right now", visible to any signed-in teacher the
+    same way the rest of that endpoint's operational fields already are."""
+    status = _OPENAI_BREAKER.status()
+    return {
+        "state": status.state,
+        "consecutive_failures": status.consecutive_failures,
+        "seconds_since_opened": status.seconds_since_opened,
+        "last_error": status.last_error,
+    }
 
 
 @functools.lru_cache(maxsize=1)
@@ -374,14 +414,19 @@ def plan_completion_tokens_for(user_id: str) -> int:
     return PLAN_COMPLETION_CEILING
 
 
-def class_custom_instructions_for(user_id: str, class_id: str | None) -> str | None:
+def class_custom_instructions_for(user_id: str, class_id: str | None, cls: dict | None = None) -> str | None:
     """The per-class layer on top of custom_instructions_for — one column on
     `classes` (migration 44), additive to the account-wide instructions
     rather than a replacement. None when there's no class in play (a
-    class-less chat, a global curriculum map) rather than an error."""
+    class-less chat, a global curriculum map) rather than an error.
+
+    Pass `cls` when the caller already fetched the class row for this same
+    class_id (subject/grade, period_minutes) -- skips a redundant db.get_class
+    round trip. Left unfetched, it's looked up here same as always."""
     if not class_id:
         return None
-    cls = db.get_class(user_id, class_id)
+    if cls is None:
+        cls = db.get_class(user_id, class_id)
     return cls.get("custom_instructions") if cls else None
 
 
@@ -445,26 +490,31 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
     return msg.content
 
 
-def _prompt_subject_grade(user_id: str, class_id: str | None) -> tuple[str, str]:
+def _prompt_subject_grade(user_id: str, class_id: str | None, cls: dict | None = None) -> tuple[str, str]:
     """Resolve the subject/grade for the prompt from the active class.
 
     Retrieval already scopes itself from the selected class in service.prepare,
     so the generation prompt must use that same source. Reading the most
     recently updated settings row here could describe one class while the
     retrieved standards belong to another.
+
+    Pass `cls` when the caller already fetched the class row for this same
+    class_id -- skips a redundant db.get_class round trip.
     """
     if class_id:
-        cls = db.get_class(user_id, class_id)
+        if cls is None:
+            cls = db.get_class(user_id, class_id)
         if cls:
             return str(cls.get("subject") or "").strip() or "this class", str(cls.get("grade") or "11")
     s = db.get_settings_row(user_id)
     return str(s.get("subject") or "").strip() or "this class", str(s.get("grade") or "11")
 
 
-def _class_period_minutes(user_id: str, class_id: str | None) -> int | None:
+def _class_period_minutes(user_id: str, class_id: str | None, cls: dict | None = None) -> int | None:
     if not class_id:
         return None
-    cls = db.get_class(user_id, class_id)
+    if cls is None:
+        cls = db.get_class(user_id, class_id)
     value = (cls or {}).get("period_minutes")
     return int(value) if value is not None else None
 
@@ -477,11 +527,19 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
     own class's school (db.class_school, migration 25) instead of always the
     account default — a class at a different school than the account default
     would otherwise get the wrong one named in its own prompt."""
-    subject, grade = _prompt_subject_grade(user_id, class_id)
-    period_minutes = _class_period_minutes(user_id, class_id)
-    template_days = day_names_for_school(school_id, user_id=user_id)
+    # class row, day names, and output-length preference are three independent
+    # DB round trips -- run them concurrently instead of paying their latency
+    # one after another. map_context_for needs `subject`, which needs the
+    # class row, so it stays sequential after the class fetch resolves.
+    cls_future = _setup_pool.submit(db.get_class, user_id, class_id) if class_id else None
+    days_future = _setup_pool.submit(day_names_for_school, school_id, user_id=user_id)
+    output_length_future = _setup_pool.submit(output_length_for, user_id)
+    cls = cls_future.result() if cls_future else None
+    subject, grade = _prompt_subject_grade(user_id, class_id, cls)
+    period_minutes = _class_period_minutes(user_id, class_id, cls)
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
-    output_length = output_length_for(user_id)
+    template_days = days_future.result()
+    output_length = output_length_future.result()
     content = _cached_completion(
         user_id,
         "generate_plan",
@@ -498,7 +556,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
                     grade=grade,
                     map_context=map_context,
                     custom_instructions=custom_instructions_for(user_id),
-                    class_custom_instructions=class_custom_instructions_for(user_id, class_id),
+                    class_custom_instructions=class_custom_instructions_for(user_id, class_id, cls),
                     school_id=school_id,
                     output_length=output_length,
                     period_minutes=period_minutes,
@@ -516,43 +574,52 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
 
     See generate_plan's own docstring for why `school_id` is a parameter
     rather than resolved internally."""
-    subject, grade = _prompt_subject_grade(user_id, class_id)
-    period_minutes = _class_period_minutes(user_id, class_id)
-    template_days = day_names_for_school(school_id, user_id=user_id)
+    # See generate_plan's identical comment: these three lookups are mutually
+    # independent, so they run concurrently instead of stacking their latency.
+    cls_future = _setup_pool.submit(db.get_class, user_id, class_id) if class_id else None
+    days_future = _setup_pool.submit(day_names_for_school, school_id, user_id=user_id)
+    output_length_future = _setup_pool.submit(output_length_for, user_id)
+    cls = cls_future.result() if cls_future else None
+    subject, grade = _prompt_subject_grade(user_id, class_id, cls)
+    period_minutes = _class_period_minutes(user_id, class_id, cls)
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
-    output_length = output_length_for(user_id)
+    template_days = days_future.result()
+    output_length = output_length_future.result()
     started_at = time.perf_counter()
-    stream = client().chat.completions.create(
-        model=settings.openai_model,
-        max_completion_tokens=plan_completion_tokens_for(user_id),
-        reasoning_effort="none",
-        response_format=_response_format("weekly_lesson_plan", plan_json_schema(template_days)),
-        messages=[
-            {
-                "role": "system",
-                "content": week_system_prompt(
-                    result,
-                    subject=subject,
-                    grade=grade,
-                    map_context=map_context,
-                    custom_instructions=custom_instructions_for(user_id),
-                    class_custom_instructions=class_custom_instructions_for(user_id, class_id),
-                    school_id=school_id,
-                    output_length=output_length,
-                    period_minutes=period_minutes,
-                    user_id=user_id,
-                ),
-            },
-            {"role": "user", "content": query},
-        ],
-        stream=True,
-        # A streamed response has no single .usage the way a plain
-        # completion does — without this the whole most expensive call this
-        # app makes (4000 max_tokens, run on every generate) went unmetered.
-        # The usage-bearing chunk has choices=[], so it survives the
-        # `if not chunk.choices: continue` below only because it's checked
-        # first.
-        stream_options={"include_usage": True},
+    stream = _OPENAI_BREAKER.call(
+        lambda: client().chat.completions.create(
+            model=settings.openai_model,
+            max_completion_tokens=plan_completion_tokens_for(user_id),
+            reasoning_effort="none",
+            response_format=_response_format("weekly_lesson_plan", plan_json_schema(template_days)),
+            messages=[
+                {
+                    "role": "system",
+                    "content": week_system_prompt(
+                        result,
+                        subject=subject,
+                        grade=grade,
+                        map_context=map_context,
+                        custom_instructions=custom_instructions_for(user_id),
+                        class_custom_instructions=class_custom_instructions_for(user_id, class_id, cls),
+                        school_id=school_id,
+                        output_length=output_length,
+                        period_minutes=period_minutes,
+                        user_id=user_id,
+                    ),
+                },
+                {"role": "user", "content": query},
+            ],
+            stream=True,
+            # A streamed response has no single .usage the way a plain
+            # completion does — without this the whole most expensive call this
+            # app makes (4000 max_tokens, run on every generate) went unmetered.
+            # The usage-bearing chunk has choices=[], so it survives the
+            # `if not chunk.choices: continue` below only because it's checked
+            # first.
+            stream_options={"include_usage": True},
+        ),
+        trips_on=_OPENAI_TRIPS_ON,
     )
     finish_reason = None
     try:
@@ -924,8 +991,8 @@ def rewrite_day(
     district form supports only one or two — so a rewritten day could reintroduce
     too many choices.
     """
-    subject, grade = _prompt_subject_grade(user_id, class_id)
     cls = db.get_class(user_id, class_id) if class_id else None
+    subject, grade = _prompt_subject_grade(user_id, class_id, cls)
     period_minutes = (cls or {}).get("period_minutes")
     school_id = db.class_school(cls, user_id)
     template_days = day_names_for_school(school_id)
@@ -946,7 +1013,7 @@ def rewrite_day(
                     subject=subject,
                     grade=grade,
                     custom_instructions=custom_instructions_for(user_id),
-                    class_custom_instructions=class_custom_instructions_for(user_id, class_id),
+                    class_custom_instructions=class_custom_instructions_for(user_id, class_id, cls),
                     output_length=output_length,
                     day_names=template_days,
                     period_minutes=period_minutes,
@@ -986,8 +1053,8 @@ def rewrite_day_field(
     `field` MUST already be validated against schema.REVISABLE_FIELDS — it is
     interpolated into the prompt and the response schema as a key name.
     """
-    subject, grade = _prompt_subject_grade(user_id, class_id)
     cls = db.get_class(user_id, class_id) if class_id else None
+    subject, grade = _prompt_subject_grade(user_id, class_id, cls)
     period_minutes = (cls or {}).get("period_minutes")
     school_id = db.class_school(cls, user_id)
     content = _cached_completion(
@@ -1007,7 +1074,7 @@ def rewrite_day_field(
                     subject=subject,
                     grade=grade,
                     custom_instructions=custom_instructions_for(user_id),
-                    class_custom_instructions=class_custom_instructions_for(user_id, class_id),
+                    class_custom_instructions=class_custom_instructions_for(user_id, class_id, cls),
                     school_id=school_id,
                     period_minutes=period_minutes,
                     user_id=user_id,
@@ -1083,8 +1150,9 @@ def critique_and_revise(
     Used to rewrite every field of every day, which is why follow-up edits
     timed out; the model now emits only the changed cells.
     """
+    days_future = _setup_pool.submit(day_names_for_school, school_id)
     s = db.get_settings_row(user_id)
-    template_days = day_names_for_school(school_id)
+    template_days = days_future.result()
     content = _cached_completion(
         user_id,
         "critique_and_revise",
@@ -1104,17 +1172,23 @@ def stream_plan_revision(
     *, school_id: str | None = None, class_id: str | None = None,
 ) -> Iterator[str]:
     """Yield patch JSON deltas. The caller accumulates, applies, and saves."""
+    # Independent of each other -- run concurrently rather than one after the
+    # other, same reasoning as stream_plan/generate_plan's setup phase.
+    days_future = _setup_pool.submit(day_names_for_school, school_id, user_id=user_id)
     subject, grade = _prompt_subject_grade(user_id, class_id)
-    template_days = day_names_for_school(school_id, user_id=user_id)
+    template_days = days_future.result()
     started_at = time.perf_counter()
-    stream = client().chat.completions.create(
-        model=settings.openai_model,
-        max_completion_tokens=PATCH_COMPLETION_CEILING,
-        reasoning_effort="none",
-        response_format=_response_format("lesson_plan_patch", plan_patch_json_schema(template_days)),
-        messages=_revision_messages(plan, retrieved_context, feedback, subject, grade),
-        stream=True,
-        stream_options={"include_usage": True},
+    stream = _OPENAI_BREAKER.call(
+        lambda: client().chat.completions.create(
+            model=settings.openai_model,
+            max_completion_tokens=PATCH_COMPLETION_CEILING,
+            reasoning_effort="none",
+            response_format=_response_format("lesson_plan_patch", plan_patch_json_schema(template_days)),
+            messages=_revision_messages(plan, retrieved_context, feedback, subject, grade),
+            stream=True,
+            stream_options={"include_usage": True},
+        ),
+        trips_on=_OPENAI_TRIPS_ON,
     )
     finish_reason = None
     try:
@@ -2137,28 +2211,31 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
 
     started_at = time.perf_counter()
     quizzes_on = beta_features_for(user_id)
-    stream = client().chat.completions.create(
-        model=settings.openai_model,
-        # Required, not tuning: the configured model rejects function tools
-        # outright in /v1/chat/completions unless reasoning is off —
-        # "Function tools with reasoning_effort are not supported ... set
-        # reasoning_effort to 'none'". Both tools below are the entire
-        # mechanism of this conversation (build the plan / ask instead), so
-        # without this every chat turn, typed or spoken, 400s.
-        # Voice turns use the same Luna model as every other text turn; the
-        # low reasoning setting keeps spoken responses quick and concise.
-        reasoning_effort="low" if voice else "none",
-        # Voice replies stay deliberately short. Written chat follows the
-        # same persisted preference as lesson-plan generation, so this setting
-        # is no longer a prompt-only suggestion on either surface.
-        max_completion_tokens=700 if voice else output_length_tokens_for(user_id),
-        messages=messages,
-        stream=True,
-        tools=_chat_tools_for(user_id, voice=voice, quizzes_on=quizzes_on),
-        parallel_tool_calls=False,
-        # See stream_plan's identical option — without it this call, which
-        # runs on every non-generating chat turn too, went unmetered.
-        stream_options={"include_usage": True},
+    stream = _OPENAI_BREAKER.call(
+        lambda: client().chat.completions.create(
+            model=settings.openai_model,
+            # Required, not tuning: the configured model rejects function tools
+            # outright in /v1/chat/completions unless reasoning is off —
+            # "Function tools with reasoning_effort are not supported ... set
+            # reasoning_effort to 'none'". Both tools below are the entire
+            # mechanism of this conversation (build the plan / ask instead), so
+            # without this every chat turn, typed or spoken, 400s.
+            # Voice turns use the same Luna model as every other text turn; the
+            # low reasoning setting keeps spoken responses quick and concise.
+            reasoning_effort="low" if voice else "none",
+            # Voice replies stay deliberately short. Written chat follows the
+            # same persisted preference as lesson-plan generation, so this setting
+            # is no longer a prompt-only suggestion on either surface.
+            max_completion_tokens=700 if voice else output_length_tokens_for(user_id),
+            messages=messages,
+            stream=True,
+            tools=_chat_tools_for(user_id, voice=voice, quizzes_on=quizzes_on),
+            parallel_tool_calls=False,
+            # See stream_plan's identical option — without it this call, which
+            # runs on every non-generating chat turn too, went unmetered.
+            stream_options={"include_usage": True},
+        ),
+        trips_on=_OPENAI_TRIPS_ON,
     )
     # Typed actions wait for complete arguments; legacy voice emits its signal early.
     tool_name = None

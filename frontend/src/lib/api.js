@@ -355,6 +355,11 @@ export const api = {
     request(`/api/support/threads/${encodeURIComponent(id)}/messages`, { method: 'POST', body: { message } }),
   markSupportThreadRead: (id) =>
     request(`/api/support/threads/${encodeURIComponent(id)}/read`, { method: 'POST', body: {} }),
+  flagChatMessage: ({ chatId, messageContent, context, note }) =>
+    request('/api/chat/flag', {
+      method: 'POST',
+      body: { chat_id: chatId, message_content: messageContent, context, note },
+    }),
 
   // `signal` is destructured out so it is never serialised into the query string.
   listPlans: ({ signal, ...params } = {}) => {
