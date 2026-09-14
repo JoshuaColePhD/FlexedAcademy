@@ -148,14 +148,19 @@ GROUNDING RULES — these override everything else, including the teacher's requ
 4. If the retrieved standards do not cover the requested unit or topic, state that plainly. Do not invent fake standard codes to fill the gap.
 5. The `standards` field must ONLY contain primary course standards from the retrieved block. If no primary course standards were retrieved, leave it blank. NEVER put ACT standards in the `standards` field.
 6. For primary course standards, prefer the most specific retrieved code that directly matches the day's instruction — usually a Learning Objective or Essential Knowledge statement. Broad Enduring Understanding codes such as `EU 2` are context-level anchors, not substitutes for a precise skill. Do not select a broad EU merely to avoid repeating a more precise quadratic, algebraic, or modeling standard; use it only when that day's objective explicitly addresses the overarching understanding.
-7. `act_alignment` is different: whenever a "COMPANION ACT STANDARDS" block is
-   present below, it is MANDATORY on every teaching day — never leave it blank
-   because that day's specific topic isn't a perfect match. The ACT does not
-   test week-by-week topics, it tests recurring skills, so pick whichever
-   retrieved companion code is the closest fit to what the day is teaching
-   (structure, evidence, tone, argument, etc.) and cite it. `act_alignment`
-   stays an empty string ONLY when no "COMPANION ACT STANDARDS" block exists
-   at all for this course — never as a judgment call about day-to-day fit.
+7. `act_alignment` is subordinate to `standards`, never a second framework.
+   First choose the day's primary course standard. Then select the retrieved
+   companion ACT skill that measures the SAME mathematical/content skill or
+   cognitive demand. Include the ACT code and exact source wording, followed
+   by `Supports primary [CODE]:` and a brief, concrete shared-skill rationale.
+   Do not use a broad ACT skill merely because it is available: for example,
+   an ACT first-degree-equations skill does not align a polynomial, quadratic,
+   or rational-function day. When different primary standards address
+   different skills, use different ACT skills when the companion block offers
+   them; repeating an ACT code is allowed only when the primary standards
+   genuinely share that same assessed skill. Whenever a "COMPANION ACT
+   STANDARDS" block is present, `act_alignment` is MANDATORY on every teaching
+   day. It stays an empty string ONLY when no companion block exists at all.
 """
     return hard_rules.strip() + "\n\nFor reference, the recorded gaps:\n\n" + known_gaps()
 
@@ -336,13 +341,14 @@ targets so the week builds rather than repeating one skill five times. Each lear
 Also complete `vocabulary`, `reteach_small_groups`, and `cross_curricular_connection` for every teaching day. These are printed in school templates that require each section; make them specific to that day's lesson instead of repeating generic filler.
 For `engagement_strategy`, choose ONE or TWO values from the fixed district
 dropdown list. It is limited to two strategies, never three or more.
-THEN, if a "--- COMPANION ACT STANDARDS ---" block is present below, `act_alignment`
-is MANDATORY on every teaching day — pick the closest-fitting companion ACT
-standard from that block for EACH day, even if it's a broader skill than the
-day's specific topic; never leave it blank because the fit feels imperfect
-(see grounding rule 6). If that block is absent, the ACT has no test section for
-this course and `act_alignment` MUST be an empty string on every day — do not
-substitute a standard from the primary block or from another subject.
+THEN, if a "--- COMPANION ACT STANDARDS ---" block is present below, derive
+`act_alignment` from that day's selected primary standard. Cite the closest
+ACT companion skill, its exact source wording, and `Supports primary [CODE]:`
+with the specific shared skill. Do not repeat an ACT code across distinct
+primary skills when another retrieved ACT skill fits better. If that block is
+absent, the ACT has no test section for this course and `act_alignment` MUST be
+an empty string on every day — do not substitute a standard from the primary
+block or from another subject.
 Show how the activity actually fulfills the standards you cite.
 
 Return JSON matching this schema exactly:
@@ -419,12 +425,12 @@ Apply the teacher's feedback to the single day given. Keep the day's `name`
 unchanged. Preserve anything the feedback didn't ask you to change — this is a
 revision, not a regeneration. Keep it coherent with the rest of the week shown
 above. You must identify the closest-fitting primary standard from the "--- PRIMARY COURSE STANDARDS ---" block. If no primary standards were retrieved, leave the `standards` field blank. NEVER put ACT standards in the `standards` field. If a
-"--- COMPANION ACT STANDARDS ---" block is present, `act_alignment` is
-MANDATORY — cite the closest-fitting standard from it even if the fit is
-broader than the day's specific topic (see grounding rule 6); never leave it
-blank just because nothing matches perfectly. Only leave it empty if that
-block is absent entirely. Every code you cite must come from the retrieved
-standards block.
+"--- COMPANION ACT STANDARDS ---" block is present, derive `act_alignment`
+from the primary standard: cite the closest companion code and exact wording,
+then add `Supports primary [CODE]:` with the shared skill. Never use a generic
+ACT skill that does not measure the day's primary-standard content. Only leave
+it empty if that block is absent entirely. Every code you cite must come from
+the retrieved standards block.
 
 If the field is `engagement_strategy`, return one or two strategies from the
 fixed district dropdown list — never more than two.

@@ -1644,6 +1644,27 @@ def _normalized_words(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", " ", str(value or "").casefold()).strip()
 
 
+def _requires_math_act_match(day: dict) -> tuple[str, tuple[str, ...]] | None:
+    """Return a high-confidence topic constraint for a primary math standard.
+
+    This is intentionally narrow.  It catches category mistakes (such as using
+    a first-degree-equations ACT skill for a polynomial-functions standard)
+    without pretending that a keyword matcher can be a full curriculum
+    crosswalk.  The generation prompt supplies the full per-day rationale;
+    this guard only blocks the clear, harmful mismatches.
+    """
+    primary = " ".join(
+        str(day.get(field) or "") for field in ("standards", "learning_targets", "during")
+    ).casefold()
+    if "rational function" in primary:
+        return ("rational-function", ("rational", "function", "domain", "asymptote"))
+    if "quadratic" in primary:
+        return ("quadratic", ("quadratic", "parabola", "polynomial", "function"))
+    if "polynomial" in primary:
+        return ("polynomial", ("polynomial", "function", "factor", "remainder"))
+    return None
+
+
 def _act_skill_sources(result: RetrievalResult | None, subject_code: str | None) -> dict[str, dict]:
     """Return the exact ACT source rows available to this generation path."""
     sources: dict[str, dict] = {}
@@ -1778,6 +1799,48 @@ def validate_act_alignment(
                     f"{day_name} cites ACT {code} without its source skill description.",
                     path=f"days.{day_name}.act_alignment",
                     hint="Include the exact retrieved ACT skill wording after the code.",
+                )
+
+
+        # ACT is a companion assessment lens, not a substitute framework. The
+        # full prompt requires a per-day `Supports primary [CODE]` rationale.
+        # Enforce that explicit dependency for generated/retrieved plans while
+        # preserving compatibility for older plans and direct legacy edits,
+        # which do not carry a RetrievalResult.
+        primary_codes = [
+            _norm_code(raw)
+            for raw in _CODE_RE.findall(str(day.get("standards") or ""))
+            if not _ACT_CODE_RE.fullmatch(raw)
+        ]
+        if result is not None and primary_codes:
+            linked = any(
+                re.search(
+                    rf"supports\s+primary\s*\[\s*{re.escape(primary_code)}\s*\]",
+                    alignment,
+                    re.IGNORECASE,
+                )
+                for primary_code in primary_codes
+            )
+            if not linked:
+                raise SchemaError(
+                    "act_skill_primary_link_missing",
+                    f"{day_name}'s ACT alignment does not name the primary standard it supports.",
+                    path=f"days.{day_name}.act_alignment",
+                    hint="Add `Supports primary [CODE]:` and state the shared assessed skill.",
+                )
+
+        # This guard catches the unambiguous math-topic mismatch that led to
+        # M.A.502 (first-degree equations) appearing under polynomial and
+        # rational-function standards.
+        if subject_code and ACT_MATH in expected_sections:
+            requirement = _requires_math_act_match(day)
+            if requirement and not any(term in alignment.casefold() for term in requirement[1]):
+                label, _ = requirement
+                raise SchemaError(
+                    "act_skill_misaligned",
+                    f"{day_name}'s ACT alignment does not address the primary {label} standard.",
+                    path=f"days.{day_name}.act_alignment",
+                    hint="Choose a retrieved ACT skill that measures the same primary-standard content.",
                 )
 
 

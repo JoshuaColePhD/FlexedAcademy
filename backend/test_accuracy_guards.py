@@ -172,7 +172,8 @@ def test_act_row_requires_the_retrieved_skill_description():
 def test_act_row_accepts_description_from_retrieved_document_text():
     plan = _week(_full_day(
         act_alignment=(
-            "E.TOD.301 Determine whether material is relevant to the focus of the paragraph."
+            "E.TOD.301 Determine whether material is relevant to the focus of the paragraph. "
+            "Supports primary [RHS-1A]: both assess relevant evidence."
         )
     ))
     result = _act_result()
@@ -199,6 +200,43 @@ def test_act_row_rejects_a_skill_from_another_class_section():
             result=_act_result("S.IOD.301", "Analyze data from an experiment."),
         )
     assert exc.value.code == "act_skill_wrong_section"
+
+
+def test_act_math_alignment_rejects_first_degree_skill_for_polynomial_standard():
+    plan = _week(_full_day(
+        standards="[3.2.2] Express a polynomial function in an equivalent algebraic form.",
+        learning_targets="I can analyze polynomial functions.",
+        act_alignment=(
+            "M.A.502 Solve real-world problems by using first-degree equations. "
+            "Supports primary [3.2.2]: both assess algebraic forms."
+        ),
+    ))
+    with pytest.raises(SchemaError) as exc:
+        validate_act_alignment(
+            plan,
+            {"M.A.502"},
+            subject_code="Pre-AP Algebra 2",
+            expected=True,
+            result=_act_result("M.A.502", "Solve real-world problems by using first-degree equations."),
+        )
+    assert exc.value.code == "act_skill_misaligned"
+
+
+def test_generated_act_alignment_must_name_the_primary_standard_it_supports():
+    plan = _week(_full_day(
+        act_alignment=(
+            "E.TOD.301 Determine whether material is relevant to the focus of the paragraph."
+        ),
+    ))
+    with pytest.raises(SchemaError) as exc:
+        validate_act_alignment(
+            plan,
+            {"E.TOD.301"},
+            subject_code="AP_Lang",
+            expected=True,
+            result=_act_result(),
+        )
+    assert exc.value.code == "act_skill_primary_link_missing"
 
 
 def test_template_without_act_row_cannot_emit_act_content():
