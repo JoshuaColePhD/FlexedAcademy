@@ -9,7 +9,7 @@ test('opens and closes the embedded checkout surface on a narrow viewport', asyn
   await page.goto('/preview.html?at=/c/c1/settings')
   await page.getByRole('button', { name: 'Billing', exact: true }).click()
 
-  const subscribe = page.getByRole('button', { name: /^Subscribe$/ }).last()
+  const subscribe = page.getByRole('button', { name: 'Continue to checkout' })
   await expect(subscribe).toBeVisible()
   await subscribe.click()
 
