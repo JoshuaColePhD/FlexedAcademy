@@ -116,16 +116,18 @@ export function BillingProvider({ children }) {
     poll()
   }, [closeCheckout, refresh, toast])
 
-  // Returns whether a checkout session actually opened — startCheckout
-  // (below) needs to tell success from failure, not just fire-and-forget.
+  // Stripe-hosted Checkout is deliberately the primary production path.  The
+  // embedded Elements integration is retained below while it is evaluated,
+  // but a hosted page is much less sensitive to browser extensions, wallet
+  // eligibility, and Stripe.js initialization failures.  Most importantly,
+  // it keeps the payment step on Stripe's own proven surface rather than
+  // leaving a teacher with an expired, unpaid Checkout Session.
   const subscribe = useCallback(async () => {
     setBusy(true)
     try {
-      const session = await api.checkoutSession()
-      if (!session.client_secret) throw new Error('Checkout could not be initialized.')
-      setCheckoutSessionId(session.session_id || '')
-      setCheckoutClientSecret(session.client_secret)
-      setBusy(false)
+      const { url } = await api.checkout()
+      if (!url) throw new Error('Checkout could not be initialized.')
+      window.location.assign(url)
       return true
     } catch (err) {
       setBusy(false)
@@ -151,9 +153,8 @@ export function BillingProvider({ children }) {
      putting the very confirmation screen this exists to skip back on
      screen. On failure this now shows only subscribe()'s own error toast —
      no dialog opens at all. */
-  const startCheckout = useCallback(async () => {
-    const ok = await subscribe()
-    if (ok) setOpen(true)
+  const startCheckout = useCallback(() => {
+    subscribe()
   }, [subscribe])
 
   const retryCheckout = useCallback(() => {
