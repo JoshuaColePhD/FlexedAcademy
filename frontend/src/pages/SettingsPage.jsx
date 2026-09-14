@@ -1279,8 +1279,9 @@ function BillingSection() {
           )}
           <button type="button" onClick={manage} disabled={busy} className="fa-press btn billing-action-primary billing-action-primary--dark">
             <CreditCard size={15} aria-hidden="true" />
-            {busy ? 'Opening…' : paymentNeedsAttention ? 'Update payment' : 'Manage subscription'}
+            {busy ? 'Opening…' : paymentNeedsAttention ? 'Update payment' : 'Manage or cancel subscription'}
           </button>
+          <p className="billing-manage-hint">Update payment, view invoices, or cancel anytime.</p>
           <p className="billing-trust-line"><ShieldCheck size={14} className="text-ok" aria-hidden="true" /> {cancellationScheduled ? 'Managed securely by Stripe' : `Renews ${periodEnd || 'monthly'} · Managed securely by Stripe`}</p>
           </div>
         </article>

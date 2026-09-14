@@ -10621,6 +10621,13 @@
   font-size: var(--fs-2xs);
   text-align: center;
 }
+.billing-manage-hint {
+  margin: 0.7rem 0 0;
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  line-height: var(--lh-relaxed);
+  text-align: center;
+}
 .billing-upgrade-copy {
   margin: var(--sp-6) 0 var(--sp-5);
 }
