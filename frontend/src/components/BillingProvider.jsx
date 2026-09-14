@@ -116,25 +116,49 @@ export function BillingProvider({ children }) {
     poll()
   }, [closeCheckout, refresh, toast])
 
-  // Stripe-hosted Checkout is deliberately the primary production path.  The
-  // embedded Elements integration is retained below while it is evaluated,
-  // but a hosted page is much less sensitive to browser extensions, wallet
-  // eligibility, and Stripe.js initialization failures.  Most importantly,
-  // it keeps the payment step on Stripe's own proven surface rather than
-  // leaving a teacher with an expired, unpaid Checkout Session.
-  const subscribe = useCallback(async () => {
+  // Checkout telemetry is intentionally a fixed vocabulary. Never forward an
+  // error message: payment-provider and browser-extension errors are not
+  // suitable application telemetry.
+  const recordCheckoutEvent = useCallback((event) => {
+    api.checkoutEvent(event).catch(() => {})
+  }, [])
+
+  // A hosted Checkout fallback lets an in-app form failure remain recoverable
+  // without asking a teacher to retry the same browser-dependent surface.
+  const openHostedCheckout = useCallback(async () => {
     setBusy(true)
+    recordCheckoutEvent('hosted_fallback_opened')
     try {
       const { url } = await api.checkout()
       if (!url) throw new Error('Checkout could not be initialized.')
       window.location.assign(url)
+    } catch (err) {
+      recordCheckoutEvent('hosted_fallback_failed')
+      setBusy(false)
+      toast.error(err.message || 'Couldn’t open checkout.')
+    }
+  }, [recordCheckoutEvent, toast])
+
+  // The primary path keeps payment inside FlexEd. Checkout Sessions still
+  // own the subscription lifecycle; Stripe Elements only renders the secure
+  // payment controls.
+  const subscribe = useCallback(async () => {
+    setBusy(true)
+    try {
+      const session = await api.checkoutSession()
+      if (!session.client_secret) throw new Error('Checkout could not be initialized.')
+      setCheckoutSessionId(session.session_id || '')
+      setCheckoutClientSecret(session.client_secret)
+      recordCheckoutEvent('embedded_session_created')
+      setBusy(false)
       return true
     } catch (err) {
+      recordCheckoutEvent('embedded_session_create_failed')
       setBusy(false)
       toast.error(err.message || 'Couldn’t open checkout.')
       return false
     }
-  }, [toast])
+  }, [recordCheckoutEvent, toast])
 
   /* Settings' own billing card already states the pitch this dialog exists
      to make (the same three benefit lines, the same price) before a teacher
@@ -153,8 +177,9 @@ export function BillingProvider({ children }) {
      putting the very confirmation screen this exists to skip back on
      screen. On failure this now shows only subscribe()'s own error toast —
      no dialog opens at all. */
-  const startCheckout = useCallback(() => {
-    subscribe()
+  const startCheckout = useCallback(async () => {
+    const ok = await subscribe()
+    if (ok) setOpen(true)
   }, [subscribe])
 
   const retryCheckout = useCallback(() => {
@@ -277,6 +302,9 @@ export function BillingProvider({ children }) {
                 priceLabel={priceLabel}
                 onClose={closeCheckout}
                 onRetry={retryCheckout}
+                onHostedFallback={openHostedCheckout}
+                onCheckoutEvent={recordCheckoutEvent}
+                fallbackBusy={busy}
                 onPaymentSubmitted={() => {
                   closeCheckout()
                   pollForSubscription()

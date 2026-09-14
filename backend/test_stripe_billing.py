@@ -5,10 +5,13 @@ import time
 
 import pytest
 import stripe
+from fastapi.testclient import TestClient
 
 from backend import stripe_api
+from backend.deps import get_current_user
 from backend.errors import AppError
 from backend.routes import admin, billing
+from backend.server import app
 
 
 def _signature(payload: bytes, secret: str, timestamp: int | None = None) -> str:
@@ -40,6 +43,20 @@ def test_stripe_non_json_error_becomes_provider_error(monkeypatch):
 
     with pytest.raises(AppError, match="payment provider rejected"):
         stripe_api._provider_call(operation)
+
+
+def test_checkout_telemetry_accepts_only_privacy_safe_event_names(caplog):
+    app.dependency_overrides[get_current_user] = lambda: "user_1"
+    try:
+        client = TestClient(app, raise_server_exceptions=False)
+        response = client.post("/api/billing/checkout-event", json={"event": "embedded_load_failed"})
+        assert response.status_code == 204
+        assert "checkout_client_event user=user_1 event=embedded_load_failed" in caplog.text
+
+        response = client.post("/api/billing/checkout-event", json={"event": "raw provider error"})
+        assert response.status_code == 400
+    finally:
+        app.dependency_overrides.clear()
 
 
 def test_checkout_uses_recurring_price_without_a_second_trial(monkeypatch):

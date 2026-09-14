@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CheckoutElementsProvider, ExpressCheckoutElement, PaymentElement, useCheckoutElements } from '@stripe/react-stripe-js/checkout'
 import { loadStripe } from '@stripe/stripe-js'
 import { LockKeyhole, ShieldCheck, X } from 'lucide-react'
@@ -112,10 +112,27 @@ function LocalCheckoutPreview({ onClose, priceLabel }) {
   )
 }
 
-function CheckoutForm({ onClose, onPaymentSubmitted, onRetry, priceLabel }) {
+function HostedFallback({ onHostedFallback, busy = false }) {
+  return (
+    <button type="button" className="btn" onClick={onHostedFallback} disabled={busy}>
+      {busy ? 'Opening secure checkout…' : 'Use secure Stripe checkout'}
+    </button>
+  )
+}
+
+function CheckoutForm({
+  onClose,
+  onPaymentSubmitted,
+  onRetry,
+  onHostedFallback,
+  onCheckoutEvent,
+  fallbackBusy,
+  priceLabel,
+}) {
   const result = useCheckoutElements()
   const [errorMessage, setErrorMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const reportedLoadFailure = useRef(false)
   // Two explicit tabs instead of stacking the express button above a divider
   // above the card form — a teacher picks how they're paying up front, same
   // as the reference this was modeled on. Defaults to card since it's the
@@ -125,6 +142,12 @@ function CheckoutForm({ onClose, onPaymentSubmitted, onRetry, priceLabel }) {
   const [method, setMethod] = useState('card')
   const [applePayAvailable, setApplePayAvailable] = useState(true)
 
+  useEffect(() => {
+    if (result.type !== 'error' || reportedLoadFailure.current) return
+    reportedLoadFailure.current = true
+    onCheckoutEvent('embedded_load_failed')
+  }, [onCheckoutEvent, result])
+
   const confirmCheckout = async () => {
     if (result.type !== 'success' || !result.checkout.canConfirm || isSubmitting) return
     setIsSubmitting(true)
@@ -133,12 +156,14 @@ function CheckoutForm({ onClose, onPaymentSubmitted, onRetry, priceLabel }) {
       const returnUrl = `${window.location.origin}${window.location.pathname}?checkout=return&session_id={CHECKOUT_SESSION_ID}`
       const confirmResult = await result.checkout.confirm({ returnUrl })
       if (confirmResult.type === 'error') {
+        onCheckoutEvent('embedded_confirm_failed')
         setErrorMessage(confirmResult.error.message || 'The payment could not be completed.')
         setIsSubmitting(false)
         return
       }
       onPaymentSubmitted()
     } catch (error) {
+      onCheckoutEvent('embedded_confirm_exception')
       setErrorMessage(error instanceof Error ? error.message : 'The payment could not be completed.')
       setIsSubmitting(false)
     }
@@ -155,6 +180,7 @@ function CheckoutForm({ onClose, onPaymentSubmitted, onRetry, priceLabel }) {
         <div className="checkout-error-actions">
           <button type="button" className="btn" onClick={onClose}>Close</button>
           <button type="button" className="btn btn-primary" onClick={onRetry}>Try again</button>
+          <HostedFallback onHostedFallback={onHostedFallback} busy={fallbackBusy} />
         </div>
       </div>
     )
@@ -210,9 +236,16 @@ function CheckoutForm({ onClose, onPaymentSubmitted, onRetry, priceLabel }) {
                 paypal: 'never',
               },
             }}
-            onReady={(event) => setApplePayAvailable(Boolean(event.availablePaymentMethods?.applePay))}
+            onReady={(event) => {
+              const available = Boolean(event.availablePaymentMethods?.applePay)
+              setApplePayAvailable(available)
+              if (!available) onCheckoutEvent('apple_pay_unavailable')
+            }}
             onConfirm={confirmCheckout}
-            onLoadError={(event) => setErrorMessage(event.error.message || 'Apple Pay is unavailable.')}
+            onLoadError={(event) => {
+              onCheckoutEvent('apple_pay_unavailable')
+              setErrorMessage(event.error.message || 'Apple Pay is unavailable.')
+            }}
           />
           {/* Stripe renders nothing at all when the browser/device can't do
               Apple Pay (not Safari, no card in Wallet, this domain not yet
@@ -246,11 +279,23 @@ function CheckoutForm({ onClose, onPaymentSubmitted, onRetry, priceLabel }) {
         <ShieldCheck size={14} aria-hidden="true" />
         <span>You can manage or cancel your subscription anytime from Billing.</span>
       </p>
+      <div className="checkout-error-actions checkout-hosted-fallback">
+        <HostedFallback onHostedFallback={onHostedFallback} busy={fallbackBusy} />
+      </div>
     </>
   )
 }
 
-export function EmbeddedCheckout({ clientSecret, onClose, onPaymentSubmitted, onRetry, priceLabel }) {
+export function EmbeddedCheckout({
+  clientSecret,
+  onClose,
+  onPaymentSubmitted,
+  onRetry,
+  onHostedFallback,
+  onCheckoutEvent,
+  fallbackBusy,
+  priceLabel,
+}) {
   if (import.meta.env.DEV && clientSecret === LOCAL_PREVIEW_SECRET) {
     return <LocalCheckoutPreview onClose={onClose} priceLabel={priceLabel} />
   }
@@ -259,7 +304,10 @@ export function EmbeddedCheckout({ clientSecret, onClose, onPaymentSubmitted, on
     return (
       <div className="checkout-error-state" role="alert">
         <p>Checkout is temporarily unavailable. Please try again shortly.</p>
-        <button type="button" className="btn btn-primary" onClick={onClose}>Close</button>
+        <div className="checkout-error-actions">
+          <button type="button" className="btn" onClick={onClose}>Close</button>
+          <HostedFallback onHostedFallback={onHostedFallback} busy={fallbackBusy} />
+        </div>
       </div>
     )
   }
@@ -287,6 +335,9 @@ export function EmbeddedCheckout({ clientSecret, onClose, onPaymentSubmitted, on
         onClose={onClose}
         onPaymentSubmitted={onPaymentSubmitted}
         onRetry={onRetry}
+        onHostedFallback={onHostedFallback}
+        onCheckoutEvent={onCheckoutEvent}
+        fallbackBusy={fallbackBusy}
         priceLabel={priceLabel}
       />
     </CheckoutElementsProvider>

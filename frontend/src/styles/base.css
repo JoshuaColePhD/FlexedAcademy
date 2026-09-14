@@ -4216,6 +4216,10 @@
     flex-wrap: wrap;
     gap: var(--sp-2);
   }
+  .checkout-hosted-fallback {
+    justify-content: center;
+    padding: 0 var(--sp-6) var(--sp-4);
+  }
   .checkout-error-state p,
   .checkout-error {
     color: var(--mark) !important;

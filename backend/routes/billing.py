@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from starlette.concurrency import run_in_threadpool
 
 from .. import db, stripe_api
@@ -42,6 +42,20 @@ _SUB_EVENTS = {
     "customer.subscription.resumed",
 }
 
+# This intentionally accepts names rather than browser or Stripe error text.
+# Payment failures can contain provider-specific detail; Render logs need a
+# useful checkout funnel without becoming a second store of payment data.
+_CHECKOUT_CLIENT_EVENTS = frozenset({
+    "embedded_session_created",
+    "embedded_session_create_failed",
+    "embedded_load_failed",
+    "embedded_confirm_failed",
+    "embedded_confirm_exception",
+    "apple_pay_unavailable",
+    "hosted_fallback_opened",
+    "hosted_fallback_failed",
+})
+
 
 def _return_url(request: Request) -> str:
     """Where Stripe sends the browser back to.
@@ -54,6 +68,25 @@ def _return_url(request: Request) -> str:
     if settings.billing_return_url:
         return settings.billing_return_url.rstrip("/")
     return str(request.base_url).rstrip("/")
+
+
+@router.post("/checkout-event", status_code=204)
+async def checkout_event(request: Request, user_id: str = Depends(get_current_user)) -> Response:
+    """Record a privacy-safe checkout milestone for production diagnosis.
+
+    The browser supplies only one allowlisted event name. In particular, do
+    not accept an error message here: Stripe or extension messages can contain
+    details that belong in neither application logs nor telemetry.
+    """
+    try:
+        body = await request.json()
+    except ValueError as exc:
+        raise AppError("invalid_checkout_event", "Invalid checkout event.", status=400) from exc
+    event = body.get("event") if isinstance(body, dict) else None
+    if event not in _CHECKOUT_CLIENT_EVENTS:
+        raise AppError("invalid_checkout_event", "Invalid checkout event.", status=400)
+    log.warning("checkout_client_event user=%s event=%s", user_id, event)
+    return Response(status_code=204)
 
 
 @router.get("/price")

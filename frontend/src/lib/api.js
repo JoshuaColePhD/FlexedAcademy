@@ -652,6 +652,7 @@ export const api = {
   adminBilling: ({ signal } = {}) => request('/api/admin/billing', { signal }),
   checkout: () => request('/api/billing/checkout', { method: 'POST' }),
   checkoutSession: () => request('/api/billing/checkout-session', { method: 'POST' }),
+  checkoutEvent: (event) => request('/api/billing/checkout-event', { method: 'POST', body: { event } }),
   billingPortal: () => request('/api/billing/portal', { method: 'POST' }),
   cancelSubscription: () => request('/api/billing/cancel', { method: 'POST' }),
 
