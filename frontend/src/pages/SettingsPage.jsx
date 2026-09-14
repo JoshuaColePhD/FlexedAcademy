@@ -1179,65 +1179,63 @@ function BillingSection() {
         ? 'bg-ok/10 text-ok'
         : 'bg-paper-sunken text-ink-soft'
 
+  const pageIntro = entitlement.subscribed
+    ? 'Your plan, payment details, and renewal information in one place.'
+    : 'Choose a plan that keeps your lesson planning moving.'
+  const planStatus = entitlement.subscribed ? statusLabel : (trialExpired ? 'Trial ended' : 'Free access')
+  const planStatusClass = entitlement.subscribed ? statusClassName : 'bg-paper-sunken text-ink-soft'
+
   if (!entitlement.subscribed) {
     return (
-      <div className="billing-free-card neo-panel max-w-3xl overflow-hidden rounded-3xl bg-paper-raised/70 backdrop-blur-2xl">
-        {/* Top third: a big logo over its own atmosphere, not the icon+
-            title crammed alongside price/button that used to live here —
-            modeled on the mobile paywall reference Josh sent (hero image,
-            then everything else stacked below it), swapping the
-            reference's photo for the one image this product actually has:
-            its own mark. */}
-        <div className="billing-hero">
-          <img src="/icon-512.png" alt="" className="billing-hero-logo" />
-          <h2 className="billing-hero-title billing-hero-title--top">
-            {trialExpired ? 'Keep building with FlexEd' : 'Build more with FlexEd'}
-          </h2>
+      <div className="billing-page">
+        <div className="billing-page-heading">
+          <p className="billing-eyebrow">Account billing</p>
+          <h2>Billing</h2>
+          <p>{pageIntro}</p>
         </div>
-
-        <div className="billing-free-main">
-          {/* The same three lines the paywall dialog already states when a
-              teacher hits a usage limit (BillingProvider.jsx) — this card is
-              the OTHER place that decision gets made, so it should make the
-              identical case, not a different one, just as a checkmark list
-              instead of a paragraph. */}
-          <ul className="billing-benefit-list">
-            {[
-              'A much higher weekly usage limit',
-              'Grounded in your standards and pacing guide',
-              'Everything you’ve already made stays yours',
-            ].map((line) => (
-              <li key={line}>
-                <Check size={15} aria-hidden="true" className="text-ok" />
-                <span>{line}</span>
-              </li>
-            ))}
-          </ul>
-
-          {/* priceLabel already reads "$7.99 / month" (BillingProvider's
-              formatPrice bakes the interval in), so it's said once here and
-              the button underneath just says "Subscribe" — not a second
-              "per month" caption, not the price repeated a third time
-              inside the button label. */}
-          <strong
-            className="billing-free-price"
-            aria-label={`FlexEd subscription ${priceLabel || 'monthly price'}`}
-          >
-            {priceLabel || 'Loading price…'}
-          </strong>
-          <button
-            type="button"
-            onClick={startCheckout}
-            disabled={busy}
-            className="fa-press btn btn-primary billing-free-cta"
-          >
-            {busy ? 'Opening…' : 'Subscribe'}
-          </button>
+        <div className="billing-layout">
+          <article className="billing-plan-card billing-plan-card--upgrade">
+            <div className="billing-plan-topline">
+              <div className="billing-plan-mark"><Sparkles size={20} aria-hidden="true" /></div>
+              <div>
+                <p className="billing-card-kicker">FlexEd</p>
+                <h3>Build more with FlexEd</h3>
+              </div>
+              <span className={`billing-status ${planStatusClass}`}>{planStatus}</span>
+            </div>
+            <div className="billing-upgrade-copy">
+              <p>Keep your planning momentum with more room to create, revise, and explore.</p>
+              <ul className="billing-benefit-list">
+                {[
+                  'A much higher weekly usage limit',
+                  'Grounded in your standards and pacing guide',
+                  'Everything you’ve already made stays yours',
+                ].map((line) => (
+                  <li key={line}><Check size={15} aria-hidden="true" className="text-ok" /><span>{line}</span></li>
+                ))}
+              </ul>
+            </div>
+            <div className="billing-price-row">
+              <strong aria-label={`FlexEd subscription ${priceLabel || 'monthly price'}`}>{priceLabel || 'Loading price…'}</strong>
+              <span>Secure checkout through Stripe</span>
+            </div>
+            <button type="button" onClick={startCheckout} disabled={busy} className="fa-press btn btn-primary billing-action-primary">
+              <Sparkles size={15} aria-hidden="true" />
+              {busy ? 'Opening…' : 'Upgrade to FlexEd'}
+            </button>
+            <p className="billing-trust-line"><ShieldCheck size={14} aria-hidden="true" /> Cancel anytime · Card or Apple Pay accepted</p>
+          </article>
+          <aside className="billing-side-stack">
+            <div className="billing-side-card">
+              <div className="billing-side-title"><CheckCircle2 size={16} className="text-ok" aria-hidden="true" /><span>Why teachers choose FlexEd</span></div>
+              <p>Turn your standards and pacing guide into a usable week plan in minutes.</p>
+            </div>
+            <div className="billing-side-card billing-side-card--soft">
+              <div className="billing-side-title"><ShieldCheck size={16} aria-hidden="true" /><span>Private and secure</span></div>
+              <p>Payments are handled by Stripe. FlexEd never stores your full card number.</p>
+            </div>
+          </aside>
         </div>
-        <p className="billing-free-secure">
-          <ShieldCheck size={14} className="text-ok" aria-hidden="true" />
-          Cancel anytime · Card or Apple Pay through Stripe
-        </p>
       </div>
     )
   }
@@ -1249,49 +1247,59 @@ function BillingSection() {
   const name = user?.name || user?.email || 'Your account'
 
   return (
-    <div className="billing-free-card neo-panel max-w-3xl overflow-hidden rounded-3xl bg-paper-raised/70 backdrop-blur-2xl">
-      {/* Same hero as the free-tier card above, but the teacher's own
-          identity where the app mark sat — Josh's own reference for this
-          (a profile photo, a name, a plan badge) reads as "this is your
-          account," which is the point once someone's already subscribed. */}
-      <div className="billing-hero">
-        {avatar ? (
-          <span aria-hidden="true" className={`billing-hero-avatar grid place-items-center rounded-full ${avatar.bg}`}>
-            <span className="billing-hero-avatar-emoji">{avatar.emoji}</span>
-          </span>
-        ) : (
-          <span aria-hidden="true" className="billing-hero-avatar grid place-items-center rounded-full bg-paper-inset text-ink-muted">
-            <span className="billing-hero-avatar-initials">{getInitials(user?.name)}</span>
-          </span>
-        )}
-        <p className="billing-hero-title">{name}</p>
-        <span className={`billing-hero-status ${statusClassName}`}>{statusLabel}</span>
+    <div className="billing-page">
+      <div className="billing-page-heading">
+        <p className="billing-eyebrow">Account billing</p>
+        <h2>Billing</h2>
+        <p>{pageIntro}</p>
       </div>
-
-      <div className="billing-free-main">
-        {cancellationScheduled ? (
-          <p className="w-full max-w-[30rem] rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-3 text-xs text-amber-800">
-            You can keep building through <strong>{periodEnd || 'the end of this billing period'}</strong>. You will not be charged again.
-          </p>
-        ) : paymentNeedsAttention ? (
-          <p className="w-full max-w-[30rem] rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-3 text-xs text-red-700">
-            Update your payment method to keep your higher usage limit active.
-          </p>
-        ) : null}
-        <button
-          type="button"
-          onClick={manage}
-          disabled={busy}
-          className="fa-press btn billing-free-cta"
-        >
-          <CreditCard size={14} aria-hidden="true" />
-          {busy ? 'Opening…' : paymentNeedsAttention ? 'Update payment' : 'Manage subscription'}
-        </button>
+      <div className="billing-layout">
+        <article className="billing-plan-card">
+          <div className="billing-plan-topline">
+            <div className="billing-plan-mark billing-plan-mark--active"><CheckCircle2 size={20} aria-hidden="true" /></div>
+            <div>
+              <p className="billing-card-kicker">FlexEd membership</p>
+              <h3>{name}</h3>
+            </div>
+            <span className={`billing-status ${statusClassName}`}>{statusLabel}</span>
+          </div>
+          <div className="billing-price-row billing-price-row--active">
+            <div>
+              <strong>{priceLabel || 'Monthly plan'}</strong>
+              <span>{cancellationScheduled ? 'Access remains active until cancellation' : 'Your current subscription'}</span>
+            </div>
+            <div className="billing-price-icon"><CreditCard size={18} aria-hidden="true" /></div>
+          </div>
+          <div className="billing-detail-grid">
+            <div><span>Next renewal</span><strong>{cancellationScheduled ? periodEnd || 'End of period' : periodEnd || 'Monthly'}</strong></div>
+            <div><span>Billing provider</span><strong>Stripe</strong></div>
+          </div>
+          {cancellationScheduled ? (
+            <div className="billing-notice billing-notice--warning">You can keep building through <strong>{periodEnd || 'the end of this billing period'}</strong>. You will not be charged again.</div>
+          ) : paymentNeedsAttention ? (
+            <div className="billing-notice billing-notice--danger">Update your payment method to keep your higher usage limit active.</div>
+          ) : null}
+          <button type="button" onClick={manage} disabled={busy} className="fa-press btn billing-action-primary billing-action-primary--dark">
+            <CreditCard size={15} aria-hidden="true" />
+            {busy ? 'Opening…' : paymentNeedsAttention ? 'Update payment' : 'Manage subscription'}
+          </button>
+          <p className="billing-trust-line"><ShieldCheck size={14} className="text-ok" aria-hidden="true" /> {cancellationScheduled ? 'Managed securely by Stripe' : `Renews ${periodEnd || 'monthly'} · Managed securely by Stripe`}</p>
+        </article>
+        <aside className="billing-side-stack">
+          <div className="billing-side-card">
+            <div className="billing-side-title"><Sparkles size={16} aria-hidden="true" /><span>Included with your plan</span></div>
+            <ul className="billing-benefit-list">
+              {['More room to generate each week', 'Standards-aware planning', 'Your plans stay yours'].map((line) => (
+                <li key={line}><Check size={15} aria-hidden="true" className="text-ok" /><span>{line}</span></li>
+              ))}
+            </ul>
+          </div>
+          <div className="billing-side-card billing-side-card--soft">
+            <div className="billing-side-title"><ShieldCheck size={16} aria-hidden="true" /><span>Need to make a change?</span></div>
+            <p>Use Manage subscription to update payment details, view invoices, or cancel future renewals.</p>
+          </div>
+        </aside>
       </div>
-      <p className="billing-free-secure">
-        <ShieldCheck size={14} className="text-ok" aria-hidden="true" />
-        {cancellationScheduled ? 'Managed by Stripe' : `Renews ${periodEnd || 'monthly'} · Managed by Stripe`}
-      </p>
     </div>
   )
 }
