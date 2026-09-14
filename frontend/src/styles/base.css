@@ -10711,8 +10711,12 @@
    one expressive plan card paired with one quiet, actionable detail card. */
 .billing-reference-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  /* Keep the plan and its checkout details in one deliberate vertical flow.
+     The narrower column gives the composition the tall, focused feel of the
+     mobile reference while still leaving room for the desktop settings rail. */
+  grid-template-columns: minmax(0, 760px);
   gap: var(--sp-5);
+  justify-content: center;
   align-items: stretch;
 }
 .billing-color-plan {
@@ -10844,7 +10848,7 @@
 }
 .billing-detail-card {
   display: flex;
-  min-height: 28rem;
+  min-height: 0;
   flex-direction: column;
   padding: clamp(var(--sp-5), 4vw, var(--sp-8));
   border: 1px solid var(--edge);
