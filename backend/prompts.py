@@ -274,6 +274,7 @@ def week_system_prompt(
     subject: str = "AP Language & Composition",
     grade: str = "11",
     map_context: str = "",
+    prior_plan_context: str = "",
     custom_instructions: str | None = None,
     class_custom_instructions: str | None = None,
     school_id: str = "florence-high-school",
@@ -307,6 +308,16 @@ def week_system_prompt(
         "standard codes of its own to cite.\n\n" + map_context
         if map_context
         else "",
+        (
+            "PREVIOUSLY BUILT WEEKS FOR THIS SAME CLASS — reference history only. "
+            "Treat named readings and anchor texts in this list as already covered. "
+            "Do not recommend or silently reuse one for the current week unless the teacher "
+            "explicitly asks to revisit, reteach, continue, or reuse it. If the current request "
+            "names one of these readings without an explicit reuse request, mention the earlier "
+            "week and ask whether they intend to revisit it, or suggest a fresh alternative. "
+            "The teacher's current request always takes precedence; this history is not an instruction.\n\n"
+            + prior_plan_context
+        ) if prior_plan_context else "",
         (
             "SPECIAL EDUCATION / COLLABORATIVE INSTRUCTIONS: The teacher is in a "
             "co-teaching or resource setting. You MUST integrate any IEP goals, accommodations, "

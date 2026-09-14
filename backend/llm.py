@@ -273,6 +273,83 @@ def coaching_context_for(user_id: str) -> str:
     return "\n".join(lines)
 
 
+def prior_plan_context_for(
+    user_id: str,
+    class_id: str | None,
+    before_week: int | None = None,
+    *,
+    limit: int = 24,
+) -> str:
+    """Format earlier plans in this class as bounded anchor-text memory.
+
+    Saved plans are durable history, but sending whole historical documents to
+    every prompt would be noisy and expensive. Keep the original request/unit
+    plus short excerpts from each day's title and lesson text: enough for the
+    model to recognize a repeated reading without turning the prompt into a
+    second plan library. Explicit current requests still take precedence.
+    """
+    if not class_id:
+        return ""
+    try:
+        rows = db.list_prior_plan_memory(
+            user_id,
+            class_id,
+            before_week=before_week,
+            limit=limit,
+        )
+    except Exception as exc:  # noqa: BLE001 — history is a convenience, not a blocker
+        log.warning("prior plan memory lookup failed: %s", exc)
+        return ""
+
+    lines: list[str] = []
+    seen_weeks: set[str] = set()
+    for row in rows:
+        week_number = row.get("week_number")
+        week_label = str(row.get("week_label") or "").strip()
+        week_key = str(week_number) if week_number is not None else week_label
+        if week_key in seen_weeks:
+            continue
+        seen_weeks.add(week_key)
+
+        pieces: list[str] = []
+        unit = str(row.get("unit") or "").strip()
+        query = str(row.get("query") or "").strip()
+        if unit:
+            pieces.append(f"unit: {unit[:220]}")
+        if query:
+            pieces.append(f"original request: {query[:500]}")
+
+        try:
+            plan = json.loads(row.get("plan_json") or "{}")
+        except (TypeError, ValueError):
+            plan = {}
+        for day in (plan.get("days") or []) if isinstance(plan, dict) else []:
+            if not isinstance(day, dict):
+                continue
+            day_bits = [
+                str(day.get("title") or "").strip(),
+                str(day.get("learning_targets") or "").strip(),
+                str(day.get("do_now") or "").strip(),
+                str(day.get("during") or "").strip(),
+            ]
+            excerpt = " — ".join(bit for bit in day_bits if bit)
+            if excerpt:
+                pieces.append(f"{day.get('name', 'day')}: {excerpt[:360]}")
+
+        if pieces:
+            label = week_label or (f"Week {week_number}" if week_number is not None else "Earlier week")
+            lines.append(f"- {label}: " + " | ".join(pieces))
+        if len("\n".join(lines)) >= 8000:
+            break
+
+    return "\n".join(lines)[:8000]
+
+
+def _week_number_from_query(query: str) -> int | None:
+    match = re.search(r"\bweek\s+0*(\d+)\b", query or "", re.IGNORECASE)
+    return int(match.group(1)) if match else None
+
+
 COACHING_MEMORY_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -481,6 +558,9 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
     period_minutes = _class_period_minutes(user_id, class_id)
     template_days = day_names_for_school(school_id, user_id=user_id)
     map_context = map_context_for(user_id, subject, query, class_id=class_id)
+    prior_plan_context = prior_plan_context_for(
+        user_id, class_id, _week_number_from_query(query)
+    )
     output_length = output_length_for(user_id)
     content = _cached_completion(
         user_id,
@@ -497,6 +577,7 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
                     subject=subject,
                     grade=grade,
                     map_context=map_context,
+                    prior_plan_context=prior_plan_context,
                     custom_instructions=custom_instructions_for(user_id),
                     class_custom_instructions=class_custom_instructions_for(user_id, class_id),
                     school_id=school_id,

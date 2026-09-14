@@ -5492,6 +5492,35 @@ def get_plan_count(user_id: str) -> int:
     return row["count"] if row else 0
 
 
+def list_prior_plan_memory(
+    user_id: str,
+    class_id: str,
+    *,
+    before_week: int | None = None,
+    limit: int = 24,
+) -> list[dict]:
+    """Return compact, class-scoped history for avoiding repeated anchor texts.
+
+    This is deliberately separate from ``list_plans``: the teacher-facing
+    library must not transfer full plan JSON for every row, while a planner
+    deciding whether a reading was already taught needs the saved lesson text
+    as reference.  The user and class predicates are both required so one
+    prep's history can never leak into another prep's prompt.
+    """
+    where = ["user_id = ?", "class_id = ?"]
+    params: list[Any] = [user_id, class_id]
+    if before_week is not None:
+        where.append("(week_number IS NULL OR week_number < ?)")
+        params.append(before_week)
+    rows = _rows(
+        "SELECT week_number, week_label, unit, query, plan_json, created_at "
+        f"FROM plans WHERE {' AND '.join(where)} "
+        "ORDER BY created_at DESC LIMIT ?",
+        tuple(params + [max(1, min(limit, 50))]),
+    )
+    return [dict(row) for row in rows]
+
+
 def list_plans(
     user_id: str,
     *,

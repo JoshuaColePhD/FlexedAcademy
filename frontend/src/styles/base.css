@@ -2763,19 +2763,6 @@
     color: #fff;
     font-weight: var(--fw-semibold);
   }
-  .plan-table thead th.is-today {
-    background: var(--accent);
-    box-shadow: inset 0 -3px 0 rgb(var(--accent-rgb) / 0.9);
-  }
-  .plan-table-today-label {
-    display: block;
-    margin-top: 0.15rem;
-    color: rgb(255 255 255 / 0.78);
-    font-size: var(--fs-2xs);
-    font-weight: var(--fw-medium);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
-  }
   /* Pinned so the row's own label ("Do Now", "Homework"...) stays on screen
      while the rest of the row scrolls under a finger — without it, scrolling
      far enough right to read Friday loses all context for which lesson
