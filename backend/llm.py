@@ -1263,7 +1263,7 @@ def expand_query(user_id: str, query: str) -> list[str]:
         content = _cached_completion(
             user_id,
             "expand_query",
-            model=settings.openai_model,
+            model=settings.openai_fast_model,
             max_completion_tokens=300,
             response_format=_response_format("expanded_queries", QUERY_EXPANSION_SCHEMA),
             messages=[

@@ -1564,7 +1564,12 @@ def suggestion(req: SuggestionRequest, request: Request, user_id: str = Depends(
 
 @router.post("/revise_day")
 @limiter.limit("100/minute")
-def revise_day(req: ReviseDayRequest, request: Request, user_id: str = Depends(get_current_user)):
+def revise_day(
+    req: ReviseDayRequest,
+    request: Request,
+    bg_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
+):
     """Rewrite one day — or one cell of it — AND rebuild the .docx, so the file
     matches what's on screen."""
     require_entitlement(user_id)
@@ -1573,7 +1578,7 @@ def revise_day(req: ReviseDayRequest, request: Request, user_id: str = Depends(g
     # retrieval/model memory on a small Render instance.
     with generation_queue.slot(user_id):
         require_entitlement(user_id)
-        return service.revise_day(user_id, req.plan_id, req.day_index, req.feedback, req.field)
+        return service.revise_day(user_id, req.plan_id, req.day_index, req.feedback, req.field, bg_tasks)
 
 
 @router.post("/set_day_field")

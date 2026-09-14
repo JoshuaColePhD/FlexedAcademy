@@ -290,23 +290,32 @@ def week_system_prompt(
     rules = planning_rules() if _subject_code(subject) == "AP_Lang" else ""
     template_days = day_names_for_school(school_id, user_id=user_id)
 
+    # Static, school/subject-level blocks (rules, profile, calendar, template)
+    # go first so they form one stable prefix an OpenAI prompt cache can reuse
+    # across every request for the same school and subject. Per-request
+    # content (custom instructions, retrieved standards, the task) goes after
+    # — it differs on nearly every call anyway, so it gains nothing from being
+    # early and would otherwise sit in front of the big static blocks and
+    # break the cache for all of them. grounding_constraints() must still
+    # precede _custom_instructions_block()/_class_custom_instructions_block()
+    # (see their docstrings) — that ordering is unchanged here.
     blocks = [
         (f"You are an expert {subject} curriculum designer and master "
         f"teacher for Grade {grade}. You have decades of classroom experience and a deep understanding "
         "of pedagogical best practices, cognitive science, and student engagement. You draft weekly lesson plans that are rigorously grounded in "
         "official standards documents and highly practical for a real classroom."),
-        grounding_constraints(subject, grade),
-        INSTRUCTIONAL_JUDGMENT,
-        _custom_instructions_block(custom_instructions),
-        _class_custom_instructions_block(class_custom_instructions),
-        class_period_block(period_minutes),
-        output_length_block(output_length),
         f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
         "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(school_id),
         "SCHOOL CALENDAR AND UNIT MAP — use these dates verbatim. Never invent a "
         "date or a school year.\n\n" + calendar_context(school_id),
         "SELECTED SCHOOL TEMPLATE — this is the source of truth for the weekly "
         "day axis.\n\n" + weekly_template_context(school_id, user_id=user_id),
+        grounding_constraints(subject, grade),
+        INSTRUCTIONAL_JUDGMENT,
+        _custom_instructions_block(custom_instructions),
+        _class_custom_instructions_block(class_custom_instructions),
+        class_period_block(period_minutes),
+        output_length_block(output_length),
         "TEACHER'S OWN CURRICULUM MAP / PACING GUIDE — align this week's unit, "
         "sequencing, and any texts or milestones it names. Still cite standards "
         "ONLY from the Retrieved standards block below; this document has no "
@@ -396,18 +405,21 @@ def day_system_prompt(
 ) -> str:
     rules = planning_rules() if _subject_code(subject) == "AP_Lang" else ""
 
+    # Same static-first ordering as week_system_prompt, for the same cache
+    # reason — see the comment there. grounding_constraints() still precedes
+    # the custom-instructions blocks, unchanged.
     blocks = [
         (f"You are an expert {subject} curriculum designer for Grade {grade}. You are "
         "revising ONE day of an existing weekly lesson plan based on the teacher's "
         "feedback."),
+        f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
+        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(school_id),
         grounding_constraints(subject, grade),
         INSTRUCTIONAL_JUDGMENT,
         _custom_instructions_block(custom_instructions),
         _class_custom_instructions_block(class_custom_instructions),
         class_period_block(period_minutes),
         output_length_block(output_length),
-        f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
-        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(school_id),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
         + (format_context(result) or "(none)"),
         "THE FULL WEEK, for context only — do NOT rewrite the other days:\n\n"
@@ -498,17 +510,20 @@ def day_field_system_prompt(
     else:
         codes_note = "Do NOT put a standard code in this field; it does not carry one."
 
+    # Same static-first ordering as week_system_prompt, for the same cache
+    # reason — see the comment there. grounding_constraints() still precedes
+    # the custom-instructions blocks, unchanged.
     blocks = [
         (f"You are an expert {subject} curriculum designer for Grade {grade}. You are "
         f"revising ONE FIELD — the '{label}' cell — of ONE day of an existing weekly "
         "lesson plan, based on the teacher's feedback."),
+        f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
+        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(school_id),
         grounding_constraints(subject, grade),
         INSTRUCTIONAL_JUDGMENT,
         _custom_instructions_block(custom_instructions),
         _class_custom_instructions_block(class_custom_instructions),
         class_period_block(period_minutes),
-        f"TEACHER'S PLANNING RULES:\n\n{rules}" if rules else "",
-        "SCHOOL PROFILE (Logistics & Exceptions):\n\n" + school_profile(school_id),
         "RETRIEVED STANDARDS (the only standards you may cite):\n\n"
         + (format_context(result) or "(none)"),
         "THE FULL WEEK, for context only — do NOT rewrite any of it:\n\n" + full_plan_context,

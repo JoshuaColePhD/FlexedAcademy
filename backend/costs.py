@@ -19,6 +19,10 @@ class TextModelPricing:
 # USD per one million tokens.  Update this table when OPENAI_MODEL changes.
 TEXT_MODEL_PRICING: dict[str, TextModelPricing] = {
     "gpt-5.6-luna": TextModelPricing(0.20, 0.02, 1.20),
+    # Estimate pending a billing-dashboard data point for this model — mini
+    # tiers have historically run well under a tenth of the flagship model's
+    # rate. Adjust once GET /api/admin/usage-costs shows real spend for it.
+    "gpt-5.6-luna-mini": TextModelPricing(0.015, 0.0015, 0.06),
 }
 
 
