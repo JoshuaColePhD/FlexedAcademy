@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { ArrowLeft, Building2, Check, CheckCircle2, ChevronDown, CircleHelp, Code2, CreditCard, Download, FileText, HardDrive, Loader2, Mail, MessageCircle, PencilLine, RefreshCw, Save, Settings, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Building2, CheckCircle2, ChevronDown, CircleHelp, Code2, CreditCard, Download, FileText, HardDrive, Loader2, Mail, MessageCircle, PencilLine, RefreshCw, Save, Settings, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useAuth } from '../lib/authContext'
-import { getAvatar, getInitials } from '../lib/avatars'
 import { useBilling } from '../lib/billingContext'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
@@ -1194,22 +1193,23 @@ function BillingSection() {
           <p>{pageIntro}</p>
         </div>
         <div className="billing-reference-layout">
-          <article className="billing-color-plan">
-            <div className="billing-color-plan-top">
-              <div className="billing-color-plan-icon"><Sparkles size={20} aria-hidden="true" /></div>
-              <span className="billing-color-plan-badge">Monthly</span>
+          <article className="billing-unified-card">
+            <div className="billing-unified-plan billing-color-plan">
+              <div className="billing-color-plan-top">
+                <div className="billing-color-plan-icon"><Sparkles size={20} aria-hidden="true" /></div>
+                <span className="billing-color-plan-badge">Monthly</span>
+              </div>
+              <p className="billing-color-plan-kicker">FlexEd</p>
+              <h3>Build more with FlexEd</h3>
+              <p className="billing-color-plan-subtitle">More room for thoughtful lesson planning.</p>
+              <div className="billing-color-plan-price"><strong>{priceLabel || 'Loading…'}</strong><span>per month</span></div>
+              <ul className="billing-color-plan-features">
+                {['A much higher weekly usage limit', 'Standards-aware planning', 'Your plans stay yours'].map((line) => (
+                  <li key={line}><CheckCircle2 size={15} aria-hidden="true" /><span>{line}</span></li>
+                ))}
+              </ul>
             </div>
-            <p className="billing-color-plan-kicker">FlexEd</p>
-            <h3>Build more with FlexEd</h3>
-            <p className="billing-color-plan-subtitle">More room for thoughtful lesson planning.</p>
-            <div className="billing-color-plan-price"><strong>{priceLabel || 'Loading…'}</strong><span>per month</span></div>
-            <ul className="billing-color-plan-features">
-              {['A much higher weekly usage limit', 'Standards-aware planning', 'Your plans stay yours'].map((line) => (
-                <li key={line}><CheckCircle2 size={15} aria-hidden="true" /><span>{line}</span></li>
-              ))}
-            </ul>
-          </article>
-          <article className="billing-detail-card">
+            <div className="billing-unified-details billing-detail-card">
             <div className="billing-detail-card-heading">
               <div><p className="billing-card-kicker">Subscription</p><h3>Ready when you are</h3></div>
               <span className={`billing-status ${planStatusClass}`}>{planStatus}</span>
@@ -1224,6 +1224,7 @@ function BillingSection() {
               {busy ? 'Opening…' : 'Continue to checkout'}
             </button>
             <p className="billing-trust-line"><ShieldCheck size={14} aria-hidden="true" /> Secure checkout · Cancel anytime</p>
+            </div>
           </article>
         </div>
       </div>
@@ -1233,7 +1234,6 @@ function BillingSection() {
   // Only ever reached once the free-tier early return above has ruled out
   // !entitlement.subscribed, so this card's whole job is "here's your
   // account, here's how to manage it" — not a second pitch.
-  const avatar = getAvatar(user?.avatar)
   const name = user?.name || user?.email || 'Your account'
 
   return (
@@ -1243,23 +1243,24 @@ function BillingSection() {
         <h2>Your subscription</h2>
         <p>{pageIntro}</p>
       </div>
-      <div className="billing-reference-layout">
-        <article className="billing-color-plan billing-color-plan--active">
-          <div className="billing-color-plan-top">
-            <div className="billing-color-plan-icon"><CheckCircle2 size={20} aria-hidden="true" /></div>
-            <span className={`billing-color-plan-badge ${statusClassName}`}>{statusLabel}</span>
+        <div className="billing-reference-layout">
+        <article className="billing-unified-card billing-unified-card--active">
+          <div className="billing-unified-plan billing-color-plan billing-color-plan--active">
+            <div className="billing-color-plan-top">
+              <div className="billing-color-plan-icon"><CheckCircle2 size={20} aria-hidden="true" /></div>
+              <span className={`billing-color-plan-badge ${statusClassName}`}>{statusLabel}</span>
+            </div>
+            <p className="billing-color-plan-kicker">FlexEd membership</p>
+            <h3>{name}</h3>
+            <p className="billing-color-plan-subtitle">Your subscription is managed securely through Stripe.</p>
+            <div className="billing-color-plan-price"><strong>{priceLabel || 'Monthly plan'}</strong><span>per month</span></div>
+            <ul className="billing-color-plan-features">
+              {['More room to generate each week', 'Standards-aware planning', 'Your plans stay yours'].map((line) => (
+                <li key={line}><CheckCircle2 size={15} aria-hidden="true" /><span>{line}</span></li>
+              ))}
+            </ul>
           </div>
-          <p className="billing-color-plan-kicker">FlexEd membership</p>
-          <h3>{name}</h3>
-          <p className="billing-color-plan-subtitle">Your subscription is managed securely through Stripe.</p>
-          <div className="billing-color-plan-price"><strong>{priceLabel || 'Monthly plan'}</strong><span>per month</span></div>
-          <ul className="billing-color-plan-features">
-            {['More room to generate each week', 'Standards-aware planning', 'Your plans stay yours'].map((line) => (
-              <li key={line}><CheckCircle2 size={15} aria-hidden="true" /><span>{line}</span></li>
-            ))}
-          </ul>
-        </article>
-        <article className="billing-detail-card">
+          <div className="billing-unified-details billing-detail-card">
           <div className="billing-detail-card-heading">
             <div><p className="billing-card-kicker">Payment & details</p><h3>Subscription overview</h3></div>
             <div className="billing-price-icon"><CreditCard size={18} aria-hidden="true" /></div>
@@ -1281,6 +1282,7 @@ function BillingSection() {
             {busy ? 'Opening…' : paymentNeedsAttention ? 'Update payment' : 'Manage subscription'}
           </button>
           <p className="billing-trust-line"><ShieldCheck size={14} className="text-ok" aria-hidden="true" /> {cancellationScheduled ? 'Managed securely by Stripe' : `Renews ${periodEnd || 'monthly'} · Managed securely by Stripe`}</p>
+          </div>
         </article>
       </div>
     </div>
