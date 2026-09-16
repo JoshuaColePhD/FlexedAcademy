@@ -4235,12 +4235,6 @@ export function ChatPage() {
                          thread — which is the whole cost this memo exists to avoid. */
                       onEdit={m.role === 'user' && !busy ? handleEditMessage : undefined}
                       onApplyAdvice={m.role === 'assistant' && !m.planId && (m.researchSources?.length || chatMode === 'research') ? handleApplyAdvice : undefined}
-                      /* The day-by-day breakdown moved into ArtifactRail's own
-                         "This week" section on desktop, which sits right next to
-                         the plan it describes instead of scrolling away with the
-                         transcript. Phone has no rail to carry it, so it stays
-                         here for isPhone. */
-                      hideWeekStrip={!isPhone}
                       onOpenDay={m.plan?.days?.length ? handleOpenPlanDay : undefined}
                       onUndo={i === messages.length - 1 && m.role === 'assistant' && m.plan?.days?.length && lastChange ? undoLastChange : undefined}
                       voiceOpen={voiceOpen}

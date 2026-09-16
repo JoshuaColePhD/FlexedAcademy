@@ -5,7 +5,6 @@ import ReactMarkdown from 'react-markdown'
 import { scanGrounding } from '../lib/grounding'
 import { dayTitle, orderedDays, DAYS } from '../lib/planShape'
 import { Cite } from './Citation'
-import { WeekStrip } from './WeekStrip'
 import { ThinkingIndicator } from './ThinkingIndicator'
 
 /** What Copy puts on the clipboard: the reply, plus the week and the codes the
@@ -73,7 +72,6 @@ function MessageImpl({
   onRetry,
   onEdit,
   isLast,
-  hideWeekStrip = false,
   showTimestamp = true,
   bubbleGroup = 'single',
   onApplyAdvice,
@@ -372,20 +370,12 @@ function MessageImpl({
           <p className="mt-3 text-sm text-ink-muted">A few questions from earlier — answered below.</p>
         ) : null}
 
-        {/* THE VERIFICATION.
-            With the document closed by default, this is where the grounded
-            source codes live — and, on phone (hideWeekStrip), the five days
-            and what's on each too,
-            since a phone has no side rail to carry that instead (see
-            ArtifactRail's own "This week" section, which is where this
-            lives everywhere else now). It is what makes a bad week
-            catchable without opening a viewer — and it is less UI than the
-            panel it replaces. */}
+        {/* Keep the plan's evidence attached to the reply without repeating
+            the full day-by-day week list in the transcript. The complete
+            breakdown belongs in the artifact/plan view, where it can be
+            scanned without competing with the conversation. */}
         {!isUser && message.plan?.days?.length ? (
           <div className="mt-3 flex w-full flex-col gap-3.5">
-            {hideWeekStrip ? null : (
-              <WeekStrip days={message.plan.days} loose onSelectDay={onOpenDay} />
-            )}
             {(() => {
               const focus = onOpenDay ? focusDuring(message.plan) : null
               return focus ? (
