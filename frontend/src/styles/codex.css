@@ -3174,19 +3174,10 @@ body:has(.dialog-scrim) .composer-dock-surface {
     box-shadow: none !important;
   }
 
-  /* Let the transcript occupy the full phone canvas and scroll underneath
-     the transparent header. The top padding preserves the initial reading
-     position, while later scroll movement can pass beneath the glass. */
-  .workspace-chat.mobile-active-chat-shell > .workspace-topbar.mobile-active-chat-header {
-    position: absolute;
-    top: 0;
-    right: 0;
-    left: 0;
-  }
-
-  .workspace-chat.mobile-active-chat-shell > .scroll-y {
-    padding-top: 76px !important;
-  }
+  /* Keep the active-chat header in flow. Overlaying it on the transcript
+     (position:absolute + 76px scroll padding) reserved a 76px floor the
+     composer plan sheet cannot compress, so a full thumb pull stopped 76px
+     short of the transcript edge and hid Open lesson plan behind the glass. */
 
   .chat-head-trigger-copy {
     display: flex;
@@ -3221,12 +3212,17 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
 
   .workspace-topbar > .ml-auto {
-    margin-left: 0 !important;
-    gap: 0 !important;
+    margin-left: auto !important;
+    gap: 4px !important;
   }
 
   .workspace-topbar .workspace-artifact-toggle {
-    display: none;
+    position: relative;
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    border-radius: 999px;
   }
 
   /* ChatGPT's mobile pattern keeps the icon itself quiet and lets the button
@@ -3410,6 +3406,12 @@ body:has(.dialog-scrim) .composer-dock-surface {
     padding-bottom: max(18px, calc(18px + var(--safe-b))) !important;
     background: transparent !important;
     box-shadow: none !important;
+  }
+
+  /* Win over the 12px !important lip above so a fully opened peek sheet
+     can meet the transcript edge instead of stopping 12px short. */
+  .composer-dock-surface.is-plan-peek-open {
+    padding-top: 0 !important;
   }
 
   .composer-dock-surface > div {
@@ -3799,6 +3801,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
      so they read as floating actions over the matte FlexEd surface. */
   .mobile-chat-back,
   .mobile-new-chat,
+  .workspace-topbar .workspace-artifact-toggle,
   .mobile-context-pill,
   .mobile-chat-home .mobile-floating-new-chat,
   .mobile-primary-action,
@@ -3822,6 +3825,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
 
   .mobile-chat-back,
   .mobile-new-chat,
+  .workspace-topbar .workspace-artifact-toggle,
   .mobile-context-pill,
   .mobile-chat-home .mobile-floating-new-chat,
   .mobile-primary-action {
@@ -3834,6 +3838,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
 
   .mobile-chat-back::before,
   .mobile-new-chat::before,
+  .workspace-topbar .workspace-artifact-toggle::before,
   .mobile-context-pill::before,
   .mobile-chat-home .mobile-floating-new-chat::before,
   .mobile-primary-action::before {
@@ -3853,6 +3858,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
 
   .mobile-chat-back > *,
   .mobile-new-chat > *,
+  .workspace-topbar .workspace-artifact-toggle > *,
   .mobile-context-pill > *,
   .mobile-chat-home .mobile-floating-new-chat > *,
   .mobile-primary-action > * {
@@ -3862,6 +3868,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
 
   .mobile-chat-back,
   .mobile-new-chat,
+  .workspace-topbar .workspace-artifact-toggle,
   .mobile-context-pill,
   .composer-accessories > button,
   .split-layout-mobile-tabs button,
@@ -3895,6 +3902,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
 
   .mobile-chat-back:active,
   .mobile-new-chat:active,
+  .workspace-topbar .workspace-artifact-toggle:active,
   .mobile-context-pill:active,
   .composer-accessories > button:active,
   .split-layout-mobile-tabs button:active,
@@ -4348,6 +4356,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
      highlight while making the material visually calm. */
   .mobile-chat-back,
   .mobile-new-chat,
+  .workspace-topbar .workspace-artifact-toggle,
   .mobile-context-pill,
   .composer-accessories > button,
   .split-layout-mobile-tabs button,
@@ -4370,6 +4379,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
 
   :root[data-theme='dark'] .mobile-chat-back,
   :root[data-theme='dark'] .mobile-new-chat,
+  :root[data-theme='dark'] .workspace-topbar .workspace-artifact-toggle,
   :root[data-theme='dark'] .mobile-context-pill,
   :root[data-theme='dark'] .composer-accessories > button,
   :root[data-theme='dark'] .split-layout-mobile-tabs button,
