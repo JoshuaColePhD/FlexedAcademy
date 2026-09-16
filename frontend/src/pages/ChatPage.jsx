@@ -25,6 +25,7 @@ import { questionTypesProse } from '../lib/quizShape'
 import { CLARIFY_MARKER, isClarifyingMessage, stripClarifyMarker } from '../lib/chatToolRecovery'
 import { splitDecisions } from '../lib/decisionChecklist'
 import { dayLabel, isSameDay, shortRange } from '../lib/dates'
+import { gradeLabel } from '../lib/grades'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import * as perf from '../lib/performanceMetrics'
 import { useComposerDraft, clearComposerDraft } from '../hooks/useComposerDraft'
@@ -1067,6 +1068,19 @@ export function ChatPage() {
     () => (calendar?.weeks || []).find((w) => w.week === conversationWeek) || null,
     [calendar, conversationWeek]
   )
+  /* The chat title and the teaching context are different records. The title
+     belongs in the Chats list; this header should identify the course that
+     owns the conversation, followed by its grade and week. Keeping these
+     values derived in one place prevents the phone and tablet headers from
+     drifting back into the old mixed-title layout. */
+  const headerCourseLabel = activeClass?.name || activeClass?.subject?.replace(/_/g, ' ') || 'Choose a course'
+  const headerGradeLabel = gradeLabel(activeClass?.grade)
+  const headerWeekLabel = displayWeek
+    ? `Week ${String(displayWeek.week).padStart(2, '0')}`
+    : 'Choose a week'
+  const headerContextLabel = [headerGradeLabel, headerWeekLabel].filter(Boolean).join(' · ')
+  const headerAvatarSeed = activeClass?.id ? { id: activeClass.id } : currentChat
+  const headerAvatarInitial = headerCourseLabel.replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase() || 'N'
   /* A missing school calendar is the calendar equivalent of a missing pacing
      guide: the school can still be selected, but the week control cannot be
      trusted until the source file is uploaded. Keep this as one derived fact
@@ -4057,18 +4071,19 @@ export function ChatPage() {
               aria-expanded={headerSheetOpen}
               aria-label={
                 displayWeek
-                  ? `Change course or week. Currently ${activeClass?.name || 'no course'}, Week ${displayWeek.week}.`
-                : 'Change course or week'
+                  ? `Change course or week. Currently ${headerCourseLabel}, ${headerContextLabel}.`
+                  : 'Change course or week'
               }
             >
               <span className="chat-head-trigger-copy min-w-0 flex-1">
                 <span className="chat-head-trigger-course truncate text-sm font-medium text-ink">
-                  {activeClass?.name || 'Choose a class'}
+                  {headerCourseLabel}
                 </span>
                 <span className="chat-head-trigger-week truncate text-xs text-ink-muted">
+                  {headerGradeLabel ? `${headerGradeLabel} · ` : ''}
                   {displayWeek
-                    ? `Week ${String(displayWeek.week).padStart(2, '0')}${shortRange(displayWeek.start, displayWeek.end) ? ` · ${shortRange(displayWeek.start, displayWeek.end)}` : ''}`
-                    : 'Choose a week'}
+                    ? `${headerWeekLabel}${shortRange(displayWeek.start, displayWeek.end) ? ` · ${shortRange(displayWeek.start, displayWeek.end)}` : ''}`
+                    : headerWeekLabel}
                 </span>
               </span>
               {!hasPacingGuide ? (
@@ -4094,7 +4109,7 @@ export function ChatPage() {
             aria-expanded={headerSheetOpen}
             aria-label={
               displayWeek
-                ? `Change course or week. Currently ${activeClass?.name || 'no course'}, Week ${displayWeek.week}.`
+                ? `Change course or week. Currently ${headerCourseLabel}, ${headerContextLabel}.`
                 : 'Change course or week'
             }
             title="Change course or week"
@@ -4102,16 +4117,15 @@ export function ChatPage() {
             <div className="chat-current-thread flex min-w-0 items-center gap-2">
               <span
                 className="chat-current-thread-avatar"
-                style={{ backgroundColor: chatAvatarColor(currentChat) }}
+                style={{ backgroundColor: chatAvatarColor(headerAvatarSeed) }}
                 aria-hidden="true"
               >
-                {(currentChat?.title || 'N').replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase() || 'N'}
+                {headerAvatarInitial}
               </span>
               <span className="chat-current-thread-copy min-w-0">
-                <span className="chat-current-thread-title truncate">{currentChat?.title || 'New chat'}</span>
+                <span className="chat-current-thread-title truncate">{headerCourseLabel}</span>
                 <span className="chat-current-thread-course truncate">
-                  {activeClass?.name || 'Choose a course'}
-                  {displayWeek ? ` · Week ${String(displayWeek.week).padStart(2, '0')}` : ' · Choose a week'}
+                  {headerContextLabel}
                 </span>
               </span>
               <ChevronDown size={16} aria-hidden="true" className="chat-head-trigger-caret shrink-0" />
