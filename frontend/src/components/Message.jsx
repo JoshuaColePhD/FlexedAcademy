@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowUpRight, Check, Copy, Pencil, RotateCcw } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronDown, Copy, Pencil, RotateCcw } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { scanGrounding } from '../lib/grounding'
 import { dayTitle, orderedDays, DAYS } from '../lib/planShape'
@@ -389,12 +389,22 @@ function MessageImpl({
               ) : null
             })()}
             {grounded.length ? (
-              <div className="grounding-line">
-                <span>Grounded:</span>
-                {grounded.map((c) => (
-                  <Cite key={c} code={c} subject={subject} state={state} grounded />
-                ))}
-              </div>
+              <details className="grounding-disclosure">
+                <summary className="grounding-disclosure-summary">
+                  <span>
+                    Based on {grounded.length} standard{grounded.length === 1 ? '' : 's'}
+                  </span>
+                  <span className="grounding-disclosure-action">
+                    View sources
+                    <ChevronDown className="grounding-disclosure-chevron" size={16} aria-hidden="true" />
+                  </span>
+                </summary>
+                <div className="grounding-line grounding-citations" aria-label="Grounded standards">
+                  {grounded.map((c) => (
+                    <Cite key={c} code={c} subject={subject} state={state} grounded />
+                  ))}
+                </div>
+              </details>
             ) : null}
             {/* message.thin is only ever set on the assistant message ChatPage
                 pushes right after onDone (see its own comment) — a plan
