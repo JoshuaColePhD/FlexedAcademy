@@ -4,6 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Building2, CheckCircle2, ChevronDown, CircleHelp, Code2, CreditCard, Download, FileText, HardDrive, Loader2, Mail, MessageCircle, PencilLine, RefreshCw, Save, Settings, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
+import { haptic } from '../lib/haptics'
 import { useConfirm } from '../lib/confirmContext'
 import { useAuth } from '../lib/authContext'
 import { useBilling } from '../lib/billingContext'
@@ -1820,11 +1821,19 @@ export function SettingsPage() {
 
       {/* Right Content Area (Detail) */}
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="flex h-12 shrink-0 items-center border-b border-edge bg-paper px-4 z-10 gap-3 md:hidden">
-          <Link to="/" className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"><ArrowLeft size={16}/></Link>
-          <div className="flex min-w-0 items-center gap-1.5">
-            <Settings size={15} aria-hidden="true" className="text-ink-muted" />
-            <div className="text-sm font-semibold text-ink truncate">Settings</div>
+        <header className="mobile-secondary-page-header settings-mobile-page-header flex shrink-0 items-center border-b border-edge bg-paper px-4 z-10 gap-3 md:hidden">
+          <Link
+            to={classId ? `/c/${classId}` : '/'}
+            state={classId ? { mobileHome: true } : undefined}
+            onClick={() => haptic('light')}
+            className="mobile-page-back"
+            aria-label="Back to chats"
+          >
+            <ArrowLeft size={19} strokeWidth={1.8} aria-hidden="true" />
+          </Link>
+          <div className="mobile-secondary-page-title flex min-w-0 flex-1 items-center gap-2">
+            <Settings size={18} aria-hidden="true" className="shrink-0 text-ink-muted" />
+            <h1 className="min-w-0 truncate text-xl font-bold text-ink">Settings</h1>
           </div>
         </header>
         <nav className="flex shrink-0 gap-1 overflow-x-auto border-b border-edge bg-paper px-3 md:hidden" aria-label="Settings sections">

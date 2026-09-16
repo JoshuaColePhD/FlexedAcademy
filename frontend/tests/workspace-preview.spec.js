@@ -122,6 +122,38 @@ test('system appearance updates without visiting settings', async ({ page }, tes
   await expect(page.locator('.app-rail')).toHaveCSS('background-color', 'rgb(242, 242, 244)')
 })
 
+test('phone secondary pages expose visible thumb-sized back controls', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+
+  await page.goto('/preview.html?fresh=0&at=/c/c2/settings')
+  const settingsBack = page.getByRole('link', { name: 'Back to chats' })
+  await expect(settingsBack).toBeVisible()
+  await expect(page.locator('.mobile-secondary-page-header')).toHaveCount(1)
+  await expect(page.locator('.mobile-secondary-page-title h1')).toHaveText('Settings')
+  const settingsBackBox = await settingsBack.boundingBox()
+  expect(settingsBackBox.width).toBeGreaterThanOrEqual(44)
+  expect(settingsBackBox.height).toBeGreaterThanOrEqual(44)
+  const settingsHeaderBox = await page.locator('.mobile-secondary-page-header').boundingBox()
+  await settingsBack.click()
+  await expect(page.locator('.mobile-chat-home')).toBeVisible()
+
+  await page.goto('/preview.html?fresh=0&at=/c/c2/plans')
+  const plansBack = page.getByRole('button', { name: 'Back to chats' })
+  await expect(plansBack).toBeVisible()
+  await expect(page.locator('.mobile-secondary-page-header')).toHaveCount(1)
+  await expect(page.locator('.mobile-secondary-page-title h1')).toHaveText('Library')
+  const plansBackBox = await plansBack.boundingBox()
+  expect(plansBackBox.width).toBeGreaterThanOrEqual(44)
+  expect(plansBackBox.height).toBeGreaterThanOrEqual(44)
+  const plansHeaderBox = await page.locator('.mobile-secondary-page-header').boundingBox()
+  expect(Math.abs(settingsHeaderBox.height - plansHeaderBox.height)).toBeLessThanOrEqual(1)
+
+  await page.goto('/preview.html?fresh=0&at=/c/c2/class')
+  await expect(page.locator('.mobile-secondary-page-header')).toHaveCount(1)
+  await expect(page.locator('.mobile-secondary-page-title h1')).toHaveText('Class profiles')
+  await expect(page.getByRole('button', { name: 'Back to chats' })).toBeVisible()
+})
+
 test('composer stays centered between the navigation and materials rails', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto(seed)

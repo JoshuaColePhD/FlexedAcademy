@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Settings } from 'lucide-react'
+import { haptic } from '../lib/haptics'
 
 export function SplitLayout({ 
   title = 'Settings', 
@@ -77,6 +78,12 @@ export function SplitLayout({
 
   const isGeneralLayout = layout === 'general'
 
+  const goBack = () => {
+    haptic('light')
+    if (backPath) navigate(backPath)
+    else navigate(-1)
+  }
+
   return (
     <div className={`split-layout-shell${isGeneralLayout ? ' split-layout-shell-general' : ''} flex h-full min-h-0 w-full overflow-hidden bg-paper/30 backdrop-blur-3xl saturate-[1.2] border border-white/5`}>
       
@@ -84,9 +91,9 @@ export function SplitLayout({
       {!isGeneralLayout ? <div className="split-layout-sidebar hidden md:flex w-52 shrink-0 flex-col border-r border-edge bg-paper-sunken">
         <header className="flex h-12 shrink-0 items-center gap-2 px-3">
           <button
-            onClick={() => backPath ? navigate(backPath) : navigate(-1)}
+            onClick={goBack}
             aria-label="Back"
-            className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+            className="mobile-page-back rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
           >
             <ArrowLeft size={16} aria-hidden="true" />
           </button>
@@ -141,8 +148,8 @@ export function SplitLayout({
               <header className="split-layout-general-header">
                 <button
                   type="button"
-                  onClick={() => backPath ? navigate(backPath) : navigate(-1)}
-                  className="rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+                  onClick={goBack}
+                  className="mobile-page-back rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
                   aria-label="Back"
                 >
                   <ArrowLeft size={17} aria-hidden="true" />
@@ -171,16 +178,19 @@ export function SplitLayout({
             </>
           ) : null}
           {/* Mobile Header (Shows only on small screens) */}
-          {!isGeneralLayout ? <div className="split-layout-mobile-header md:hidden flex items-center gap-3 mb-8">
+          {!isGeneralLayout ? <div className="mobile-secondary-page-header split-layout-mobile-header md:hidden flex items-center gap-3 mb-8">
              <button
               type="button"
-              onClick={() => backPath ? navigate(backPath) : navigate(-1)}
-              className="split-layout-mobile-back inline-flex shrink-0 items-center justify-center rounded-full p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
-              aria-label="Go back"
+              onClick={goBack}
+              className="split-layout-mobile-back mobile-page-back inline-flex shrink-0 items-center justify-center rounded-full p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+              aria-label="Back to chats"
             >
               <ArrowLeft size={20} strokeWidth={1.8} aria-hidden="true" />
             </button>
-            <h1 className="min-w-0 flex-1 truncate text-xl font-bold text-ink">{title}</h1>
+            <div className="mobile-secondary-page-title flex min-w-0 flex-1 items-center gap-2">
+              {Icon && <Icon size={18} aria-hidden="true" className="shrink-0 text-ink-muted" />}
+              <h1 className="min-w-0 truncate text-xl font-bold text-ink">{title}</h1>
+            </div>
             {sidebarTopAction ? (
               <div className="split-layout-mobile-header-action shrink-0">
                 {sidebarTopAction}

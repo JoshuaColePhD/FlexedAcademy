@@ -8,6 +8,7 @@ import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { SUPPORT_SUBJECT } from '../lib/support'
 import { useNavigate, useParams } from 'react-router-dom'
+import { haptic } from '../lib/haptics'
 
 const EMPTY_THREADS = []
 const SUPPORT_MAILBOX_OPENED_KEY = 'flexed.support.mailbox.opened'
@@ -121,7 +122,15 @@ function ThreadViewer({ thread, reply, setReply, onReply, sending, onBack }) {
   return (
     <article className="support-reading-pane">
       <header className="support-reading-header">
-        <button type="button" className="support-reading-back" onClick={onBack} aria-label="Back to conversations">
+        <button
+          type="button"
+          className="support-reading-back mobile-page-back"
+          onClick={() => {
+            haptic('light')
+            onBack()
+          }}
+          aria-label="Back to conversations"
+        >
           <ChevronLeft size={18} aria-hidden="true" />
           <span>Inbox</span>
         </button>

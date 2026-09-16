@@ -5,6 +5,7 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
 import { useActiveClass } from '../hooks/useAppData'
 import { useToast } from '../lib/toastContext'
+import { haptic } from '../lib/haptics'
 
 const EMPTY_STANDARDS = []
 
@@ -210,9 +211,12 @@ export function StandardsPage() {
           <header className="mb-6 flex items-start gap-3">
             <button
               type="button"
-              onClick={() => navigate(-1)}
+              onClick={() => {
+                haptic('light')
+                navigate(-1)
+              }}
               aria-label="Back"
-              className="btn-icon fa-press mt-0.5 shrink-0"
+              className="mobile-page-back btn-icon fa-press mt-0.5 shrink-0"
             >
               <ArrowLeft size={17} aria-hidden="true" />
             </button>

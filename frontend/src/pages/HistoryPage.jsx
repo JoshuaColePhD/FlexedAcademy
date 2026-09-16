@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { History, MessageSquare, Search, Trash2, CheckSquare, Square, ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
 import { useToast } from '../lib/toastContext'
 import { useConfirm } from '../lib/confirmContext'
+import { haptic } from '../lib/haptics'
 import { useActiveClass, useChats, useDeleteChat, useRenameChat } from '../hooks/useAppData'
 import { SkeletonText } from '../components/Skeleton'
 
@@ -389,8 +390,11 @@ export function HistoryPage() {
       <div className={`flex-1 min-w-0 flex flex-col ${!currentActiveChat ? 'hidden md:flex' : ''}`}>
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-edge bg-paper/80 px-4 md:px-8 backdrop-blur-sm">
           <button
-            onClick={() => setActiveChat(null)}
-            className="md:hidden rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
+            onClick={() => {
+              haptic('light')
+              setActiveChat(null)
+            }}
+            className="mobile-page-back md:hidden rounded-md p-1.5 text-ink-muted transition-colors hover:bg-paper-inset hover:text-ink"
             aria-label="Back to chat list"
           >
             <ArrowLeft size={16} aria-hidden="true" />

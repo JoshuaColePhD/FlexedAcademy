@@ -3674,6 +3674,35 @@ body:has(.dialog-scrim) .composer-dock-surface {
     backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
   }
 
+  /* Secondary pages share one mobile header rhythm: a 44px glass back
+     control, one icon/title lockup, and the same vertical breathing room.
+     Settings owns its header outside SplitLayout, so keep its full-width
+     bar separate from the split page's negative gutter treatment. */
+  .mobile-secondary-page-header {
+    min-height: 64px;
+    gap: 12px;
+  }
+
+  .settings-mobile-page-header {
+    height: 64px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    background: rgb(var(--paper-raised-rgb) / 0.82) !important;
+    border-bottom-color: rgb(255 255 255 / 0.10) !important;
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.12);
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+  }
+
+  .mobile-secondary-page-title {
+    min-width: 0;
+  }
+
+  .mobile-secondary-page-title h1 {
+    min-width: 0;
+    line-height: 1.2;
+  }
+
   .split-layout-mobile-tabs {
     position: relative;
     z-index: 7;
@@ -4434,6 +4463,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .chat-header-sheet,
   .split-layout-mobile-header,
   .split-layout-general-header,
+  .settings-mobile-page-header,
   .mobile-plan-reader .doc-head {
     background: rgb(var(--paper-raised-rgb) / 0.98) !important;
   }
@@ -4452,6 +4482,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .chat-header-sheet,
   .split-layout-mobile-header,
   .split-layout-general-header,
+  .settings-mobile-page-header,
   .mobile-plan-reader .doc-head {
     background: rgb(var(--paper-raised-rgb) / 0.98) !important;
     -webkit-backdrop-filter: none !important;
@@ -4598,6 +4629,62 @@ body:has(.dialog-scrim) .composer-dock-surface {
     min-height: 44px;
     align-items: center;
     justify-content: center;
+  }
+}
+
+/* Page-level back controls on phones need the same affordance as the chat
+   back control: a visible, glassy target large enough to find and press with
+   a thumb. Keep the label optional so compact headers can remain compact. */
+@media (max-width: 767.98px) {
+  .mobile-page-back {
+    display: inline-flex !important;
+    min-width: 44px !important;
+    min-height: 44px !important;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    padding: 0 12px !important;
+    color: var(--ink-soft) !important;
+    background:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.14),
+        rgb(255 255 255 / 0.06)
+      ),
+      rgb(var(--paper-raised-rgb) / 0.86) !important;
+    border: 1px solid rgb(255 255 255 / 0.16) !important;
+    border-radius: 999px !important;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.16),
+      inset 0 -1px 0 rgb(0 0 0 / 0.10),
+      0 4px 12px rgb(0 0 0 / 0.14) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(130%);
+    backdrop-filter: blur(20px) saturate(130%);
+    touch-action: manipulation;
+  }
+
+  .mobile-page-back:active {
+    transform: scale(0.96);
+    box-shadow:
+      inset 0 2px 5px rgb(0 0 0 / 0.16),
+      0 2px 8px rgb(0 0 0 / 0.12) !important;
+  }
+
+  .mobile-page-back:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgb(var(--accent-rgb) / 0.24),
+      inset 0 1px 0 rgb(255 255 255 / 0.16),
+      0 4px 12px rgb(0 0 0 / 0.14) !important;
+  }
+
+  :root[data-theme='dark'] .mobile-page-back {
+    background:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.14),
+        rgb(255 255 255 / 0.06)
+      ),
+      rgb(39 38 40 / 0.86) !important;
   }
 }
 
