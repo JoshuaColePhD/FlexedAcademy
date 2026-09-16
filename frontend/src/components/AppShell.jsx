@@ -14,6 +14,7 @@ import { useToast } from '../lib/toastContext'
 import { NARROW, PHONE, TOUCH, useMediaQuery } from '../hooks/useMediaQuery'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { AccountMenu } from './AccountMenu'
+import { MobileTabBar } from './MobileTabBar'
 import { SkeletonText } from './Skeleton'
 import { onOpenOnboardingWizard } from '../lib/onboardingWizardBus'
 import { readAccountStorage, writeAccountStorage } from '../lib/accountStorage'
@@ -424,7 +425,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
         >
           {searchOpen ? <X size={18} aria-hidden="true" /> : <Search size={18} aria-hidden="true" />}
         </button>
-        <Link to={classPath} onClick={onNavigate} className="chat-workspace-add" aria-label="New chat" title="New chat"><Plus size={20} aria-hidden="true" /></Link>
+        <Link to={classPath} onClick={onNavigate} className={`chat-workspace-add${spacious ? ' mobile-rail-new-chat' : ''}`} aria-label="New chat" title="New chat"><Plus size={20} aria-hidden="true" /></Link>
         {onClose ? (
           <button type="button" className="btn-icon" aria-label="Close menu" onClick={onClose}>
             <X size={16} aria-hidden="true" />
@@ -432,6 +433,26 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
         ) : null}
       </div>
       )}
+
+      {spacious && !collapsed ? (
+        <div className="mobile-chat-home-actions">
+          <Link
+            to={classPath}
+            onClick={onNavigate}
+            className="mobile-floating-new-chat"
+            aria-label="Start a new chat"
+            title="New chat"
+          >
+            <span>New Chat</span>
+            <Plus size={22} strokeWidth={1.9} aria-hidden="true" />
+          </Link>
+          {headerExtra ? (
+            <div className="mobile-chat-home-course-selector">
+              {headerExtra}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* The class switcher used to live here, directly under the logo — it now
           sits inline beside WeekPicker in the chat's own top bar (ChatPage.jsx),
@@ -445,7 +466,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
           chat. Undefined everywhere else (the desktop dock, the tablet
           drawer), so neither gets a second switcher next to the one already
           inline in ChatPage's header. */}
-      {headerExtra ? <div className="px-2 pb-2">{headerExtra}</div> : null}
+      {headerExtra && !spacious ? <div className="px-2 pb-2">{headerExtra}</div> : null}
 
 
       {!collapsed && searchOpen ? (
@@ -485,7 +506,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
             {spacious ? (
               <div
                 ref={pullToRefresh.indicatorRef}
-                className="pull-refresh-indicator flex items-center justify-center text-ink-muted"
+                className={`pull-refresh-indicator flex items-center justify-center text-ink-muted${pullToRefresh.refreshing ? ' is-refreshing' : ''}`}
                 aria-hidden="true"
               >
                 <RefreshCw
@@ -561,7 +582,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
         </nav>
       )}
 
-      {!collapsed ? (
+      {!collapsed && !spacious ? (
         <div className="flex w-full shrink-0 flex-col pt-2 pb-1">
           <div className="mt-auto w-full">
             <AccountMenu classPath={classPath} collapsed={false} spacious={spacious} />
@@ -614,6 +635,7 @@ function OnboardingWizardHost() {
 }
 
 export function AppShell({ children }) {
+  const { classId } = useParams()
   const isNarrow = useMediaQuery(NARROW)
   const isPhone = useMediaQuery(PHONE)
   const isTouch = useMediaQuery(TOUCH)
@@ -629,7 +651,16 @@ export function AppShell({ children }) {
      Persisted the same way chatWidthPx is (ChatPage.jsx), so it survives a
      reload instead of springing back open every visit. */
   const location = useLocation()
-  const isChatRoute = /^\/c\/[^/]+(\/chat\/[^/]+)?$/.test(location.pathname)
+  // The preview is mounted under `/preview.html`, while production mounts at
+  // `/`. Match the class route at the end of either basename so footer
+  // visibility does not depend on how the app was launched.
+  const isChatRoute = /(?:^|\/)c\/[^/]+(?:\/chat\/[^/]+)?$/.test(location.pathname)
+  const isActiveConversation = /\/c\/[^/]+\/chat\/[^/]+$/.test(location.pathname)
+  // `/c/:classId` serves two intentionally different phone surfaces: a blank
+  // new-plan composer and the Chats list revealed by the in-app back action.
+  // Only the list owns the bottom navigation; the composer needs the extra
+  // vertical room and already has its own back/new-chat controls.
+  const isMobileChatHome = isChatRoute && !isActiveConversation && location.state?.mobileHome
   /* Settings, Class Profiles, Admin, and Contact Support are focused
      master/detail views. Give
      their own split panels the full shell width so the chat rail never crowds
@@ -732,7 +763,7 @@ export function AppShell({ children }) {
           </div>
         ) : null}
         {isNarrow && (!isPhone || !isChatRoute) ? (
-          <div className="relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
+          <div className="mobile-app-brand-bar relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <span className="pointer-events-none absolute inset-x-0 truncate text-center text-sm font-semibold tracking-tight text-ink">
               FlexEd Academy
             </span>
@@ -746,6 +777,7 @@ export function AppShell({ children }) {
         ) : (
           <div className="min-h-0 flex-1">{children}</div>
         )}
+        {isPhone && classId && (!isChatRoute || isMobileChatHome) ? <MobileTabBar classId={classId} /> : null}
       </div>
       </div>
     </WorkspaceRailContext.Provider>

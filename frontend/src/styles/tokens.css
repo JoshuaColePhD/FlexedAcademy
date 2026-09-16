@@ -168,6 +168,12 @@
   --touch-min-lg: 48px; /* the one primary action on a screen: Download */
 
   --tabbar-h: 56px;
+  /* Mobile functional chrome. Keep Liquid Glass values semantic so the web
+     shell and a future SwiftUI shell can share the same hierarchy without
+     sharing implementation details. */
+  --mobile-tabbar-h: 72px;
+  --mobile-glass-blur: 22px;
+  --mobile-glass-saturation: 135%;
   --sheet-max-h: 85vh;
   --sheet-radius: var(--r-xl);
 

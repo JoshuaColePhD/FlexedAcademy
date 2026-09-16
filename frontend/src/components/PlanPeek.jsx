@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, FileText } from 'lucide-react'
 
 /*
  * The phone's plan hand-off: a small, always-reachable handle above the
@@ -126,6 +126,11 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     onToggle(!open)
   }
 
+  const handleLabel = open ? 'Lesson plan' : 'View lesson plan'
+  const handleAriaLabel = open
+    ? `Collapse lesson plan${weekLabel ? ` for ${weekLabel}` : ''}`
+    : `View lesson plan${weekLabel ? ` for ${weekLabel}` : ''}`
+
   return (
     <section
       ref={sheetRef}
@@ -137,15 +142,15 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
         className="plan-peek-handle"
         aria-expanded={open}
         aria-controls="plan-peek-body"
-        aria-label={open ? 'Collapse lesson plan preview' : `Open ${weekLabel || 'lesson plan'} preview`}
+        aria-label={handleAriaLabel}
         onClick={handleClick}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={finishPointer}
         onPointerCancel={cancelPointer}
       >
-        <span className="plan-peek-grabber" aria-hidden="true" />
-        <span className="plan-peek-handle-label">{weekLabel || 'Lesson plan'}</span>
+        <FileText className="plan-peek-handle-icon" size={15} strokeWidth={1.9} aria-hidden="true" />
+        <span className="plan-peek-handle-label">{handleLabel}</span>
         <span className="plan-peek-handle-action" aria-hidden="true">
           {open ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
         </span>

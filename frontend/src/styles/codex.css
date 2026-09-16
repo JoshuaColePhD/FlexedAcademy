@@ -2382,7 +2382,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .chat-header-sheet {
     width: 100%;
     max-height: min(78dvh, 640px);
-    padding: 20px 16px calc(16px + var(--safe-b, 0px));
+    padding: 28px 16px calc(16px + var(--safe-b, 0px));
     border-radius: 20px 20px 0 0;
   }
   .chat-header-sheet-heading { gap: 12px; margin-bottom: 14px; }
@@ -2843,5 +2843,1574 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .split-layout-sidebar nav button {
     min-width: 44px;
     min-height: 44px;
+  }
+}
+
+/* Mobile FlexEd workspace: a quiet charcoal canvas with two restrained
+   Liquid Glass surfaces. Keep this block at the end so it can refine the
+   existing mobile layout without changing the desktop workspace. */
+@media (max-width: 767.98px), (min-width: 768px) and (max-width: 1023.98px) and (max-height: 820px) {
+  .workspace-chat {
+    background: rgb(var(--paper-rgb)) !important;
+  }
+
+  :root[data-theme='dark'] .workspace-chat {
+    background: rgb(22 21 22) !important;
+  }
+
+  .workspace-topbar {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    min-height: 76px !important;
+    height: 76px !important;
+    gap: 6px !important;
+    padding-top: max(8px, var(--safe-t)) !important;
+    padding-right: max(10px, var(--safe-r)) !important;
+    padding-bottom: 8px !important;
+    padding-left: max(10px, var(--safe-l)) !important;
+    border-bottom: 1px solid rgb(var(--edge-strong-rgb) / 0.48) !important;
+    background: rgb(var(--paper-raised-rgb) / 0.74) !important;
+    box-shadow: 0 10px 28px rgb(0 0 0 / 0.16) !important;
+    backdrop-filter: blur(24px) saturate(135%);
+    -webkit-backdrop-filter: blur(24px) saturate(135%);
+  }
+
+  :root[data-theme='dark'] .workspace-topbar {
+    background: rgb(39 38 40 / 0.72) !important;
+    border-bottom-color: rgb(255 255 255 / 0.12) !important;
+  }
+
+  .mobile-chat-home .rail-brand-row {
+    position: relative;
+    z-index: 5;
+    min-height: 60px;
+    height: 60px;
+    margin-top: 0;
+    padding-top: max(8px, var(--safe-t));
+    padding-right: max(10px, var(--safe-r));
+    padding-bottom: 8px;
+    padding-left: max(12px, var(--safe-l));
+    background: rgb(var(--paper-raised-rgb) / 0.72);
+    border-bottom: 1px solid rgb(255 255 255 / 0.10);
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.14);
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+  }
+
+  :root[data-theme='dark'] .mobile-chat-home .rail-brand-row {
+    background: rgb(39 38 40 / 0.78);
+    border-bottom-color: rgb(255 255 255 / 0.10);
+  }
+
+  .mobile-chat-back,
+  .mobile-new-chat {
+    flex: 0 0 auto;
+    color: var(--ink-soft);
+    background: transparent;
+    border: 0;
+    box-shadow: none !important;
+  }
+
+  .mobile-chat-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    min-width: 76px;
+    min-height: 48px;
+    padding: 0 6px 0 0;
+    font-size: 0.9375rem;
+    letter-spacing: -0.01em;
+  }
+
+  .mobile-chat-back svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .mobile-chat-back:active,
+  .mobile-chat-back:focus-visible,
+  .mobile-new-chat:active,
+  .mobile-new-chat:focus-visible {
+    color: var(--ink);
+    background: rgb(var(--paper-inset-rgb) / 0.7);
+    outline: none;
+  }
+
+  .mobile-new-chat {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    min-height: 48px;
+    color: var(--ink);
+    background: rgb(var(--paper-inset-rgb) / 0.76);
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.34);
+    border-radius: 999px;
+  }
+
+  :root[data-theme='dark'] .mobile-new-chat {
+    color: rgb(245 243 250);
+    background: rgb(255 255 255 / 0.10);
+    border-color: rgb(255 255 255 / 0.12);
+  }
+
+  /* Primary mobile navigation is its own Liquid Glass functional layer. The
+     content above it remains matte; the bar floats over the bottom edge and
+     respects the phone's home-indicator inset. */
+  .mobile-tab-bar {
+    position: relative;
+    z-index: 30;
+    display: flex;
+    flex: 0 0 auto;
+    min-height: calc(var(--mobile-tabbar-h) + var(--safe-b));
+    align-items: stretch;
+    justify-content: space-around;
+    padding: 6px max(6px, var(--safe-r)) var(--safe-b) max(6px, var(--safe-l));
+    background: rgb(var(--paper-raised-rgb) / 0.78);
+    border-top: 1px solid rgb(255 255 255 / 0.12);
+    box-shadow: 0 -10px 28px rgb(0 0 0 / 0.18);
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+  }
+
+  :root[data-theme='dark'] .mobile-tab-bar {
+    background: rgb(39 38 40 / 0.82);
+    border-top-color: rgb(255 255 255 / 0.11);
+  }
+
+  .mobile-tab-item {
+    display: flex;
+    min-width: 0;
+    min-height: 60px;
+    flex: 1 1 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 2px 4px;
+    color: var(--ink-muted);
+    border-radius: 18px;
+    text-decoration: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 140ms var(--ease), background 140ms var(--ease), transform 140ms var(--ease-spring);
+  }
+
+  .mobile-tab-item:active {
+    transform: scale(0.96);
+  }
+
+  .mobile-tab-item.is-active {
+    color: var(--onboarding-forward);
+  }
+
+  .mobile-tab-icon {
+    display: inline-flex;
+    width: 48px;
+    height: 32px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+  }
+
+  .mobile-tab-item.is-active .mobile-tab-icon {
+    background: rgb(var(--onboarding-forward-rgb) / 0.18);
+  }
+
+  .mobile-tab-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  .mobile-tab-item:focus-visible {
+    outline: 3px solid rgb(var(--onboarding-forward-rgb) / 0.32);
+    outline-offset: -2px;
+  }
+
+  .mobile-app-brand-bar {
+    z-index: 12;
+    min-height: 52px !important;
+    height: 52px !important;
+    background: rgb(var(--paper-raised-rgb) / 0.76);
+    border-bottom: 1px solid rgb(255 255 255 / 0.10) !important;
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.12);
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+  }
+
+  :root[data-theme='dark'] .mobile-app-brand-bar {
+    background: rgb(39 38 40 / 0.80);
+    border-bottom-color: rgb(255 255 255 / 0.10) !important;
+  }
+
+  .mobile-primary-action {
+    min-height: 48px;
+    color: white !important;
+    background: var(--onboarding-forward) !important;
+    border: 1px solid rgb(255 255 255 / 0.16);
+    border-radius: 999px !important;
+    box-shadow: 0 8px 18px rgb(var(--onboarding-forward-rgb) / 0.22);
+  }
+
+  .mobile-primary-action:active {
+    filter: brightness(0.94);
+    transform: scale(0.98);
+  }
+
+  .plans-page-title {
+    display: none;
+  }
+
+  .workspace-topbar > .chat-head-trigger {
+    min-height: 60px;
+    padding: 5px 6px !important;
+    text-align: center;
+  }
+
+  .workspace-topbar > .chat-head-trigger:hover,
+  .workspace-topbar > .chat-head-trigger[aria-expanded='true'] {
+    background: transparent !important;
+  }
+
+  .mobile-chat-brand {
+    display: none;
+  }
+
+  .workspace-topbar.mobile-new-chat-header {
+    position: relative;
+    justify-content: space-between;
+  }
+
+  .workspace-topbar.mobile-new-chat-header .mobile-chat-brand {
+    position: absolute;
+    left: 50%;
+    display: inline-flex;
+    min-height: 48px;
+    align-items: center;
+    color: var(--ink);
+    font-size: 1rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    transform: translateX(-50%);
+  }
+
+  .workspace-topbar.mobile-new-chat-header > .chat-head-trigger {
+    display: none !important;
+  }
+
+  .workspace-topbar.mobile-new-chat-header .mobile-chat-back {
+    display: inline-flex !important;
+  }
+
+  .workspace-topbar.mobile-new-chat-header > .ml-auto {
+    display: flex !important;
+    margin-left: auto !important;
+  }
+
+  /* An open conversation should read as one continuous matte canvas. Keep
+     the header's controls floating above it, but remove the opaque strip and
+     divider that made the top feel like a separate panel. */
+  .workspace-topbar.mobile-active-chat-header,
+  :root[data-theme='dark'] .workspace-topbar.mobile-active-chat-header {
+    background: transparent !important;
+    border-bottom-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* A blank chat is the same continuous canvas as an active chat. The header
+     controls float over that canvas; only their individual glass surfaces
+     should be visible, not a second opaque strip behind them. */
+  .workspace-chat.mobile-new-chat-shell > .workspace-topbar.mobile-new-chat-header,
+  :root[data-theme='dark'] .workspace-chat.mobile-new-chat-shell > .workspace-topbar.mobile-new-chat-header {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    background: transparent !important;
+    border-bottom-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* Let the transcript occupy the full phone canvas and scroll underneath
+     the transparent header. The top padding preserves the initial reading
+     position, while later scroll movement can pass beneath the glass. */
+  .workspace-chat.mobile-active-chat-shell > .workspace-topbar.mobile-active-chat-header {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+  }
+
+  .workspace-chat.mobile-active-chat-shell > .scroll-y {
+    padding-top: 76px !important;
+  }
+
+  .chat-head-trigger-copy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    min-width: 0;
+    line-height: 1.15;
+  }
+
+  .chat-head-trigger-course {
+    max-width: 100%;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+  }
+
+  .chat-head-trigger-week {
+    max-width: 100%;
+    color: var(--ink-muted) !important;
+    font-size: 0.8125rem;
+    font-weight: 400;
+  }
+
+  .chat-head-trigger > .h-2 {
+    display: none;
+  }
+
+  .chat-head-trigger-caret {
+    color: var(--ink-soft) !important;
+  }
+
+  .workspace-topbar > .ml-auto {
+    margin-left: 0 !important;
+    gap: 0 !important;
+  }
+
+  .workspace-topbar .workspace-artifact-toggle {
+    display: none;
+  }
+
+  /* ChatGPT's mobile pattern keeps the icon itself quiet and lets the button
+     carry the thumb-friendly size. The hit area is large enough to find by
+     touch, but remains visually light instead of becoming two oversized
+     circles beside the wordmark. */
+  .rail-brand-row .chat-workspace-add {
+    width: 46px;
+    height: 46px;
+    min-width: 46px;
+    min-height: 46px;
+    border-radius: 14px;
+    color: var(--ink-soft);
+  }
+
+  .rail-brand-row .chat-workspace-add svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .rail-brand-row .chat-workspace-add:active {
+    color: var(--ink);
+    background: rgb(var(--paper-inset-rgb) / 0.82);
+    transform: scale(0.96);
+  }
+
+  .mobile-chat-home {
+    position: relative;
+  }
+
+  /* On a phone, New Chat gets a dedicated floating action above the account
+     bar. Search remains in the brand row; removing the duplicate header plus
+     gives the list one clear primary action and makes it reachable near the
+     thumb's resting position. */
+  .mobile-chat-home .mobile-rail-new-chat {
+    display: none;
+  }
+
+  .mobile-chat-home .account-menu-footer {
+    display: none;
+  }
+
+  .mobile-chat-home .mobile-floating-new-chat {
+    position: absolute;
+    left: 18px;
+    bottom: 14px;
+    z-index: 20;
+    display: inline-flex;
+    width: 116px;
+    height: 52px;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    color: white;
+    background: linear-gradient(
+      145deg,
+      rgb(var(--onboarding-forward-rgb) / 0.68),
+      rgb(var(--onboarding-forward-rgb) / 0.48)
+    );
+    border: 1px solid rgb(255 255 255 / 0.14);
+    border-radius: 22px;
+    -webkit-backdrop-filter: blur(16px) saturate(112%);
+    backdrop-filter: blur(16px) saturate(112%);
+    box-shadow:
+      0 10px 24px rgb(0 0 0 / 0.28),
+      0 3px 12px rgb(var(--onboarding-forward-rgb) / 0.20);
+    transition: transform 140ms var(--ease-spring), filter 140ms var(--ease), box-shadow 140ms var(--ease);
+  }
+
+  .mobile-chat-home .mobile-floating-new-chat svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .mobile-chat-home .mobile-floating-new-chat span {
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .mobile-chat-home .mobile-floating-new-chat:active {
+    filter: brightness(0.94);
+    transform: translateY(1px) scale(0.95);
+    box-shadow:
+      0 5px 12px rgb(0 0 0 / 0.28),
+      inset 0 2px 4px rgb(0 0 0 / 0.18);
+  }
+
+  .mobile-chat-home .mobile-floating-new-chat:focus-visible {
+    outline: 3px solid rgb(var(--onboarding-forward-rgb) / 0.35);
+    outline-offset: 3px;
+  }
+
+  /* Pull-to-refresh is a gesture, not a visible reload control. Keep the
+     indicator out of the resting chat list; show only a compact spinner after
+     a refresh actually commits. The hook can still track the gesture and
+     refetch chats without leaving a mysterious icon in the middle of the page. */
+  .pull-refresh-indicator {
+    height: 0 !important;
+    overflow: hidden;
+  }
+
+  .pull-refresh-indicator.is-refreshing {
+    height: 24px !important;
+    color: var(--ink-faint);
+  }
+
+  .pull-refresh-indicator.is-refreshing svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .rail-brand-row + div + nav > div:first-child > div:not(.pull-refresh-indicator) > .mt-2 {
+    min-height: 44px;
+    align-items: center;
+  }
+
+  .rail-brand-row + div + nav > div:first-child > div:not(.pull-refresh-indicator) > .mt-2 > button,
+  .rail-brand-row + div + nav > div:first-child > div:not(.pull-refresh-indicator) > .mt-2 > a {
+    min-height: 44px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .chat-transcript-column {
+    width: 100%;
+    padding-top: 28px !important;
+    padding-bottom: 22px !important;
+  }
+
+  .chat-transcript-column .message-row {
+    margin-bottom: 14px;
+  }
+
+  /* The visible label can stay compact, while the whole control becomes easy
+     to hit with a thumb. This covers copy/edit, day actions, citations, and
+     any future message action without changing desktop density. */
+  .chat-transcript-column .message-row button,
+  .chat-transcript-column .grounding-line .cite {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .chat-transcript-column .neo-panel > li {
+    min-height: 52px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    border-radius: 14px;
+  }
+
+  .chat-transcript-column .neo-panel > li > button {
+    min-height: 44px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  .chat-transcript-column .grounding-line .cite {
+    padding: 8px 6px;
+    border-radius: 8px;
+  }
+
+  .chat-transcript-column .msg-bubble-assistant,
+  .chat-transcript-column .msg-bubble-user {
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.38) !important;
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.16) !important;
+  }
+
+  :root[data-theme='dark'] .chat-transcript-column .msg-bubble-assistant {
+    background: rgb(47 46 48 / 0.72) !important;
+    border-color: rgb(255 255 255 / 0.10) !important;
+  }
+
+  :root[data-theme='dark'] .chat-transcript-column .msg-bubble-user {
+    background: rgb(var(--msg-user-bg-rgb) / 0.52) !important;
+    border-color: rgb(190 161 255 / 0.18) !important;
+  }
+
+  .composer-dock-surface {
+    z-index: 6;
+    padding-top: 12px !important;
+    padding-bottom: max(18px, calc(18px + var(--safe-b))) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .composer-dock-surface > div {
+    padding-right: max(12px, var(--safe-r)) !important;
+    padding-left: max(12px, var(--safe-l)) !important;
+  }
+
+  .composer-shell {
+    height: 58px !important;
+    min-height: 58px !important;
+    max-height: 152px !important;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.52) !important;
+    border-radius: 999px !important;
+    background: rgb(var(--paper-raised-rgb) / 0.78) !important;
+    box-shadow:
+      0 10px 24px rgb(0 0 0 / 0.20),
+      inset 0 1px 0 rgb(255 255 255 / 0.10) !important;
+    backdrop-filter: blur(22px) saturate(135%);
+    -webkit-backdrop-filter: blur(22px) saturate(135%);
+  }
+
+  /* Composer.jsx measures the textarea as the draft grows. Let that measured
+     height win over the one-line resting height on mobile, so Shift+Enter
+     produces a real expanding field instead of clipped text. */
+  .composer-shell.is-expanded {
+    height: auto !important;
+    min-height: 58px !important;
+    border-radius: 28px !important;
+  }
+
+  .composer-shell.is-expanded .composer-control-row {
+    min-height: 58px;
+    align-items: flex-end;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+  }
+
+  :root[data-theme='dark'] .composer-shell {
+    background: rgb(49 48 51 / 0.76) !important;
+    border-color: rgb(255 255 255 / 0.14) !important;
+  }
+
+  .composer-shell:focus-within {
+    border-color: rgb(176 139 255 / 0.72) !important;
+    box-shadow:
+      0 10px 24px rgb(0 0 0 / 0.20),
+      0 0 0 3px rgb(145 103 245 / 0.18),
+      inset 0 1px 0 rgb(255 255 255 / 0.10) !important;
+  }
+
+  .composer-control-row {
+    min-height: 58px;
+    gap: 6px;
+    padding-right: 7px !important;
+    padding-left: 7px !important;
+  }
+
+  .composer-accessories > button {
+    color: var(--ink-soft) !important;
+    background: rgb(var(--paper-inset-rgb) / 0.72) !important;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.32);
+    border-radius: 999px !important;
+  }
+
+  :root[data-theme='dark'] .composer-accessories > button {
+    color: rgb(244 241 249) !important;
+    background: rgb(255 255 255 / 0.09) !important;
+    border-color: rgb(255 255 255 / 0.10);
+  }
+
+  .composer-input {
+    min-height: 48px !important;
+    padding-top: 0.85rem !important;
+    padding-bottom: 0.85rem !important;
+    font-size: 1rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .composer-action-cluster > button {
+    width: 46px !important;
+    height: 46px !important;
+    background: rgb(255 108 97) !important;
+    box-shadow: 0 5px 12px rgb(255 108 97 / 0.25) !important;
+  }
+
+  .composer-action-cluster > button:hover {
+    background: rgb(255 118 108) !important;
+  }
+
+  .plan-peek-handle {
+    min-height: 42px;
+    padding-top: 8px;
+    padding-bottom: 4px;
+    background: transparent;
+    border-radius: 0;
+  }
+
+  .plan-peek-handle-icon {
+    flex: 0 0 auto;
+  }
+
+  .plan-peek-handle-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+  }
+
+  /* The plan wrapper and the composer are one mobile dock. The earlier
+     thumb-target override accidentally restored two competing capsules: the
+     wrapper's rounded card plus the composer's own glass pill. Keep the
+     wrapper structurally present for the plan animation, but make it visually
+     transparent so the composer is the only outlined surface. */
+  .mobile-composer-plan-sheet.has-plan {
+    overflow: visible;
+    background: transparent !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .mobile-composer-plan-sheet.has-plan .plan-peek {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  /* Keep the lesson-plan affordance visually attached to itself. A bare
+     grabber line with a label underneath looked like a stray control between
+     the transcript and composer; the label and chevron now share one compact
+     thumb-sized Liquid Glass pill. */
+  .mobile-composer-plan-sheet.has-plan .plan-peek-handle {
+    align-self: center;
+    width: min(100%, 340px);
+    min-height: 42px;
+    margin: 0 auto 6px;
+    padding: 0 42px 0 16px !important;
+    color: var(--ink-soft) !important;
+    background: linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.15),
+      rgb(255 255 255 / 0.07)
+    ) !important;
+    border: 1px solid rgb(255 255 255 / 0.16) !important;
+    border-radius: 999px !important;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.15),
+      inset 0 -1px 0 rgb(0 0 0 / 0.12),
+      0 5px 14px rgb(0 0 0 / 0.14) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(135%);
+    backdrop-filter: blur(20px) saturate(135%);
+  }
+
+  .mobile-composer-plan-sheet.has-plan .plan-peek-handle::before,
+  .mobile-composer-plan-sheet.has-plan .plan-peek-grabber {
+    display: none;
+  }
+
+  .mobile-composer-plan-sheet.has-plan .plan-peek-handle-label {
+    max-width: 100%;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .mobile-composer-plan-sheet.has-plan .plan-peek-handle-action {
+    position: absolute;
+    right: 14px;
+  }
+
+  .mobile-composer-plan-sheet.has-plan .plan-peek-handle:active {
+    background: rgb(255 255 255 / 0.17) !important;
+    box-shadow:
+      inset 0 2px 5px rgb(0 0 0 / 0.16),
+      0 2px 8px rgb(0 0 0 / 0.12) !important;
+  }
+
+  .mobile-composer-plan-sheet.has-plan .composer-shell {
+    margin-inline: 0;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.52) !important;
+    border-radius: 999px !important;
+    background: rgb(var(--paper-raised-rgb) / 0.78) !important;
+    box-shadow:
+      0 10px 24px rgb(0 0 0 / 0.20),
+      inset 0 1px 0 rgb(255 255 255 / 0.10) !important;
+  }
+
+  :root[data-theme='dark'] .mobile-composer-plan-sheet.has-plan .composer-shell {
+    background: rgb(49 48 51 / 0.76) !important;
+    border-color: rgb(255 255 255 / 0.14) !important;
+  }
+
+  .chat-header-sheet-heading > button,
+  .chat-header-selection-field > .relative > button,
+  .week-picker-embedded > button,
+  .class-switcher-embedded > button {
+    min-height: 48px !important;
+  }
+
+  .chat-header-sheet-heading > button {
+    min-width: 48px;
+  }
+
+  .week-picker-embedded > button,
+  .class-switcher-embedded > button {
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+  }
+
+  .composer-ghost-tab {
+    display: none !important;
+  }
+
+  .chat-header-scrim {
+    background: rgb(0 0 0 / 0.42) !important;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+
+  .chat-header-sheet {
+    position: relative;
+    background: rgb(var(--paper-raised-rgb) / 0.90) !important;
+    border: 1px solid rgb(255 255 255 / 0.14) !important;
+    box-shadow: 0 -18px 44px rgb(0 0 0 / 0.28) !important;
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+  }
+
+  .chat-header-sheet::before {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    content: '';
+    background: rgb(var(--ink-muted-rgb) / 0.58);
+    border-radius: 999px;
+    transform: translateX(-50%);
+  }
+
+  :root[data-theme='dark'] .chat-header-sheet {
+    background: rgb(39 38 40 / 0.92) !important;
+    border-color: rgb(255 255 255 / 0.12) !important;
+  }
+
+  .split-layout-shell {
+    background: rgb(var(--paper-rgb)) !important;
+    border: 0 !important;
+  }
+
+  .split-layout-mobile-header,
+  .split-layout-general-header {
+    position: sticky;
+    top: calc(-1 * var(--sp-4));
+    z-index: 8;
+    margin-right: calc(var(--sp-4) * -1);
+    margin-left: calc(var(--sp-4) * -1);
+    padding: 10px max(12px, var(--safe-r)) 10px max(12px, var(--safe-l));
+    background: rgb(var(--paper-raised-rgb) / 0.82);
+    border-bottom: 1px solid rgb(255 255 255 / 0.10);
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.12);
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+  }
+
+  .split-layout-mobile-tabs {
+    position: relative;
+    z-index: 7;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    border-bottom: 0;
+  }
+
+  .split-layout-general-tabs {
+    margin-right: calc(var(--sp-4) * -1);
+    margin-left: calc(var(--sp-4) * -1);
+    padding: 4px max(8px, var(--safe-r)) 4px max(8px, var(--safe-l));
+    background: rgb(var(--paper-raised-rgb) / 0.68);
+    border-top: 1px solid rgb(255 255 255 / 0.08);
+    border-bottom: 1px solid rgb(255 255 255 / 0.10);
+    -webkit-backdrop-filter: blur(16px) saturate(115%);
+    backdrop-filter: blur(16px) saturate(115%);
+  }
+
+  .split-layout-general-tabs button {
+    min-height: 40px;
+    padding: 8px 12px;
+    color: var(--ink-muted);
+    border-radius: 10px;
+  }
+
+  .split-layout-general-tabs button.is-active {
+    color: var(--onboarding-forward);
+    background: rgb(var(--onboarding-forward-rgb) / 0.16);
+    box-shadow: inset 0 0 0 1px rgb(var(--onboarding-forward-rgb) / 0.24);
+  }
+
+  .split-layout-mobile-tabs button {
+    color: var(--ink-muted);
+    background: rgb(var(--paper-raised-rgb) / 0.74);
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.28);
+    border-radius: 999px;
+  }
+
+  .split-layout-mobile-tabs button[aria-current='page'] {
+    color: var(--onboarding-forward);
+    background: rgb(var(--onboarding-forward-rgb) / 0.16);
+    border-color: rgb(var(--onboarding-forward-rgb) / 0.34);
+  }
+
+  .split-layout-content-inner {
+    padding-bottom: calc(var(--sp-12) + var(--mobile-tabbar-h) + var(--safe-b)) !important;
+  }
+
+  .mobile-plan-reader .doc-head {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    background: rgb(var(--paper-raised-rgb) / 0.82);
+    border-bottom: 1px solid rgb(255 255 255 / 0.10);
+    box-shadow: 0 8px 22px rgb(0 0 0 / 0.12);
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+  }
+
+  .mobile-context-control {
+    display: flex;
+    justify-content: center;
+    margin: 0 0 8px;
+  }
+
+  .mobile-context-pill {
+    display: inline-flex;
+    width: min(100%, 360px);
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 8px 14px;
+    color: var(--ink-soft);
+    background: rgb(var(--paper-raised-rgb) / 0.78);
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 999px;
+    -webkit-backdrop-filter: blur(16px) saturate(110%);
+    backdrop-filter: blur(16px) saturate(110%);
+    box-shadow:
+      0 6px 16px rgb(0 0 0 / 0.16),
+      inset 0 1px 0 rgb(255 255 255 / 0.06);
+    transition: background 140ms var(--ease), transform 140ms var(--ease-spring);
+  }
+
+  .mobile-context-pill:active {
+    background: rgb(var(--paper-inset-rgb) / 0.84);
+    transform: scale(0.98);
+  }
+
+  .mobile-context-pill:focus-visible {
+    outline: 3px solid rgb(var(--accent-rgb) / 0.35);
+    outline-offset: 2px;
+  }
+
+  .mobile-context-pill > svg {
+    flex: 0 0 auto;
+    color: var(--ink-muted);
+  }
+
+  .mobile-context-copy {
+    display: inline-flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mobile-context-course,
+  .mobile-context-week {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+
+  .mobile-context-separator {
+    color: var(--ink-faint);
+  }
+
+  /* Liquid Glass is reserved for controls, not the entire canvas. These
+     controls use a clear material, a hairline edge, and a soft inner highlight
+     so they read as floating actions over the matte FlexEd surface. */
+  .mobile-chat-back,
+  .mobile-new-chat,
+  .mobile-context-pill,
+  .mobile-chat-home .mobile-floating-new-chat,
+  .mobile-primary-action,
+  .composer-accessories > button,
+  .split-layout-mobile-tabs button,
+  .split-layout-general-tabs button,
+  .chat-header-sheet-heading > button {
+    -webkit-backdrop-filter: blur(20px) saturate(135%);
+    backdrop-filter: blur(20px) saturate(135%);
+    background: linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.16),
+      rgb(255 255 255 / 0.07)
+    ) !important;
+    border: 1px solid rgb(255 255 255 / 0.19) !important;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.18),
+      inset 0 -1px 0 rgb(0 0 0 / 0.10),
+      0 5px 14px rgb(0 0 0 / 0.16) !important;
+  }
+
+  .mobile-chat-back,
+  .mobile-new-chat,
+  .mobile-context-pill,
+  .mobile-chat-home .mobile-floating-new-chat,
+  .mobile-primary-action {
+    overflow: hidden;
+  }
+
+  .mobile-chat-home .mobile-floating-new-chat {
+    position: absolute;
+  }
+
+  .mobile-chat-back::before,
+  .mobile-new-chat::before,
+  .mobile-context-pill::before,
+  .mobile-chat-home .mobile-floating-new-chat::before,
+  .mobile-primary-action::before {
+    position: absolute;
+    inset: 1px;
+    content: '';
+    pointer-events: none;
+    background: linear-gradient(
+      122deg,
+      rgb(255 255 255 / 0.18),
+      rgb(255 255 255 / 0.05) 34%,
+      transparent 58%,
+      rgb(255 255 255 / 0.06)
+    );
+    border-radius: inherit;
+  }
+
+  .mobile-chat-back > *,
+  .mobile-new-chat > *,
+  .mobile-context-pill > *,
+  .mobile-chat-home .mobile-floating-new-chat > *,
+  .mobile-primary-action > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .mobile-chat-back,
+  .mobile-new-chat,
+  .mobile-context-pill,
+  .composer-accessories > button,
+  .split-layout-mobile-tabs button,
+  .split-layout-general-tabs button,
+  .chat-header-sheet-heading > button {
+    transition:
+      background 140ms var(--ease),
+      border-color 140ms var(--ease),
+      box-shadow 140ms var(--ease),
+      color 140ms var(--ease),
+      transform 160ms var(--ease-spring);
+  }
+
+  .mobile-chat-back {
+    position: relative;
+    min-height: 48px;
+    padding-right: 12px;
+    padding-left: 7px;
+    border-radius: 999px !important;
+  }
+
+  .mobile-new-chat {
+    color: rgb(248 246 253) !important;
+    background: linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.19),
+      rgb(255 255 255 / 0.08)
+    ) !important;
+    border-radius: 999px !important;
+  }
+
+  .mobile-chat-back:active,
+  .mobile-new-chat:active,
+  .mobile-context-pill:active,
+  .composer-accessories > button:active,
+  .split-layout-mobile-tabs button:active,
+  .split-layout-general-tabs button:active,
+  .chat-header-sheet-heading > button:active {
+    transform: scale(0.95);
+    background: rgb(255 255 255 / 0.18) !important;
+    box-shadow:
+      inset 0 2px 5px rgb(0 0 0 / 0.16),
+      0 2px 7px rgb(0 0 0 / 0.12) !important;
+  }
+
+  .mobile-context-pill {
+    background: linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.18),
+      rgb(255 255 255 / 0.08)
+    ) !important;
+    border-radius: 999px !important;
+  }
+
+  .mobile-context-pill:active {
+    background: rgb(255 255 255 / 0.18) !important;
+  }
+
+  .mobile-chat-home .mobile-floating-new-chat {
+    z-index: 40;
+    background: linear-gradient(
+      180deg,
+      rgb(var(--onboarding-forward-rgb) / 0.86),
+      rgb(var(--onboarding-forward-rgb) / 0.62)
+    ) !important;
+    border-color: rgb(255 255 255 / 0.34) !important;
+    box-shadow:
+      0 0 0 5px rgb(20 19 22 / 0.72),
+      inset 0 1px 0 rgb(255 255 255 / 0.28),
+      inset 0 -1px 0 rgb(0 0 0 / 0.12),
+      0 12px 28px rgb(0 0 0 / 0.34),
+      0 5px 16px rgb(var(--onboarding-forward-rgb) / 0.30) !important;
+  }
+
+  :root[data-theme='dark'] .mobile-chat-home .mobile-floating-new-chat {
+    background: linear-gradient(
+      180deg,
+      rgb(151 121 255 / 0.88),
+      rgb(105 73 190 / 0.68)
+    ) !important;
+  }
+
+  /* The chats landing screen has two related actions: start a conversation
+     and choose the course that scopes the list. Keep them in one reachable
+     bottom shelf so the course control no longer competes with the wordmark. */
+  .mobile-chat-home-actions {
+    position: absolute;
+    right: max(14px, var(--safe-r));
+    bottom: 14px;
+    left: max(14px, var(--safe-l));
+    z-index: 40;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    padding: 4px;
+    background: rgb(20 19 22 / 0.90);
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 30px;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.10),
+      0 8px 18px rgb(0 0 0 / 0.24);
+    -webkit-backdrop-filter: blur(18px) saturate(115%);
+    backdrop-filter: blur(18px) saturate(115%);
+  }
+
+  .mobile-chat-home {
+    padding-bottom: 88px;
+  }
+
+  .mobile-chat-home-actions .mobile-floating-new-chat {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    flex: 0 0 116px;
+    width: 116px;
+    height: 52px;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.28),
+      inset 0 -1px 0 rgb(0 0 0 / 0.12),
+      0 6px 16px rgb(var(--onboarding-forward-rgb) / 0.28) !important;
+  }
+
+  .mobile-chat-home-course-selector {
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .mobile-chat-home-course-selector > div {
+    min-width: 0;
+    padding: 0 !important;
+  }
+
+  .mobile-chat-home-course-selector > div > button {
+    width: 100%;
+    min-height: 52px !important;
+    min-width: 0;
+    padding: 10px 12px !important;
+    color: rgb(244 242 249) !important;
+    background: linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.14),
+      rgb(255 255 255 / 0.06)
+    ) !important;
+    border: 1px solid rgb(255 255 255 / 0.16) !important;
+    border-radius: 999px !important;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.14),
+      inset 0 -1px 0 rgb(0 0 0 / 0.10) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(130%);
+    backdrop-filter: blur(20px) saturate(130%);
+  }
+
+  .mobile-chat-home-course-selector > div > button:hover,
+  .mobile-chat-home-course-selector > div > button[aria-expanded='true'] {
+    background: rgb(255 255 255 / 0.16) !important;
+  }
+
+  .mobile-chat-home-course-selector > div > ul {
+    right: 0;
+    bottom: calc(100% + 8px);
+    left: auto;
+    width: min(320px, calc(100vw - 28px));
+    margin-top: 0;
+  }
+
+  /* Course scope is a primary decision on the Chats screen. Give it the same
+     thumb-friendly, bottom-sheet treatment as the other native-feeling mobile
+     pickers instead of anchoring a small menu against the action shelf. */
+  .mobile-course-picker-layer {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    pointer-events: none;
+  }
+
+  .mobile-course-picker-scrim {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: auto;
+    background: rgb(0 0 0 / 0.46);
+    border: 0;
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+  }
+
+  .mobile-course-picker-sheet {
+    position: absolute;
+    right: max(8px, var(--safe-r));
+    bottom: max(8px, var(--safe-b));
+    left: max(8px, var(--safe-l));
+    max-height: min(76dvh, 560px);
+    overflow: hidden;
+    pointer-events: auto;
+    color: var(--ink);
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.13), rgb(255 255 255 / 0.05)),
+      rgb(var(--paper-raised-rgb) / 0.94);
+    border: 1px solid rgb(255 255 255 / 0.18);
+    border-radius: 28px;
+    box-shadow:
+      0 -10px 34px rgb(0 0 0 / 0.24),
+      inset 0 1px 0 rgb(255 255 255 / 0.16);
+    -webkit-backdrop-filter: blur(28px) saturate(125%);
+    backdrop-filter: blur(28px) saturate(125%);
+    animation: mobile-course-sheet-in 220ms var(--ease-spring) both;
+  }
+
+  .mobile-course-picker-layer.fa-chip-exit .mobile-course-picker-scrim {
+    animation: mobile-course-scrim-out 150ms var(--ease-out) both;
+  }
+
+  .mobile-course-picker-layer.fa-chip-exit .mobile-course-picker-sheet {
+    animation: mobile-course-sheet-out 150ms var(--ease-out) both;
+  }
+
+  .mobile-course-picker-grabber {
+    width: 38px;
+    height: 4px;
+    margin: 10px auto 2px;
+    background: rgb(var(--ink-muted-rgb) / 0.48);
+    border-radius: 99px;
+  }
+
+  .mobile-course-picker-heading {
+    display: flex;
+    min-height: 68px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 18px 10px;
+  }
+
+  .mobile-course-picker-heading h2 {
+    margin: 0;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  .mobile-course-picker-heading p {
+    margin: 3px 0 0;
+    color: var(--ink-muted);
+    font-size: 0.8125rem;
+  }
+
+  .mobile-course-picker-close {
+    display: inline-flex;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    color: var(--ink-soft);
+    background: rgb(var(--paper-inset-rgb) / 0.62);
+    border: 1px solid rgb(255 255 255 / 0.12);
+    border-radius: 999px;
+  }
+
+  .mobile-course-picker-close:active {
+    transform: scale(0.95);
+    background: rgb(var(--paper-inset-rgb) / 0.88);
+  }
+
+  .mobile-course-picker-options {
+    max-height: calc(min(76dvh, 560px) - 92px);
+    margin: 0;
+    padding: 0 10px max(10px, var(--safe-b));
+    overflow-y: auto;
+    list-style: none;
+    overscroll-behavior: contain;
+  }
+
+  .mobile-course-picker-option {
+    display: flex;
+    width: 100%;
+    min-height: 60px;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    color: var(--ink-soft);
+    text-align: left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 16px;
+    font-size: 1rem;
+    touch-action: manipulation;
+  }
+
+  .mobile-course-picker-option.is-selected {
+    color: var(--ink);
+    background: linear-gradient(180deg, rgb(var(--onboarding-forward-rgb) / 0.26), rgb(var(--onboarding-forward-rgb) / 0.12));
+    border-color: rgb(var(--onboarding-forward-rgb) / 0.30);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.13);
+  }
+
+  .mobile-course-picker-option:active {
+    background: rgb(var(--paper-inset-rgb) / 0.80);
+    transform: scale(0.99);
+  }
+
+  .mobile-course-picker-option:focus-visible {
+    outline: 3px solid rgb(var(--onboarding-forward-rgb) / 0.36);
+    outline-offset: -3px;
+  }
+
+  .mobile-course-picker-add-row {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgb(255 255 255 / 0.10);
+  }
+
+  .mobile-course-picker-option.is-add {
+    color: var(--ink-muted);
+  }
+
+  /* Keep the jump control easy to find without making it another loud glass
+     capsule. It belongs to the transcript, so center it above the composer
+     and give it the same stable matte tint as the input. */
+  .plan-peek-latest {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 6px;
+    pointer-events: none;
+  }
+
+  .plan-peek-latest > button {
+    min-height: 44px;
+    padding: 0 16px;
+    color: var(--ink-soft) !important;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.05)),
+      rgb(var(--paper-raised-rgb) / 0.90) !important;
+    border: 1px solid rgb(255 255 255 / 0.14);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.12),
+      0 6px 16px rgb(0 0 0 / 0.20);
+    pointer-events: auto;
+    -webkit-backdrop-filter: blur(20px) saturate(118%);
+    backdrop-filter: blur(20px) saturate(118%);
+  }
+
+  @keyframes mobile-course-sheet-in {
+    from { opacity: 0; transform: translateY(28px) scale(0.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  @keyframes mobile-course-sheet-out {
+    from { opacity: 1; transform: translateY(0) scale(1); }
+    to { opacity: 0; transform: translateY(20px) scale(0.985); }
+  }
+
+  @keyframes mobile-course-scrim-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  .mobile-chat-home nav[aria-label='Your chats'] > .scroll-y {
+    padding-bottom: calc(var(--mobile-tabbar-h) + 18px) !important;
+  }
+
+  .mobile-primary-action {
+    background: linear-gradient(
+      180deg,
+      rgb(var(--onboarding-forward-rgb) / 0.88),
+      rgb(var(--onboarding-forward-rgb) / 0.64)
+    ) !important;
+    border-color: rgb(255 255 255 / 0.25) !important;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.24),
+      0 8px 18px rgb(var(--onboarding-forward-rgb) / 0.24) !important;
+  }
+
+  .mobile-tab-item.is-active .mobile-tab-icon {
+    width: 60px;
+    height: 40px;
+    background: linear-gradient(
+      180deg,
+      rgb(var(--onboarding-forward-rgb) / 0.34),
+      rgb(var(--onboarding-forward-rgb) / 0.18)
+    );
+    border: 1px solid rgb(255 255 255 / 0.16);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.18),
+      0 3px 9px rgb(var(--onboarding-forward-rgb) / 0.16);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+  }
+
+  .split-layout-general-tabs button,
+  .split-layout-mobile-tabs button {
+    border-bottom: 0 !important;
+  }
+
+  .split-layout-general-tabs button.is-active,
+  .split-layout-mobile-tabs button[aria-current='page'] {
+    color: var(--onboarding-forward) !important;
+    background: linear-gradient(
+      180deg,
+      rgb(var(--onboarding-forward-rgb) / 0.34),
+      rgb(var(--onboarding-forward-rgb) / 0.18)
+    ) !important;
+    border-color: rgb(var(--onboarding-forward-rgb) / 0.40) !important;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.18),
+      0 4px 10px rgb(var(--onboarding-forward-rgb) / 0.14) !important;
+  }
+
+  .chat-header-sheet-heading > button {
+    width: 48px;
+    height: 48px;
+    min-width: 48px;
+    border-radius: 999px !important;
+  }
+
+  .week-picker-option {
+    min-height: 48px;
+    margin: 2px 4px;
+    padding-right: 12px;
+    padding-left: 12px;
+    border: 1px solid transparent;
+    border-radius: 14px;
+  }
+
+  .week-picker-option:hover,
+  .week-picker-option:focus-visible {
+    background: rgb(255 255 255 / 0.08) !important;
+    border-color: rgb(255 255 255 / 0.12);
+  }
+
+  .week-picker-option.is-selected {
+    color: var(--ink) !important;
+    background: linear-gradient(
+      180deg,
+      rgb(var(--onboarding-forward-rgb) / 0.28),
+      rgb(var(--onboarding-forward-rgb) / 0.14)
+    ) !important;
+    border-color: rgb(var(--onboarding-forward-rgb) / 0.28);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
+  }
+
+  /* On the new-chat screen, the header carries the course/week context. The
+     return action moves next to the composer so the top row can stay compact
+     without losing a thumb-reachable way back to the chat list. */
+  .workspace-topbar.mobile-new-chat-header .mobile-chat-brand {
+    display: none !important;
+  }
+
+  .workspace-topbar.mobile-new-chat-header > .mobile-header-context-pill {
+    display: flex !important;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
+    min-height: 52px;
+    margin-inline: 6px;
+    padding: 6px 10px !important;
+    color: var(--ink) !important;
+    background: linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.15),
+      rgb(255 255 255 / 0.06)
+    ) !important;
+    border: 1px solid rgb(255 255 255 / 0.17) !important;
+    border-radius: 18px !important;
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.16),
+      inset 0 -1px 0 rgb(0 0 0 / 0.10),
+      0 4px 12px rgb(0 0 0 / 0.14) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(130%);
+    backdrop-filter: blur(20px) saturate(130%);
+  }
+
+  .workspace-topbar.mobile-new-chat-header > .mobile-header-context-pill:active,
+  .workspace-topbar.mobile-new-chat-header > .mobile-header-context-pill[aria-expanded='true'] {
+    background: rgb(255 255 255 / 0.17) !important;
+    transform: scale(0.98);
+  }
+
+  /* Backdrop blur still needs a material underneath it. The earlier glass
+     controls were mostly transparent, so scrolling content could resolve as
+     vertical bands through the surface. A stable tint keeps the blur and
+     highlight while making the material visually calm. */
+  .mobile-chat-back,
+  .mobile-new-chat,
+  .mobile-context-pill,
+  .composer-accessories > button,
+  .split-layout-mobile-tabs button,
+  .split-layout-general-tabs button,
+  .chat-header-sheet-heading > button,
+  .mobile-composer-plan-sheet.has-plan .plan-peek-handle,
+  .composer-shell,
+  .mobile-composer-plan-sheet.has-plan .composer-shell {
+    background:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.14),
+        rgb(255 255 255 / 0.06)
+      ),
+      rgb(var(--paper-raised-rgb) / 0.86) !important;
+    background-clip: padding-box;
+    -webkit-backdrop-filter: blur(24px) saturate(118%);
+    backdrop-filter: blur(24px) saturate(118%);
+  }
+
+  :root[data-theme='dark'] .mobile-chat-back,
+  :root[data-theme='dark'] .mobile-new-chat,
+  :root[data-theme='dark'] .mobile-context-pill,
+  :root[data-theme='dark'] .composer-accessories > button,
+  :root[data-theme='dark'] .split-layout-mobile-tabs button,
+  :root[data-theme='dark'] .split-layout-general-tabs button,
+  :root[data-theme='dark'] .chat-header-sheet-heading > button,
+  :root[data-theme='dark'] .mobile-composer-plan-sheet.has-plan .plan-peek-handle,
+  :root[data-theme='dark'] .composer-shell,
+  :root[data-theme='dark'] .mobile-composer-plan-sheet.has-plan .composer-shell {
+    background:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 0.14),
+        rgb(255 255 255 / 0.06)
+      ),
+      rgb(39 38 40 / 0.86) !important;
+  }
+
+  /* The Chats-page course menu is opened from the thumb-level action shelf.
+     Give every choice a full, forgiving row instead of relying on a tiny
+     label-sized hit area. */
+  .mobile-chat-home .fa-card-drop {
+    padding: 6px !important;
+  }
+
+  .mobile-chat-home .fa-card-drop > li > button,
+  .mobile-chat-home .fa-card-drop > li > a {
+    min-height: 56px !important;
+    gap: 10px;
+    padding: 14px !important;
+    font-size: 0.9375rem !important;
+    border-radius: 14px;
+    touch-action: manipulation;
+  }
+
+  .mobile-chat-home .fa-card-drop > li + li {
+    margin-top: 2px;
+  }
+
+  .mobile-chat-home .fa-card-drop > li:last-child {
+    margin-top: 6px;
+    padding-top: 2px;
+    border-top: 1px solid rgb(255 255 255 / 0.10);
+  }
+
+}
+
+@supports not ((backdrop-filter: blur(1px))) {
+  .mobile-tab-bar,
+  .mobile-chat-home .rail-brand-row,
+  .workspace-topbar,
+  .mobile-context-pill,
+  .chat-header-sheet,
+  .split-layout-mobile-header,
+  .split-layout-general-header,
+  .mobile-plan-reader .doc-head {
+    background: rgb(var(--paper-raised-rgb) / 0.98) !important;
+  }
+
+  .mobile-course-picker-sheet,
+  .plan-peek-latest > button {
+    background: rgb(var(--paper-raised-rgb) / 0.98) !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .mobile-tab-bar,
+  .mobile-chat-home .rail-brand-row,
+  .workspace-topbar,
+  .mobile-context-pill,
+  .chat-header-sheet,
+  .split-layout-mobile-header,
+  .split-layout-general-header,
+  .mobile-plan-reader .doc-head {
+    background: rgb(var(--paper-raised-rgb) / 0.98) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  .mobile-course-picker-sheet,
+  .plan-peek-latest > button {
+    background: rgb(var(--paper-raised-rgb) / 0.98) !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
 }

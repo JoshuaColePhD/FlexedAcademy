@@ -5,7 +5,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Plus, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -24,7 +24,7 @@ import { scanGrounding } from '../lib/grounding'
 import { questionTypesProse } from '../lib/quizShape'
 import { CLARIFY_MARKER, isClarifyingMessage, stripClarifyMarker } from '../lib/chatToolRecovery'
 import { splitDecisions } from '../lib/decisionChecklist'
-import { dayLabel, isSameDay } from '../lib/dates'
+import { dayLabel, isSameDay, shortRange } from '../lib/dates'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import * as perf from '../lib/performanceMetrics'
 import { useComposerDraft, clearComposerDraft } from '../hooks/useComposerDraft'
@@ -3971,7 +3971,7 @@ export function ChatPage() {
        right at that seam — a visible tinted line between two panels that
        otherwise sit flush. The other three edges keep the glass border;
        only the shared seam drops it. */
-    <div className="workspace-chat relative flex h-full min-h-0 flex-col">
+    <div className={`workspace-chat relative flex h-full min-h-0 flex-col${(isPhone || isLandscapePhone) && chatId ? ' mobile-active-chat-shell' : ''}${(isPhone || isLandscapePhone) && !chatId ? ' mobile-new-chat-shell' : ''}`}>
       {/* Always on, unlike chat-head below it — right-aligned so it sits at
           the seam with whatever's docked on the right (the plans rail, or
           the open document), not lost against the far edge of the screen. */}
@@ -3982,7 +3982,7 @@ export function ChatPage() {
           against the same left edge as the message list and composer below
           it, not floating apart from the rest of the pane's own left
           margin. */}
-      <div className="workspace-topbar flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10">
+      <div className={`workspace-topbar flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10${(isPhone || isLandscapePhone) && !chatId ? ' mobile-new-chat-header' : ''}${(isPhone || isLandscapePhone) && chatId ? ' mobile-active-chat-header' : ''}`}>
         {!isPhone && !isLandscapePhone && workspaceRail.toggle && !workspaceRail.documentReading ? (
           <button
             type="button"
@@ -4000,38 +4000,54 @@ export function ChatPage() {
              everything shrinking past readable — this is a back button (to
              MobileChatHome, the phone-only chats list ChatPage renders
              instead of this view when there's no chat open — see
-             mobileShowHome's own comment) plus a single tappable title
+             mobileShowHome's own comment) plus a back action and a single
+             tappable title
              that opens ChatHeaderSheet, which carries the SAME controls
              the desktop row has, just given a full sheet to breathe in. */
           <>
+            <span className="mobile-chat-brand" aria-label="FlexEd">FlexEd</span>
             <button
               type="button"
-              className="btn-icon tap-target shrink-0"
+              className="mobile-chat-back tap-target shrink-0"
               aria-label="Back to your chats"
-              onClick={() => (
-                chatId
-                  ? navigate(`/c/${classId}`, { state: { mobileHome: true } })
-                  : setMobileShowHome(true)
-              )}
+              onClick={() => {
+                if (chatId) {
+                  navigate(`/c/${classId}`, { state: { mobileHome: true } })
+                  return
+                }
+                // The blank composer and Chats list share `/c/:classId`.
+                // Keep the list intent in route state as well as local state
+                // so AppShell can keep bottom navigation on the list while
+                // removing it from the welcome composer.
+                setMobileShowHome(true)
+                navigate(`/c/${classId}`, { replace: true, state: { mobileHome: true } })
+              }}
             >
               <ChevronLeft size={20} aria-hidden="true" />
+              <span>Chats</span>
             </button>
             <button
               type="button"
               ref={headerTriggerRef}
-              className="chat-head-trigger tap-target flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1.5 text-left"
+              className="chat-head-trigger mobile-header-context-pill tap-target flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-left"
               onClick={() => setHeaderSheetOpen(true)}
               aria-haspopup="dialog"
               aria-expanded={headerSheetOpen}
               aria-label={
                 displayWeek
                   ? `Change course or week. Currently ${activeClass?.name || 'no course'}, Week ${displayWeek.week}.`
-                  : 'Change course or week'
+                : 'Change course or week'
               }
             >
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
-                {activeClass?.name || 'Choose a class'}
-                {displayWeek ? ` · Week ${String(displayWeek.week).padStart(2, '0')}` : ''}
+              <span className="chat-head-trigger-copy min-w-0 flex-1">
+                <span className="chat-head-trigger-course truncate text-sm font-medium text-ink">
+                  {activeClass?.name || 'Choose a class'}
+                </span>
+                <span className="chat-head-trigger-week truncate text-xs text-ink-muted">
+                  {displayWeek
+                    ? `Week ${String(displayWeek.week).padStart(2, '0')}${shortRange(displayWeek.start, displayWeek.end) ? ` · ${shortRange(displayWeek.start, displayWeek.end)}` : ''}`
+                    : 'Choose a week'}
+                </span>
               </span>
               {!hasPacingGuide ? (
                 <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" aria-hidden="true" />
@@ -4081,7 +4097,18 @@ export function ChatPage() {
           </button>
         )}
         <div className="ml-auto flex min-w-0 items-center gap-3">
-          {(hasArtifact || !isPhone) ? (
+          {isPhone || isLandscapePhone ? (
+            <button
+              type="button"
+              className="mobile-new-chat tap-target flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+              aria-label="Start a new chat"
+              title="Start a new chat"
+              onClick={() => navigate(`/c/${classId}`)}
+            >
+              <Plus size={22} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          ) : null}
+          {(hasArtifact || (!isPhone && !isLandscapePhone)) ? (
             <button
               type="button"
               className="workspace-artifact-toggle fa-press relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--accent-text)]"

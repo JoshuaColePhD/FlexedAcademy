@@ -31,14 +31,22 @@ export function MobileChatHome({ onNavigate }) {
     // container sitting directly inside AppShell's blurred/translucent
     // "main" panel, where fading opacity is expensive — see fa-rise-panel's
     // own comment in base.css.
-    <div className="flex h-full w-full flex-col bg-paper fa-rise-panel">
+    <div className="mobile-chat-home flex h-full w-full flex-col bg-paper fa-rise-panel">
       <Rail
         onNavigate={onNavigate}
         // ClassSwitcher already knows how to present zero/one/many classes
         // on its own (hidden, a plain label, or the real picker) — same
         // convention as its inline use in ChatPage's own header, not
         // re-decided here.
-        headerExtra={<ClassSwitcher classes={classes} activeClass={activeClass} classPath={`/c/${classId}`} />}
+        headerExtra={(
+          <ClassSwitcher
+            classes={classes}
+            activeClass={activeClass}
+            mobileSheet
+            classPath={`/c/${classId}`}
+            navigateOptions={{ state: { mobileHome: true } }}
+          />
+        )}
         // Nothing else is competing for room on this screen the way the
         // desktop dock and phone drawer have to share space with a chat
         // pane right next to them — grow the rows themselves, not just

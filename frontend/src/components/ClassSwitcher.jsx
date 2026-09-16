@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Check, ChevronsUpDown, Plus } from 'lucide-react'
+import { Check, ChevronsUpDown, Plus, X } from 'lucide-react'
 import { classColor } from '../lib/classColor'
 import { useExitTransition } from '../hooks/useExitTransition'
 
@@ -21,7 +22,7 @@ import { useExitTransition } from '../hooks/useExitTransition'
    reserves blue for "something is waiting for you"; the class you are already
    looking at is not waiting for anything, and spending accent here is part of
    why the blue had stopped meaning anything. */
-export function ClassSwitcher({ classes, activeClass, inline = false, variant = 'default', fullWidthMenu = false, embedded = false, onSelect, onOpenChange }) {
+export function ClassSwitcher({ classes, activeClass, inline = false, variant = 'default', fullWidthMenu = false, embedded = false, mobileSheet = false, onSelect, onOpenChange, navigateOptions }) {
   const heading = variant === 'heading'
   const [open, setOpen] = useState(false)
   // The menu used to unmount the instant `open` went false — a hard cut, the
@@ -29,6 +30,8 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
   // dialog, attachment chips) already avoids with a matched exit.
   const { mounted, closing } = useExitTransition(open, 150)
   const ref = useRef(null)
+  const sheetRef = useRef(null)
+  const selectedOptionRef = useRef(null)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -72,7 +75,7 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
   useEffect(() => {
     if (!open) return undefined
     const onDown = (e) => {
-      if (!ref.current?.contains(e.target)) setOpen(false)
+      if (!ref.current?.contains(e.target) && !sheetRef.current?.contains(e.target)) setOpen(false)
     }
     const onKey = (e) => e.key === 'Escape' && setOpen(false)
     document.addEventListener('mousedown', onDown)
@@ -82,6 +85,17 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
       document.removeEventListener('keydown', onKey)
     }
   }, [open])
+
+  useEffect(() => {
+    if (!open || !mobileSheet) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const frame = requestAnimationFrame(() => selectedOptionRef.current?.focus())
+    return () => {
+      cancelAnimationFrame(frame)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [mobileSheet, open])
 
   if (!classes?.length) return null
 
@@ -103,7 +117,8 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
   }
 
   const chooseClass = (id) => {
-    navigate(targetFor(id))
+    setOpen(false)
+    navigate(targetFor(id), navigateOptions)
     onSelect?.(id)
   }
 
@@ -202,57 +217,123 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
       </button>
 
       {mounted ? (
-        <ul
-          role="listbox"
-          aria-label="Your classes"
-          /* Inline: matches the trigger's own width (text + caret) exactly —
-             w-full of this relative wrapper, whose only in-flow child is
-             that trigger button — rather than a fixed 224px box that
-             dangled far past a compact pill. Heading and inline triggers use
-             their full control width; the compact rail trigger keeps its
-             narrower fixed menu. */
-          className={`neo-panel fa-card-drop absolute z-50 mt-2 max-h-[min(60vh,360px)] overflow-y-auto overflow-x-hidden rounded-2xl border border-edge/80 bg-paper-sunken p-1 shadow-xl ${
-            fullWidthMenu || heading || inline ? 'left-0 w-full' : 'left-2 right-2 w-56'
-          }${fullWidthMenu ? ' chat-header-sheet-menu' : ''}${closing ? ' fa-chip-exit' : ''}`}
-        >
-          {classes.map((c) => (
-            <li key={c.id}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={c.id === activeClass?.id}
-                onClick={() => {
-                  setOpen(false)
-                  chooseClass(c.id)
-                }}
-                className={`flex min-h-touch w-full items-center gap-2 rounded-xl py-1.5 pl-2.5 pr-3 text-left text-sm transition-colors ${
-                  c.id === activeClass?.id
-                    ? 'bg-paper-inset text-ink'
-                    : 'text-ink-soft hover:bg-paper-sunken'
-                }`}
-              >
-                <span
-                  className="class-dot h-2.5 w-2.5 shrink-0 rounded-full"
-                  aria-hidden="true"
-                  style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
-                />
-                <span className="min-w-0 flex-1 truncate">{displayName.get(c.id)}</span>
-                {c.id === activeClass?.id ? (
-                  <Check size={13} aria-hidden="true" className="shrink-0 text-ok" />
-                ) : null}
-              </button>
-            </li>
-          ))}
-          <li>
-            <Link
-              to="/c/new/class"
+        mobileSheet ? createPortal(
+          <div className={`mobile-course-picker-layer${closing ? ' fa-chip-exit' : ''}`}>
+            <button
+              type="button"
+              className="mobile-course-picker-scrim"
+              aria-label="Close class picker"
               onClick={() => setOpen(false)}
-              className="flex min-h-touch items-center gap-2 rounded-xl border-t border-edge px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-paper-raised hover:text-ink"
+            />
+            <section
+              ref={sheetRef}
+              className="mobile-course-picker-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="mobile-course-picker-title"
             >
-              <Plus size={13} aria-hidden="true" /> Add a class
-            </Link>
-          </li>
-        </ul>
+              <div className="mobile-course-picker-grabber" aria-hidden="true" />
+              <div className="mobile-course-picker-heading">
+                <div className="min-w-0">
+                  <h2 id="mobile-course-picker-title">Choose a class</h2>
+                  <p>{classes.length} classes in FlexEd</p>
+                </div>
+                <button
+                  type="button"
+                  className="mobile-course-picker-close"
+                  onClick={() => setOpen(false)}
+                  aria-label="Close class picker"
+                >
+                  <X size={20} aria-hidden="true" />
+                </button>
+              </div>
+              <ul role="listbox" aria-label="Your classes" className="mobile-course-picker-options">
+                {classes.map((c) => {
+                  const selected = c.id === activeClass?.id
+                  return (
+                    <li key={c.id}>
+                      <button
+                        ref={selected ? selectedOptionRef : undefined}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        onClick={() => chooseClass(c.id)}
+                        className={`mobile-course-picker-option${selected ? ' is-selected' : ''}`}
+                      >
+                        <span
+                          className="class-dot h-3 w-3 shrink-0 rounded-full"
+                          aria-hidden="true"
+                          style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
+                        />
+                        <span className="min-w-0 flex-1 truncate">{displayName.get(c.id)}</span>
+                        {selected ? <Check size={18} aria-hidden="true" className="shrink-0 text-ok" /> : null}
+                      </button>
+                    </li>
+                  )
+                })}
+                <li className="mobile-course-picker-add-row">
+                  <Link
+                    to="/c/new/class"
+                    onClick={() => setOpen(false)}
+                    className="mobile-course-picker-option is-add"
+                  >
+                    <Plus size={18} aria-hidden="true" /> Add a class
+                  </Link>
+                </li>
+              </ul>
+            </section>
+          </div>,
+          document.body
+        ) : (
+          <ul
+            role="listbox"
+            aria-label="Your classes"
+            /* Inline: matches the trigger's own width (text + caret) exactly —
+               w-full of this relative wrapper, whose only in-flow child is
+               that trigger button — rather than a fixed 224px box that
+               dangled far past a compact pill. Heading and inline triggers use
+               their full control width; the compact rail trigger keeps its
+               narrower fixed menu. */
+            className={`neo-panel fa-card-drop absolute z-50 mt-2 max-h-[min(60vh,360px)] overflow-y-auto overflow-x-hidden rounded-2xl border border-edge/80 bg-paper-sunken p-1 shadow-xl ${
+              fullWidthMenu || heading || inline ? 'left-0 w-full' : 'left-2 right-2 w-56'
+            }${fullWidthMenu ? ' chat-header-sheet-menu' : ''}${closing ? ' fa-chip-exit' : ''}`}
+          >
+            {classes.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={c.id === activeClass?.id}
+                  onClick={() => chooseClass(c.id)}
+                  className={`flex min-h-touch w-full items-center gap-2 rounded-xl py-1.5 pl-2.5 pr-3 text-left text-sm transition-colors ${
+                    c.id === activeClass?.id
+                      ? 'bg-paper-inset text-ink'
+                      : 'text-ink-soft hover:bg-paper-sunken'
+                  }`}
+                >
+                  <span
+                    className="class-dot h-2.5 w-2.5 shrink-0 rounded-full"
+                    aria-hidden="true"
+                    style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{displayName.get(c.id)}</span>
+                  {c.id === activeClass?.id ? (
+                    <Check size={13} aria-hidden="true" className="shrink-0 text-ok" />
+                  ) : null}
+                </button>
+              </li>
+            ))}
+            <li>
+              <Link
+                to="/c/new/class"
+                onClick={() => setOpen(false)}
+                className="flex min-h-touch items-center gap-2 rounded-xl border-t border-edge px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-paper-raised hover:text-ink"
+              >
+                <Plus size={13} aria-hidden="true" /> Add a class
+              </Link>
+            </li>
+          </ul>
+        )
       ) : null}
     </div>
   )

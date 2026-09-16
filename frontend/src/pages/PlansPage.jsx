@@ -379,7 +379,7 @@ export function PlansPage() {
       <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto">
         <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
           <div>
-            <h1 className="text-xl font-bold text-ink flex items-center gap-2">
+            <h1 className="plans-page-title text-xl font-bold text-ink flex items-center gap-2">
               Library{activeClass?.name ? <span className="text-ink-muted font-medium">/ {activeClass.name}</span> : ''}
             </h1>
             {weeks.length > 0 && (
@@ -390,7 +390,7 @@ export function PlansPage() {
           </div>
           <Link
             to={`/c/${classId}`}
-            className="neo-raised inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-paper transition-all hover:bg-ink/90 shadow-sm shrink-0 w-fit"
+            className="mobile-primary-action neo-raised inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-2 text-sm font-semibold text-paper transition-all hover:bg-ink/90 shadow-sm shrink-0 w-fit"
           >
             <span className="text-lg leading-none mt-[-2px]">+</span> New Plan
           </Link>

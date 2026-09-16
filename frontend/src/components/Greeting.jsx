@@ -49,14 +49,12 @@ export function Greeting({ onOpenVoice, className: courseName, week, hint, onOpe
     : null
 
   return (
-    // Phone got the same vertical centering as desktop, in a column with far
-    // less content (no Voice Mode button on desktop) — the result was the
-    // greeting and CTA marooned in the middle of a mostly-empty screen,
-    // below a header a teacher had to scroll past to reach anything.
-    // items-start (not place-items-center) on phone puts it near the top
-    // instead; md:items-center restores the original centered layout once
-    // there's enough height for it to read as intentional rather than lost.
-    <div className="grid min-h-0 flex-1 items-start justify-items-center overflow-y-auto px-gutter pb-4 pt-10 md:items-center md:pt-4">
+    // Center the welcome state in the space between the context header and
+    // composer. It is the app's calm starting point, so leaving it pinned
+    // near the header makes the large empty canvas feel accidental on phone.
+    // The scroll container still allows the copy and optional actions to grow
+    // naturally on short screens or with larger text settings.
+    <div className="grid min-h-0 flex-1 items-center justify-items-center overflow-y-auto px-gutter py-4">
       <div className="w-full max-w-measure flex flex-col items-center justify-center text-center fa-rise">
         
         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-ink mb-2">
@@ -65,7 +63,7 @@ export function Greeting({ onOpenVoice, className: courseName, week, hint, onOpe
         </h1>
         
         <p className="max-w-xl text-sm sm:text-base text-ink-muted leading-relaxed">
-          Say what this week is about and I’ll build{' '}
+          Tell me what you want to cover this week, and I’ll help you build{' '}
           {weekLabel ? (
             <span className="whitespace-nowrap font-medium text-ink bg-paper-sunken px-2 py-0.5 rounded-md border border-ink/5 shadow-sm">
               {weekLabel}
@@ -73,8 +71,8 @@ export function Greeting({ onOpenVoice, className: courseName, week, hint, onOpe
           ) : (
             'the week'
           )}
-          {courseName ? ` for ${courseName}` : ''}. Standards are quoted straight from the source,
-          formatted directly into your district template.
+          {courseName ? ` for ${courseName}` : ''}. I’ll keep it grounded in your standards
+          and format it for your district.
         </p>
 
         {/* add-pacing-guide / add-school-calendar — not a chat message, so

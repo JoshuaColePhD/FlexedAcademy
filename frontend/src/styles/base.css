@@ -10679,12 +10679,12 @@
   line-height: var(--lh-relaxed);
 }
 .billing-notice--warning {
-  color: var(--amber-800, #92400e);
+  color: var(--flag);
   border-color: rgb(245 158 11 / 0.2);
   background: rgb(245 158 11 / 0.1);
 }
 .billing-notice--danger {
-  color: var(--red-700, #b91c1c);
+  color: var(--mark);
   border-color: rgb(239 68 68 / 0.2);
   background: rgb(239 68 68 / 0.1);
 }
