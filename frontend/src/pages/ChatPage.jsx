@@ -2432,7 +2432,11 @@ export function ChatPage() {
     async (text, options = {}) => {
       // Composer passes its current draft snapshot. Avoid reading the parent
       // query state here so this callback stays stable while a teacher types.
-      const typed = (text ?? '').trim()
+      // Keep this boundary defensive: a click handler accidentally passing a
+      // MouseEvent must never turn into a render-breaking `.trim()` call or a
+      // literal "[object PointerEvent]" message. The normal Composer and
+      // voice paths both provide strings and keep their existing behavior.
+      const typed = typeof text === 'string' ? text.trim() : ''
       const planning = Boolean(options.planning)
       // A retry reuses the original optimistic user turn. Re-appending that
       // turn made a failed request look like a second teacher message and
