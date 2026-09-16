@@ -111,3 +111,30 @@ def test_docx_structure_extracts_cell_visual_design(tmp_path):
     assert visual["font_sizes_pt"] == [14.0]
     assert visual["bold"] is True
     assert visual["borders"]["bottom"]["color"] == "FF0000"
+
+
+def test_docx_structure_tolerates_fractional_row_height_from_export(tmp_path):
+    """Google Docs exports can put fractional twips in integer-only XML."""
+    path = tmp_path / "fractional-row-height.docx"
+    doc = Document()
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Learning target"
+    table.cell(0, 1).text = "Monday"
+    tr_pr = table.rows[0]._tr.get_or_add_trPr()
+    tr_height = OxmlElement("w:trHeight")
+    tr_height.set(qn("w:val"), "240")
+    tr_pr.append(tr_height)
+    doc.save(path)
+
+    with ZipFile(path) as source:
+        entries = {name: source.read(name) for name in source.namelist()}
+    document_xml = entries["word/document.xml"].decode()
+    document_xml = document_xml.replace('w:val="240"', 'w:val="1029.21875"', 1)
+    entries["word/document.xml"] = document_xml.encode()
+    with ZipFile(path, "w", ZIP_DEFLATED) as target:
+        for name, content in entries.items():
+            target.writestr(name, content)
+
+    structure = template_intake._extract_docx_structure(path)
+    assert structure["tables"][0]["row_heights_dxa"][0] is None
+    assert structure["tables"][0]["header_row"] == ["Learning target", "Monday"]

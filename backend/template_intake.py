@@ -343,6 +343,22 @@ def _cell_visual(cell) -> dict:
     }
 
 
+def _safe_twips(read_dimension) -> int | None:
+    """Read a DOCX dimension without letting malformed Word XML abort intake.
+
+    Some Word/Google Docs exports write fractional values into integer-only
+    ``w:val`` attributes (for example, ``1029.21875`` for a row height).
+    ``python-docx`` raises while materializing those properties, so layout
+    metadata is best-effort while the document's text and table structure
+    remain usable for analysis.
+    """
+    try:
+        dimension = read_dimension()
+        return int(dimension.twips) if dimension is not None else None
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+
 def _extract_docx_structure(path: Path) -> dict:
     import docx
 
@@ -413,7 +429,7 @@ def _extract_docx_structure(path: Path) -> dict:
                     row_cells.append(c.text.strip())
                     visual_cells.append(_cell_visual(c))
             rows.append(row_cells)
-            row_height = row.height.twips if row.height is not None else None
+            row_height = _safe_twips(lambda row=row: row.height)
             row_heights_dxa.append(row_height)
             visual_rows.append(visual_cells)
         col_counts = {len(r) for r in rows}
@@ -426,9 +442,7 @@ def _extract_docx_structure(path: Path) -> dict:
                 "header_row": rows[0] if rows else [],
                 "sample_rows": rows[1 : 1 + _MAX_TABLE_SAMPLE_ROWS],
                 "visual_rows": visual_rows[: 1 + _MAX_TABLE_SAMPLE_ROWS],
-                "column_widths_dxa": [
-                    c.width.twips if c.width is not None else None for c in table.columns
-                ],
+                "column_widths_dxa": [_safe_twips(lambda c=c: c.width) for c in table.columns],
                 "row_heights_dxa": row_heights_dxa[: 1 + _MAX_TABLE_SAMPLE_ROWS],
                 "style": table.style.name if table.style else None,
             }
