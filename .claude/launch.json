@@ -11,8 +11,8 @@
     },
     {
       "name": "flexed-academy-backend",
-      "runtimeExecutable": "venv/bin/uvicorn",
-      "runtimeArgs": ["backend.server:app", "--host", "127.0.0.1", "--port", "8010"],
+      "runtimeExecutable": "venv/bin/python3",
+      "runtimeArgs": ["-m", "uvicorn", "backend.server:app", "--host", "127.0.0.1", "--port", "8010"],
       "port": 8010
     }
   ]
