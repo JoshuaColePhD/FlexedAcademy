@@ -4,7 +4,7 @@ async function openChat(page, fresh = false, { beta = false } = {}) {
   const at = `/c/c1${fresh ? '' : '/chat/seed1'}`
   await page.goto(`/preview.html?fresh=0&trial=3${beta ? '&beta=1' : ''}&at=${at}`)
   await expect(page.locator('#composer-input')).toBeVisible()
-  if (!fresh) await expect(page.getByText('Grounded:', { exact: true })).toBeVisible()
+  if (!fresh) await expect(page.getByText(/Based on \d+ standards?/)).toBeVisible()
   await page.evaluate(() => {
     window.chatCalls = []
     window.chatEvents = []
