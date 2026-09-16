@@ -865,15 +865,15 @@
 
 @media (min-width: 900px) {
   html.is-document-reading .app-shell-frame {
-    gap: 0 !important;
+    gap: 8px !important;
   }
   html.is-document-reading .app-rail {
-    width: 0 !important;
-    transition-duration: 420ms;
+    width: 52px !important;
+    transition-duration: 220ms;
     transition-timing-function: var(--ease-glide);
   }
   .chat-workspace-main {
-    transition: flex-basis 420ms var(--ease-glide), width 420ms var(--ease-glide), max-width 420ms var(--ease-glide);
+    transition: flex-basis 220ms var(--ease-glide), width 220ms var(--ease-glide), max-width 220ms var(--ease-glide);
   }
   html.is-document-reading .chat-workspace-main,
   .workspace-panes:has(.document-stage) .chat-workspace-main {
@@ -2050,7 +2050,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
     gap: 10px !important;
     padding: 10px !important;
   }
-  .app-shell-frame.is-rail-collapsed { gap: 0 !important; }
+  .app-shell-frame.is-rail-collapsed { gap: 8px !important; }
   :root[data-theme] .app-rail:not(.rail-drawer),
   :root[data-theme] .app-shell-main {
     border: 1px solid var(--edge) !important;
@@ -2113,18 +2113,33 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .split-layout-content {
     border-radius: 0 21px 21px 0;
   }
-  /* A zero-width rail still contributes its own border box. Remove that
-     border when collapsed so it cannot leave a full-height hairline beside
-     the center panel's rounded left corners. */
+  /* Keep a compact rail visible when the full chat list is collapsed. This
+     preserves a stable spatial anchor and leaves the primary new-chat action
+     within easy reach. */
   .app-shell-frame.is-rail-collapsed > .app-rail {
-    border: 0 !important;
-    border-left: 0 !important;
-    border-right: 0 !important;
-    border-radius: 0 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    opacity: 0;
-    pointer-events: none;
+    width: 52px !important;
+    min-width: 52px !important;
+    flex-basis: 52px !important;
+    border-radius: 18px !important;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .rail-collapsed-actions {
+    width: 100%;
+    padding-top: 6px;
+  }
+  .app-shell-frame.is-rail-collapsed > .app-rail .chat-workspace-add {
+    width: 36px;
+    height: 36px;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.72);
+    border-radius: 12px;
+    background: rgb(var(--paper-raised-rgb) / 0.72);
+  }
+  .app-shell-frame.is-rail-collapsed > .app-rail .chat-workspace-add:hover,
+  .app-shell-frame.is-rail-collapsed > .app-rail .chat-workspace-add:focus-visible {
+    color: var(--accent-text);
+    background: rgb(var(--accent-tint-rgb) / 0.72);
+    outline: none;
   }
   :root[data-theme] .app-rail:not(.rail-drawer) {
     border-right-color: var(--edge) !important;
@@ -4898,5 +4913,37 @@ body:has(.dialog-scrim) .composer-dock-surface {
     animation: none !important;
     transition: none !important;
     will-change: auto;
+  }
+}
+
+/* Desktop keeps the composer anchored while the transcript scrolls behind it.
+   This static fade gives the hand-off the same calm layering as the mobile
+   surface without animating blur, shadows, or other large glass regions. */
+@media (min-width: 768px) {
+  .composer-dock-surface {
+    isolation: isolate;
+    position: relative;
+  }
+
+  .composer-dock-surface::before {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    left: 0;
+    height: 48px;
+    z-index: 0;
+    pointer-events: none;
+    content: '';
+    background: linear-gradient(
+      to top,
+      rgb(var(--paper-sunken-rgb) / 0.78),
+      rgb(var(--paper-sunken-rgb) / 0)
+    );
+  }
+
+  .composer-dock-surface > div,
+  .composer-dock-surface .mobile-composer-plan-sheet {
+    position: relative;
+    z-index: 1;
   }
 }

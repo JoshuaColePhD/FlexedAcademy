@@ -379,7 +379,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   return (
     <>
       {collapsed ? (
-        <div className="flex h-14 shrink-0 items-center justify-center">
+        <div className="rail-collapsed-actions flex h-14 shrink-0 items-center justify-center">
           <Link
             to={classPath}
             onClick={(event) => {
@@ -697,8 +697,8 @@ export function AppShell({ children }) {
         <div
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
-            width: effectiveRailCollapsed ? '0px' : 'var(--sidebar-w)',
-            transitionDuration: documentReading ? '420ms' : 'var(--t-base)',
+            width: effectiveRailCollapsed ? '52px' : 'var(--sidebar-w)',
+            transitionDuration: documentReading ? '220ms' : 'var(--t-base)',
             transitionTimingFunction: documentReading ? 'var(--ease-glide)' : 'var(--ease-out)',
           }}
         >

@@ -3638,7 +3638,7 @@ export function ChatPage() {
       }
       return r
     }
-    const transition = 'top 420ms var(--ease-glide), left 420ms var(--ease-glide), width 420ms var(--ease-glide), height 420ms var(--ease-glide)'
+    const transition = 'top 220ms var(--ease-glide), left 220ms var(--ease-glide), width 220ms var(--ease-glide), height 220ms var(--ease-glide)'
     const sync = ({ animate = false } = {}) => {
       const anchor = resolveAnchor()
       if (animate) {
