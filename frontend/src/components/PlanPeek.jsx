@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronDown, ChevronUp, FileText } from 'lucide-react'
+import { haptic } from '../lib/haptics'
 
 /*
  * The phone's plan hand-off: a small, always-reachable handle above the
@@ -14,6 +15,8 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
   const sheetRef = useRef(null)
   const previewRef = useRef(false)
   const openHeightRef = useRef(0)
+  const previewFrameRef = useRef(null)
+  const pendingPreviewRef = useRef(0)
   const [previewing, setPreviewing] = useState(false)
   const [dragging, setDragging] = useState(false)
 
@@ -23,6 +26,10 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
   // available reader height on every device.
   const MIN_OPEN_DRAG_DISTANCE = 104
   const MIN_CLOSE_DRAG_DISTANCE = 88
+
+  useEffect(() => () => {
+    if (previewFrameRef.current != null) window.cancelAnimationFrame(previewFrameRef.current)
+  }, [])
 
   const measureOpenHeight = () => {
     const sheet = sheetRef.current
@@ -44,10 +51,10 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     event.currentTarget.releasePointerCapture?.(event.pointerId)
   }
 
-  // Pointer moves can arrive at 120Hz on current phones. Updating React state
-  // for every pixel forced the full document tree to re-render under the
-  // finger; write the paint-only CSS variable directly instead.
-  const setPreview = (distance) => {
+  // Pointer moves can arrive at 120Hz on current phones. Keep the gesture out
+  // of React and coalesce multiple events into one browser paint, so a burst
+  // of pointer events cannot queue more layout work than the display can show.
+  const paintPreview = (distance) => {
     sheetRef.current?.style.setProperty('--plan-peek-drag', `${distance}px`)
     if (distance > 0 && !previewRef.current) {
       previewRef.current = true
@@ -56,6 +63,15 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
       previewRef.current = false
       setPreviewing(false)
     }
+  }
+
+  const setPreview = (distance) => {
+    pendingPreviewRef.current = distance
+    if (previewFrameRef.current != null) return
+    previewFrameRef.current = window.requestAnimationFrame(() => {
+      previewFrameRef.current = null
+      paintPreview(pendingPreviewRef.current)
+    })
   }
 
   const finishPointer = (event) => {
@@ -82,8 +98,13 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     // intended resting point unambiguous.
     const openDistance = openHeightRef.current || MIN_OPEN_DRAG_DISTANCE
     const closeDistance = Math.max(MIN_CLOSE_DRAG_DISTANCE, openHeightRef.current || MIN_CLOSE_DRAG_DISTANCE)
-    if (open && (delta > closeDistance * 0.24 || velocity > 0.7)) onToggle(false)
-    else if (!open && (-delta > openDistance * 0.24 || velocity < -0.5)) onToggle(true)
+    if (open && (delta > closeDistance * 0.24 || velocity > 0.7)) {
+      haptic('light')
+      onToggle(false)
+    } else if (!open && (-delta > openDistance * 0.24 || velocity < -0.5)) {
+      haptic('light')
+      onToggle(true)
+    }
   }
 
   const onPointerDown = (event) => {
@@ -123,6 +144,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
   const handleClick = () => {
     if (suppressClickRef.current) return
     if (!open) measureOpenHeight()
+    haptic('light')
     onToggle(!open)
   }
 

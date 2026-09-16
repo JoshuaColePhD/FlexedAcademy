@@ -1,5 +1,6 @@
 import { BookOpen, GraduationCap, MessageCircle, Settings } from 'lucide-react'
 import { NavLink, useLocation } from 'react-router-dom'
+import { haptic } from '../lib/haptics'
 
 const TABS = [
   { id: 'chats', label: 'Chats', icon: MessageCircle },
@@ -30,6 +31,7 @@ export function MobileTabBar({ classId }) {
             to={target}
             end={id === 'chats'}
             state={id === 'chats' ? { mobileHome: true } : undefined}
+            onClick={() => haptic('light')}
             className={`mobile-tab-item${active ? ' is-active' : ''}`}
             aria-current={active ? 'page' : undefined}
           >

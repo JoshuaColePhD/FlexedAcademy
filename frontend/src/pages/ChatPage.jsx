@@ -7,6 +7,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from 'react-rout
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Plus, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
+import { haptic } from '../lib/haptics'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
 import { readAccountStorage, writeAccountStorage, accountStorageKey } from '../lib/accountStorage'
@@ -4047,6 +4048,7 @@ export function ChatPage() {
               className="mobile-chat-back tap-target shrink-0"
               aria-label="Back to your chats"
               onClick={() => {
+                haptic('light')
                 if (chatId) {
                   navigate(`/c/${classId}`, { state: { mobileHome: true } })
                   return
@@ -4066,7 +4068,10 @@ export function ChatPage() {
               type="button"
               ref={headerTriggerRef}
               className="chat-head-trigger mobile-header-context-pill tap-target flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-left"
-              onClick={() => setHeaderSheetOpen(true)}
+              onClick={() => {
+                haptic('light')
+                setHeaderSheetOpen(true)
+              }}
               aria-haspopup="dialog"
               aria-expanded={headerSheetOpen}
               aria-label={
@@ -4104,7 +4109,10 @@ export function ChatPage() {
             type="button"
             ref={headerTriggerRef}
             className="chat-head chat-head-trigger pointer-events-auto flex min-w-0 max-w-[52%] flex-1 flex-nowrap items-center text-left"
-            onClick={() => setHeaderSheetOpen(true)}
+            onClick={() => {
+              haptic('light')
+              setHeaderSheetOpen(true)
+            }}
             aria-haspopup="dialog"
             aria-expanded={headerSheetOpen}
             aria-label={
@@ -4139,7 +4147,10 @@ export function ChatPage() {
               className="mobile-new-chat tap-target flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
               aria-label="Start a new chat"
               title="Start a new chat"
-              onClick={() => navigate(`/c/${classId}`)}
+              onClick={() => {
+                haptic('light')
+                navigate(`/c/${classId}`)
+              }}
             >
               <Plus size={22} strokeWidth={1.8} aria-hidden="true" />
             </button>
@@ -4154,7 +4165,11 @@ export function ChatPage() {
               aria-controls={isPhone ? undefined : 'artifacts-panel'}
               /* A phone has no docked rail, so this opens the reader. On
                  desktop it opens and closes the persistent outputs panel. */
-              onClick={() => (isPhone ? openDocument() : setRailOpen((open) => !open))}
+              onClick={() => {
+                haptic('light')
+                if (isPhone) openDocument()
+                else setRailOpen((open) => !open)
+              }}
             >
               {isPhone ? <PanelRightOpen size={18} aria-hidden="true" /> : <PanelRight size={18} aria-hidden="true" />}
               {hasArtifact && !railOpen ? (
@@ -4368,7 +4383,11 @@ export function ChatPage() {
           exactly as if it had never left. */}
       {!isPhone ? <div ref={composerAnchorRef} className="shrink-0" style={{ height: desktopInspectorOpen ? 0 : (composerDockH || undefined) }} aria-hidden="true" /> : null}
       {renderComposerDock(
-        <div ref={composerDockRef} className="relative shrink-0 z-10" style={{ pointerEvents: 'auto' }}>
+        <div
+          ref={composerDockRef}
+          className={`relative shrink-0 z-10${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-host' : ''}`}
+          style={{ pointerEvents: 'auto' }}
+        >
       {/* While a plan is still being written, retain the compact progress row.
           Once the saved plan lands, PlanPeek replaces it so the same space
           becomes a thumb-driven reader rather than a second plan card. */}

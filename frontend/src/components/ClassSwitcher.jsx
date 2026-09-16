@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Check, ChevronsUpDown, Plus, X } from 'lucide-react'
 import { classColor } from '../lib/classColor'
+import { haptic } from '../lib/haptics'
 import { useExitTransition } from '../hooks/useExitTransition'
 
 /* Which prep you're planning for. Rendered inline in the chat's top bar,
@@ -118,6 +119,7 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
 
   const chooseClass = (id) => {
     setOpen(false)
+    haptic('selection')
     navigate(targetFor(id), navigateOptions)
     onSelect?.(id)
   }
@@ -167,7 +169,10 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
     <div className={`${heading ? 'relative min-w-0' : inline ? 'relative min-w-0 shrink' : 'relative px-2 pb-1'}${open ? ' is-open' : ''}`} ref={ref}>
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          haptic('light')
+          setOpen((o) => !o)
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
         className={

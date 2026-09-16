@@ -1,13 +1,13 @@
 import { chatAvatarColor, chatPreview, formatChatListTime } from '../lib/chatPresentation'
+import { haptic } from '../lib/haptics'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { Link, NavLink, useLocation, useNavigate, useParams } from 'react-router-dom'
-import { ChevronDown, MoreHorizontal, Pencil, Pin, Plus, RefreshCw, Search, Trash2, X } from 'lucide-react'
+import { ChevronDown, MoreHorizontal, Pencil, Pin, Plus, Search, Trash2, X } from 'lucide-react'
 
 import { useChats, useClasses, useDeleteChat, useRenameChat, useTogglePin } from '../hooks/useAppData'
-import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { useAuth } from '../lib/authContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
@@ -117,6 +117,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, touchAc
           onSwipeOpenChange(false)
           return
         }
+        haptic('light')
         onNavigate?.(e)
       }}
       className={({ isActive }) => `chat-workspace-chat-row${isActive ? ' is-active' : ''}${spacious || touchActions ? ' is-swipe-row' : ''}`}
@@ -216,7 +217,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, touchAc
             const past = info.offset.x < -SWIPE_OPEN_DISTANCE
             if (past !== crossedRef.current) {
               crossedRef.current = past
-              if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(10)
+              if (past) haptic('selection')
             }
           }}
           onDragEnd={(_e, info) => {
@@ -305,7 +306,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, touchAc
 export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra, spacious, touchActions = false }) {
   const { classId } = useParams()
   const location = useLocation()
-  const { data: chats, isLoading, refetch } = useChats()
+  const { data: chats, isLoading } = useChats()
   const deleteChat = useDeleteChat()
   const confirm = useConfirm()
   const toast = useToast()
@@ -315,10 +316,6 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   // whichever was already open, same as every native swipe-action list.
   const [swipeOpenId, setSwipeOpenId] = useState(null)
   const searchInputRef = useRef(null)
-  // Always called (Rules of Hooks) but only wired up when spacious — see the
-  // scroller div below. Harmless unused otherwise: the hook no-ops until its
-  // containerRef is actually attached to an element.
-  const pullToRefresh = usePullToRefresh(refetch)
   // Optimistic (useTogglePin) — the icon and the Pinned/Recent placement both
   // update on click instead of after a PATCH plus a full list refetch.
   const togglePinMutation = useTogglePin()
@@ -387,6 +384,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
             to={classPath}
             onClick={(event) => {
               onToggleCollapse?.()
+              haptic('light')
               onNavigate?.(event)
             }}
             className="chat-workspace-add"
@@ -425,7 +423,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
         >
           {searchOpen ? <X size={18} aria-hidden="true" /> : <Search size={18} aria-hidden="true" />}
         </button>
-        <Link to={classPath} onClick={onNavigate} className={`chat-workspace-add${spacious ? ' mobile-rail-new-chat' : ''}`} aria-label="New chat" title="New chat"><Plus size={20} aria-hidden="true" /></Link>
+        <Link to={classPath} onClick={(event) => { haptic('light'); onNavigate?.(event) }} className={`chat-workspace-add${spacious ? ' mobile-rail-new-chat' : ''}`} aria-label="New chat" title="New chat"><Plus size={20} aria-hidden="true" /></Link>
         {onClose ? (
           <button type="button" className="btn-icon" aria-label="Close menu" onClick={onClose}>
             <X size={16} aria-hidden="true" />
@@ -438,7 +436,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
         <div className="mobile-chat-home-actions">
           <Link
             to={classPath}
-            onClick={onNavigate}
+            onClick={(event) => { haptic('light'); onNavigate?.(event) }}
             className="mobile-floating-new-chat"
             aria-label="Start a new chat"
             title="New chat"
@@ -481,45 +479,8 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
       {collapsed ? null : (
         <nav className="rail-reveal min-h-0 flex-1 flex flex-col pt-2" aria-label="Your chats">
           <div
-            ref={spacious ? pullToRefresh.containerRef : undefined}
-            // .scroll-y, not plain overflow-y-auto: without its
-            // overscroll-behavior-y: contain, scrolling past the end of
-            // this list rubber-bands the whole app on iOS — and on the
-            // spacious (MobileChatHome) path, that chained rubber-band was
-            // fighting pull-to-refresh's own touch handling for the same
-            // gesture at the top of the list.
             className="min-h-0 flex-1 scroll-y pb-4"
           >
-            {/* Pull-to-refresh (MobileChatHome only — see usePullToRefresh):
-                the one native list gesture a phone landing screen was
-                missing. The indicator grows with the pull itself rather
-                than overlaying the list, so it reads as pushing the chats
-                down instead of floating over them.
-
-                No pullDistance-driven inline style here — usePullToRefresh
-                writes height/opacity/transform straight to indicatorRef/
-                iconRef during the drag itself (see its own comment on why:
-                a React state update on every touchmove event was the
-                actual cause of this feeling janky). `refreshing` alone is
-                still plain React state — it changes once per gesture, not
-                once per pixel, so a re-render here costs nothing. */}
-            {spacious ? (
-              <div
-                ref={pullToRefresh.indicatorRef}
-                className={`pull-refresh-indicator flex items-center justify-center text-ink-muted${pullToRefresh.refreshing ? ' is-refreshing' : ''}`}
-                aria-hidden="true"
-              >
-                <RefreshCw
-                  ref={pullToRefresh.iconRef}
-                  size={16}
-                  className={pullToRefresh.refreshing ? 'animate-spin' : ''}
-                />
-              </div>
-            ) : null}
-            {spacious && pullToRefresh.refreshing ? (
-              <p className="visually-hidden" role="status">Refreshing your chats.</p>
-            ) : null}
-
             {pinnedChats.length > 0 && (
               <div className="mb-4">
                 <p className="eyebrow px-4 pb-1">Pinned</p>
@@ -547,7 +508,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
               </button>
               <Link
                 to={`${classPath}/history`}
-                onClick={onNavigate}
+                onClick={(event) => { haptic('light'); onNavigate?.(event) }}
                 className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-ink-muted hover:text-ink"
                 aria-label="View all chats"
               >
@@ -650,7 +611,9 @@ export function AppShell({ children }) {
   const usesDockedRail = !isPhone && (!isTablet || usesTabletDock)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const drawerRef = useRef(null)
-  const drawerExit = useExitTransition(drawerOpen, 130)
+  // Keep the mounted exit window aligned with the drawer's direct
+  // translateX settle animation so it never vanishes mid-flight.
+  const drawerExit = useExitTransition(drawerOpen, 170)
   useFocusTrap(drawerRef, { active: drawerOpen, trap: drawerOpen, onEscape: () => setDrawerOpen(false) })
 
   /* Desktop-dock only — the narrow/phone drawer above already has its own

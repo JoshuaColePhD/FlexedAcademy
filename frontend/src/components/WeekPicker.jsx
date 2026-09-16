@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Check } from 'lucide-react'
 import { shortRange } from '../lib/dates'
+import { haptic } from '../lib/haptics'
 
 /* Which week this conversation is planning. The chat header sheet shows this
  * list in flow — a nested dropdown inside that dialog used to hide the course
@@ -41,7 +42,10 @@ export function WeekPicker({
           role="option"
           aria-selected={selected}
           disabled={disabled}
-          onClick={() => onChange(week.week)}
+          onClick={() => {
+            haptic('selection')
+            onChange(week.week)
+          }}
           className={`week-picker-option${selected ? ' is-selected' : ''}`}
         >
           <span className="min-w-0 flex-1 truncate">{labelFor(week)}</span>

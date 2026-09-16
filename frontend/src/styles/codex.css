@@ -4600,3 +4600,216 @@ body:has(.dialog-scrim) .composer-dock-surface {
     justify-content: center;
   }
 }
+
+/* ══ MOBILE MOTION CONTRACT ════════════════════════════════════════════════
+   Phone interactions stay direct and legible: one surface owns scrolling,
+   drawers translate on one axis, and contextual sheets do not animate their
+   contents independently. Keep this block after the tablet rules so it cannot
+   change the iPad/desktop document layout. */
+@media (max-width: 767.98px) {
+  .workspace-chat > .scroll-y,
+  .mobile-chat-home nav[aria-label='Your chats'] > .scroll-y {
+    touch-action: pan-y pinch-zoom;
+    overscroll-behavior-y: contain;
+    scroll-padding-bottom: calc(88px + var(--safe-b));
+  }
+
+  /* The composer is fixed in the visual rhythm while the transcript moves
+     beneath it. A static fade makes that hand-off feel intentional without
+     animating a large translucent surface during scroll. */
+  .composer-dock-surface {
+    isolation: isolate;
+    position: relative;
+  }
+
+  .composer-dock-surface::before {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    left: 0;
+    height: 52px;
+    z-index: -1;
+    pointer-events: none;
+    content: '';
+    background: linear-gradient(
+      to top,
+      rgb(var(--paper-sunken-rgb) / 0.76),
+      rgb(var(--paper-sunken-rgb) / 0)
+    );
+  }
+
+  .composer-dock-surface > div,
+  .composer-dock-surface .mobile-composer-plan-sheet {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Once the peek is open it is a contextual reader, not another flex item
+     competing with the transcript for height. Let it occupy the content
+     region below the compact phone header while the transcript remains
+     underneath and the composer stays docked to the bottom. */
+  .workspace-chat > .is-plan-peek-host {
+    position: absolute;
+    top: 76px;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .composer-dock-surface.is-plan-peek-open {
+    position: relative;
+    inset: auto;
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  .composer-dock-surface.is-plan-peek-open > div {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+
+  .composer-dock-surface.is-plan-peek-open .mobile-composer-plan-sheet.is-plan-open {
+    display: flex;
+    min-height: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  .composer-dock-surface.is-plan-peek-open .mobile-composer-plan-sheet.is-plan-open .plan-peek,
+  .composer-dock-surface.is-plan-peek-open .mobile-composer-plan-sheet.is-plan-open .plan-peek-body {
+    min-height: 0;
+  }
+
+  .composer-dock-surface.is-plan-peek-open .mobile-composer-plan-sheet.is-plan-open .plan-peek {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+  }
+
+  .composer-dock-surface.is-plan-peek-open .mobile-composer-plan-sheet.is-plan-open .plan-peek-body {
+    height: auto;
+    max-height: none;
+    flex: 1 1 auto;
+  }
+
+  /* The drawer is a floating sheet. Its only entrance/exit property is
+     translateX; the scrim owns opacity, so the panel never scales or fades
+     away from the thumb. */
+  .app-rail.rail-drawer {
+    animation: mobile-rail-in 240ms var(--ease-glide) both;
+    will-change: transform;
+  }
+
+  .app-rail.rail-drawer.is-closing {
+    animation: mobile-rail-out 170ms var(--ease-out) both;
+  }
+
+  .panel-scrim {
+    animation: mobile-scrim-in 200ms var(--ease-out) both;
+  }
+
+  .panel-scrim.is-closing {
+    animation: mobile-scrim-out 150ms var(--ease-out) both;
+  }
+
+  @keyframes mobile-rail-in {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(0); }
+  }
+
+  @keyframes mobile-rail-out {
+    from { transform: translateX(0); }
+    to { transform: translateX(-100%); }
+  }
+
+  @keyframes mobile-scrim-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes mobile-scrim-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+
+  /* Course selection is a bottom-originating sheet, with a single
+     translate/opacity transition. The larger row targets are kept separate
+     from motion so the menu remains comfortable for a thumb. */
+  .mobile-course-picker-sheet {
+    animation: mobile-course-sheet-in-direct 220ms var(--ease-glide) both;
+    will-change: transform, opacity;
+  }
+
+  .mobile-course-picker-layer.fa-chip-exit .mobile-course-picker-sheet {
+    animation: mobile-course-sheet-out-direct 160ms var(--ease-out) both;
+  }
+
+  @keyframes mobile-course-sheet-in-direct {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes mobile-course-sheet-out-direct {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(18px); }
+  }
+
+  /* Plan peek is one contextual surface above the composer. Animate its
+     measured height once; do not also translate/scale/fade the document tree.
+     Dragging temporarily disables the settle transition so the sheet follows
+     the handle, then React commits one open/close state on release. */
+  .mobile-composer-plan-sheet.has-plan .plan-peek-body {
+    max-height: 0;
+    transform: none;
+    transition:
+      height 220ms var(--ease-glide),
+      opacity 140ms var(--ease-out),
+      visibility 0s linear 220ms;
+    will-change: height;
+  }
+
+  .mobile-composer-plan-sheet.has-plan .plan-peek.is-open .plan-peek-body {
+    max-height: none;
+    opacity: 1;
+    transition-delay: 0s;
+  }
+
+  .mobile-composer-plan-sheet.has-plan .plan-peek.is-drag-preview .plan-peek-body {
+    transition: none;
+    will-change: height;
+  }
+
+  .mobile-composer-plan-sheet.has-plan .plan-peek-body-inner {
+    max-height: var(--plan-peek-open-height);
+  }
+
+  .mobile-composer-plan-sheet.has-plan .plan-peek-body-inner > .doc-shell {
+    max-height: none;
+    height: 100%;
+  }
+
+  .mobile-composer-plan-sheet.has-plan .plan-peek.is-open .plan-peek-body-inner > .doc-shell {
+    animation: none;
+  }
+}
+
+@media (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
+  .app-rail.rail-drawer,
+  .app-rail.rail-drawer.is-closing,
+  .panel-scrim,
+  .panel-scrim.is-closing,
+  .mobile-course-picker-sheet,
+  .mobile-course-picker-layer.fa-chip-exit .mobile-course-picker-sheet,
+  .mobile-composer-plan-sheet.has-plan .plan-peek-body {
+    animation: none !important;
+    transition: none !important;
+    will-change: auto;
+  }
+}

@@ -177,12 +177,44 @@ test('phone keeps its dedicated reader and fits the viewport', async ({ page }) 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await page.goto(seed)
+  await expect(page.locator('.route-stage')).toHaveCSS('transform', 'none')
   await expect(page.locator('#composer-input')).toBeVisible()
   await expect(page.locator('.is-composer-overlay')).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.getByRole('button', { name: 'Open lesson plan', exact: true }).click()
   await expect(page.locator('.is-mobile-reader')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test.describe('mobile semantic feedback', () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } })
+
+  test('uses best-effort haptics only for committed control actions', async ({ page }) => {
+    const errors = []
+    page.on('pageerror', (error) => errors.push(error.message))
+    await page.addInitScript(() => {
+      window.__flexedHaptics = []
+      Object.defineProperty(Navigator.prototype, 'vibrate', {
+        configurable: true,
+        value: (pattern) => {
+          window.__flexedHaptics.push(pattern)
+          return true
+        },
+      })
+    })
+    await page.goto(seed)
+
+    const header = page.getByRole('button', { name: /Change course or week/i })
+    await header.click()
+    const dialog = page.getByRole('dialog', { name: 'Class and week' })
+    await expect(dialog).toBeVisible()
+    await dialog.getByRole('option', { name: /Week 02/i }).click()
+    await expect(page).toHaveURL(/\/c\/c1\/chat\/seedWeek2/)
+
+    const patterns = await page.evaluate(() => window.__flexedHaptics)
+    expect(patterns).toEqual(expect.arrayContaining([8, 12]))
+    expect(errors).toEqual([])
+  })
 })
 
 test('phone lesson-plan peek follows a long thumb pull to the transcript edge', async ({ page }) => {
@@ -203,6 +235,7 @@ test('phone lesson-plan peek follows a long thumb pull to the transcript edge', 
   await page.mouse.up()
 
   await expect(handle).toHaveAttribute('aria-expanded', 'true')
+  await page.waitForTimeout(260)
   const openBody = await sheet.locator('.plan-peek-body').boundingBox()
   const transcript = await page.locator('.workspace-chat .scroll-y').boundingBox()
   const openSheet = await sheet.boundingBox()
@@ -216,6 +249,7 @@ test('phone lesson-plan peek follows a long thumb pull to the transcript edge', 
   await page.mouse.up()
 
   await expect(handle).toHaveAttribute('aria-expanded', 'false')
+  await page.waitForTimeout(220)
   const closedBody = await sheet.locator('.plan-peek-body').boundingBox()
   const closedSheet = await sheet.boundingBox()
   expect(closedBody.height).toBeLessThanOrEqual(2)
@@ -277,4 +311,3 @@ test('library opens a previous week chat without starting a new one', async ({ p
   await page.getByRole('link', { name: /Week 02/i }).first().click()
   await expect(page).toHaveURL(/\/c\/c1\/chat\/seedWeek2/)
 })
-

@@ -25,6 +25,7 @@ import { AppShell } from './components/AppShell'
 import { CommandPalette } from './components/CommandPalette'
 import { useClasses } from './hooks/useAppData'
 import { useInterfacePreferences } from './hooks/useInterfacePreferences'
+import { PHONE, useMediaQuery } from './hooks/useMediaQuery'
 import './styles/base.css'
 import './styles/codex.css'
 import { useTheme } from './hooks/useTheme'
@@ -190,6 +191,7 @@ function ClassRoutes() {
 function RouteTransition({ children }) {
   const location = useLocation()
   const prefersReducedMotion = useReducedMotion()
+  const isPhone = useMediaQuery(PHONE)
   /* A new chat is a state change inside the same working surface, not a new
      page. Keying the transition on the raw pathname unmounted ChatPage when
      submit() navigated from `/c/:classId` to `/c/:classId/chat/:id`, which
@@ -203,9 +205,9 @@ function RouteTransition({ children }) {
     <motion.div
       key={transitionKey}
       className="route-stage"
-      initial={prefersReducedMotion ? false : { opacity: 0, y: 2 }}
+      initial={prefersReducedMotion || isPhone ? false : { opacity: 0, y: 2 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
+      transition={prefersReducedMotion || isPhone ? { duration: 0 } : { duration: 0.14, ease: [0.22, 1, 0.36, 1] }}
     >
       {children}
     </motion.div>
