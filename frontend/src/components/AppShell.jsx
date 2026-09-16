@@ -1,5 +1,5 @@
 import { chatAvatarColor, chatPreview, formatChatListTime } from '../lib/chatPresentation'
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -11,7 +11,7 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { useAuth } from '../lib/authContext'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
-import { NARROW, PHONE, TOUCH, useMediaQuery } from '../hooks/useMediaQuery'
+import { PHONE, TOUCH, between, useMediaQuery } from '../hooks/useMediaQuery'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { AccountMenu } from './AccountMenu'
 import { MobileTabBar } from './MobileTabBar'
@@ -636,9 +636,18 @@ function OnboardingWizardHost() {
 
 export function AppShell({ children }) {
   const { classId } = useParams()
-  const isNarrow = useMediaQuery(NARROW)
   const isPhone = useMediaQuery(PHONE)
+  const isTablet = useMediaQuery(between('md', 'lg'))
+  const tabletPortrait = useMediaQuery('(orientation: portrait)')
   const isTouch = useMediaQuery(TOUCH)
+  /* iPad landscape gets the same persistent master/detail navigation as the
+     desktop workspace. iPad portrait keeps the drawer so the conversation
+     still has a comfortable reading width. A short landscape viewport is an
+     iPhone in Safari, not an iPad, and remains on the compact phone path. */
+  const isShortLandscape = useMediaQuery('(orientation: landscape) and (max-height: 520px)')
+  const isTouchLandscapeTablet = useMediaQuery('(hover: none) and (pointer: coarse) and (orientation: landscape) and (min-height: 521px)')
+  const usesTabletDock = !isPhone && !tabletPortrait && !isShortLandscape && (isTablet || isTouchLandscapeTablet)
+  const usesDockedRail = !isPhone && (!isTablet || usesTabletDock)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const drawerRef = useRef(null)
   const drawerExit = useExitTransition(drawerOpen, 130)
@@ -679,24 +688,39 @@ export function AppShell({ children }) {
   useEffect(() => {
     setRailCollapsed(readAccountStorage('rail-collapsed', user?.id) === '1')
   }, [user?.id])
-  const toggleRailCollapsed = () => {
+  const toggleRailCollapsed = useCallback(() => {
     setRailCollapsed((collapsed) => {
       const next = !collapsed
       writeAccountStorage('rail-collapsed', user?.id, '', next ? '1' : '0')
       return next
     })
-  }
+  }, [user?.id])
+
+  const toggleWorkspaceRail = useCallback(() => {
+    if (usesDockedRail) {
+      toggleRailCollapsed()
+      return
+    }
+    setDrawerOpen((open) => !open)
+  }, [toggleRailCollapsed, usesDockedRail])
 
   const [documentReading, setDocumentReading] = useState(false)
   const effectiveRailCollapsed = railCollapsed || routeCollapsesRail || documentReading
   const workspaceRailValue = useMemo(
-    () => ({ collapsed: effectiveRailCollapsed, documentReading, toggle: toggleRailCollapsed, setDocumentReading }),
-    [effectiveRailCollapsed, documentReading],
+    () => ({
+      collapsed: effectiveRailCollapsed,
+      docked: usesDockedRail,
+      drawerOpen,
+      documentReading,
+      toggle: toggleWorkspaceRail,
+      setDocumentReading,
+    }),
+    [drawerOpen, effectiveRailCollapsed, documentReading, toggleWorkspaceRail, usesDockedRail],
   )
 
   return (
     <WorkspaceRailContext.Provider value={workspaceRailValue}>
-      <div className={`app-shell-frame flex h-full w-full overflow-hidden p-2 gap-2 relative z-10${effectiveRailCollapsed ? ' is-rail-collapsed' : ''}`}>
+      <div className={`app-shell-frame flex h-full w-full overflow-hidden p-2 gap-2 relative z-10${effectiveRailCollapsed ? ' is-rail-collapsed' : ''}${usesTabletDock ? ' is-tablet-landscape' : ''}`}>
       <div className="app-blob" aria-hidden="true" />
       <a
         className="sr-only transition-all focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-md focus:bg-ink focus:px-4 focus:py-2 focus:text-ink-inverse focus:shadow-md"
@@ -706,7 +730,7 @@ export function AppShell({ children }) {
       </a>
 
       {/* docked */}
-      {!isNarrow ? (
+      {usesDockedRail ? (
         <div
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
@@ -722,7 +746,7 @@ export function AppShell({ children }) {
       ) : null}
 
       {/* drawer */}
-      {isNarrow && drawerExit.mounted ? (
+      {!usesDockedRail && drawerExit.mounted ? (
         createPortal(
           <>
             <button
@@ -762,7 +786,7 @@ export function AppShell({ children }) {
             </button>
           </div>
         ) : null}
-        {isNarrow && (!isPhone || !isChatRoute) ? (
+        {!usesDockedRail && !isChatRoute ? (
           <div className="mobile-app-brand-bar relative flex h-12 shrink-0 items-center gap-2 border-b border-edge px-2">
             <span className="pointer-events-none absolute inset-x-0 truncate text-center text-sm font-semibold tracking-tight text-ink">
               FlexEd Academy

@@ -475,14 +475,18 @@ export function ChatPage() {
   const mode = useLayoutMode()
   const isPhone = mode === 'phone'
   const isTablet = mode === 'tablet'
-  const desktopInspector = useMediaQuery('(min-width: 900px)')
+  const desktopViewport = useMediaQuery('(min-width: 1024px)')
   const tabletPortrait = useMediaQuery('(orientation: portrait)')
+  const shortLandscape = useMediaQuery('(orientation: landscape) and (max-height: 520px)')
+  const isTouchLandscapeTablet = useMediaQuery('(hover: none) and (pointer: coarse) and (orientation: landscape) and (min-height: 521px)')
   /* An iPhone in landscape commonly reports a tablet-width CSS viewport. It
      still has phone-height space, though, so the desktop header and an
-     auto-open materials drawer crowd out the actual conversation. Keep the
-     compact header vocabulary for this short landscape shape without
-     changing the tablet's document-reader behavior. */
-  const isLandscapePhone = isTablet && !tabletPortrait
+     auto-open materials drawer crowd out the actual conversation. A real iPad
+     landscape viewport is taller, so it gets the full split workspace instead
+     of being mistaken for a phone. */
+  const isLandscapePhone = isTablet && !tabletPortrait && shortLandscape
+  const isTabletLandscape = !isPhone && !tabletPortrait && !shortLandscape && (isTablet || isTouchLandscapeTablet)
+  const desktopInspector = desktopViewport && !isTouchLandscapeTablet
   /* A phone must land in a ready-to-type conversation. The old default sent
      every no-chat route to MobileChatHome, which rendered the rail but not
      the Composer — exactly the moment a teacher needs to start a plan. The
@@ -3564,10 +3568,14 @@ export function ChatPage() {
     setArtifactFullscreenReturning(false)
   }, [overlayExit.mounted])
   const mobileReaderOpen = isPhone && viewKind === 'plan' && overlayExit.mounted
+  // Portrait tablets get a full-workspace document reader, but the composer
+  // remains a live command surface above it so a teacher can keep revising
+  // the plan without closing the document first.
+  const tabletPortraitReaderOpen = isTablet && tabletPortrait && overlayOpen
   // Tablets have enough room to stop pretending that the document is a phone
   // sheet. Portrait preserves chat focus with a right-hand side sheet; in
   // landscape the plan earns a stable pane beside the conversation.
-  const tabletLandscapePlanOpen = isTablet && !tabletPortrait && overlayOpen && viewKind === 'plan'
+  const tabletLandscapePlanOpen = isTabletLandscape && overlayOpen && viewKind === 'plan'
   const desktopInspectorOpen = desktopInspector && overlayExit.mounted
   const setDocumentReading = workspaceRail.setDocumentReading
   useLayoutEffect(() => {
@@ -3656,7 +3664,9 @@ export function ChatPage() {
   // the live anchor. While the week is open that anchor is the document
   // stage; otherwise it is the chat column.
   useEffect(() => {
-    const anchor = (desktopInspectorOpen && documentComposerAnchorRef.current) || composerAnchorRef.current
+    const anchor = tabletPortraitReaderOpen
+      ? overlayAnchorRef.current
+      : (desktopInspectorOpen && documentComposerAnchorRef.current) || composerAnchorRef.current
     if (!anchor) return
     const sync = () => {
       const r = anchor.getBoundingClientRect()
@@ -3678,7 +3688,7 @@ export function ChatPage() {
       window.removeEventListener('resize', sync)
       window.visualViewport?.removeEventListener('resize', sync)
     }
-  }, [composerDockH, portalHost, isPhone, railOpen, desktopInspectorOpen])
+  }, [composerDockH, portalHost, isPhone, railOpen, desktopInspectorOpen, tabletPortraitReaderOpen])
   // Keep the composer above the document in both docked and fullscreen
   // reading modes. Fullscreen expands the lesson plan's reading surface, but
   // it should not take away the command surface the teacher is actively using.
@@ -3687,8 +3697,8 @@ export function ChatPage() {
     // Keep the composer interactive above the desktop document, including the
     // fullscreen reader. The document remains the visual canvas underneath;
     // the composer is still the persistent command surface.
-    portalHost.style.zIndex = overlayOpen && !desktopComposerOverlay ? '90' : '200'
-  }, [portalHost, overlayOpen, desktopComposerOverlay])
+    portalHost.style.zIndex = overlayOpen && !desktopComposerOverlay && !tabletPortraitReaderOpen ? '90' : '200'
+  }, [portalHost, overlayOpen, desktopComposerOverlay, tabletPortraitReaderOpen])
   // See overlayPortalHost's own creation comment: this host spans the full
   // viewport (or the docked box) at all times, so it must stop intercepting
   // clicks the instant there's nothing shown inside it, not just while it's
@@ -3758,12 +3768,12 @@ export function ChatPage() {
          available so the teacher can pull Materials in when wanted. The
          recruiter showcase is the exception on a portrait phone: it should
          open on the evidence, not make a visitor hunt for the lesson plan. */
-      setRailOpen(!isLandscapePhone)
-      if (!isPhone && !isLandscapePhone) setExpanded(true)
+      setRailOpen(!isLandscapePhone && !isTabletLandscape)
+      if (!isPhone && !isLandscapePhone && !isTabletLandscape) setExpanded(true)
       if (user?.read_only && isPhone) setExpanded(true)
       railAutoOpenedRef.current = true
     }
-  }, [hasArtifact, isLandscapePhone, isPhone, user?.read_only])
+  }, [hasArtifact, isLandscapePhone, isPhone, isTabletLandscape, user?.read_only])
 
   // A builder should feel underway in two places at once: the composer keeps
   // Stop under the teacher's thumb, while Outputs opens to the live document
@@ -3983,12 +3993,20 @@ export function ChatPage() {
           it, not floating apart from the rest of the pane's own left
           margin. */}
       <div className={`workspace-topbar flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10${(isPhone || isLandscapePhone) && !chatId ? ' mobile-new-chat-header' : ''}${(isPhone || isLandscapePhone) && chatId ? ' mobile-active-chat-header' : ''}`}>
+        <span className="tablet-chat-brand" aria-label="FlexEd logo">
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="32" r="29" fill="transparent" />
+            <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" />
+            <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" strokeWidth="2.5" />
+            <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
         {!isPhone && !isLandscapePhone && workspaceRail.toggle && !workspaceRail.documentReading ? (
           <button
             type="button"
             className="workspace-sidebar-toggle shrink-0"
-            aria-label={workspaceRail.collapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
-            title={workspaceRail.collapsed ? 'Show the sidebar' : 'Collapse the sidebar'}
+            aria-label={workspaceRail.docked ? (workspaceRail.collapsed ? 'Show the sidebar' : 'Collapse the sidebar') : 'Show chats'}
+            title={workspaceRail.docked ? (workspaceRail.collapsed ? 'Show the sidebar' : 'Collapse the sidebar') : 'Show chats'}
             onClick={workspaceRail.toggle}
           >
             <PanelLeft size={16} aria-hidden="true" />
@@ -4746,7 +4764,7 @@ export function ChatPage() {
     // fa-rise — see fa-rise-panel's own comment in base.css for why a
     // full-viewport container inside AppShell's blurred "main" panel
     // shouldn't animate opacity.
-    <div ref={overlayAnchorRef} className={`workspace-panes flex h-full w-full min-w-0${isPhone ? ' fa-rise-panel' : ''}${railOpen && !isPhone ? ' artifacts-open' : ''}`}>
+    <div ref={overlayAnchorRef} className={`workspace-panes flex h-full w-full min-w-0${isPhone ? ' fa-rise-panel' : ''}${isTabletLandscape ? ' is-tablet-landscape-workspace' : ''}${railOpen && !isPhone ? ' artifacts-open' : ''}`}>
       {/* OUTSIDE chatPane. It used to live inside it, and ArtifactPanel sets
           aria-modal="true" when overlaying — which tells assistive tech to
           ignore everything outside the dialog, so on a phone with the document
@@ -4835,7 +4853,7 @@ export function ChatPage() {
                 onClick={collapse}
               /> : null}
               <div
-                className={`artifact-overlay${desktopComposerOverlay ? ' is-composer-overlay is-chat-docked' : ''}${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}${artifactFullscreenReturning ? ' is-fullscreen-returning' : ''}${isTablet && tabletPortrait ? ' is-tablet-side-sheet' : ''}`}
+                className={`artifact-overlay${desktopComposerOverlay ? ' is-composer-overlay is-chat-docked' : ''}${overlayExit.closing ? ' is-closing' : ''}${artifactFullscreen ? ' is-overlay-fullscreen' : ''}${artifactFullscreenReturning ? ' is-fullscreen-returning' : ''}${isTablet && tabletPortrait ? ' is-tablet-fullscreen' : ''}`}
                 style={{ '--composer-h': `${composerDockH}px` }}
               >
                 {artifactEl}

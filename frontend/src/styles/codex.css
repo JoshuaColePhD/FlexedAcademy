@@ -2828,10 +2828,51 @@ body:has(.dialog-scrim) .composer-dock-surface {
     padding-left: 12px;
   }
 
-  /* The portrait side sheet should leave a visible conversation sliver but
-     never exceed the available height once the browser chrome is present. */
-  .artifact-overlay.is-tablet-side-sheet {
-    max-height: calc(100dvh - 24px);
+  /* Portrait-tablet plans are a full-workspace reader, not a narrow side
+     sheet. The composer is raised into its own portal layer by ChatPage so it
+     remains visible and editable above the reader. Keep the app-shell gutter,
+     but let the document use every pixel inside it. */
+  .artifact-overlay.is-tablet-fullscreen {
+    inset: 0 !important;
+    width: auto !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    animation-name: artifact-tablet-fullscreen-in;
+    animation-duration: var(--t-slow);
+  }
+
+  .artifact-overlay.is-tablet-fullscreen.is-closing {
+    animation-name: artifact-tablet-fullscreen-out;
+  }
+
+  .artifact-overlay.is-tablet-fullscreen .doc-shell {
+    border-radius: 0 !important;
+  }
+
+  .artifact-overlay.is-tablet-fullscreen .doc-head {
+    border-radius: 0 !important;
+  }
+
+  .artifact-overlay.is-tablet-fullscreen .doc-body {
+    border-radius: 0 !important;
+  }
+
+  .composer-dock-surface {
+    z-index: 1;
+  }
+
+  .composer-dock-surface > div {
+    max-width: none;
+  }
+
+  @keyframes artifact-tablet-fullscreen-in {
+    from { transform: translateY(18px); }
+    to { transform: none; }
+  }
+
+  @keyframes artifact-tablet-fullscreen-out {
+    from { transform: none; }
+    to { transform: translateY(18px); }
   }
 
   .split-layout-content-inner {
@@ -2849,7 +2890,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
 /* Mobile FlexEd workspace: a quiet charcoal canvas with two restrained
    Liquid Glass surfaces. Keep this block at the end so it can refine the
    existing mobile layout without changing the desktop workspace. */
-@media (max-width: 767.98px), (min-width: 768px) and (max-width: 1023.98px) and (max-height: 820px) {
+@media (max-width: 767.98px), (min-width: 768px) and (max-width: 1023.98px) and (max-height: 520px) {
   .workspace-chat {
     background: rgb(var(--paper-rgb)) !important;
   }
@@ -4412,5 +4453,140 @@ body:has(.dialog-scrim) .composer-dock-surface {
     background: rgb(var(--paper-raised-rgb) / 0.98) !important;
     -webkit-backdrop-filter: none !important;
     backdrop-filter: none !important;
+  }
+}
+
+/* ══ IPAD LANDSCAPE WORKSPACE ══════════════════════════════════════════════
+   Landscape iPad is the bridge between the phone and desktop experiences:
+   keep the chat list present, give the conversation a real reading column,
+   and let a lesson plan sit beside it without the phone's bottom navigation
+   or compact header taking over the canvas. */
+@media (min-width: 768px) and (max-width: 1199.98px) and (orientation: landscape) and (min-height: 521px) {
+  .tablet-chat-brand {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-text);
+  }
+
+  .tablet-chat-brand svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .app-shell-frame.is-tablet-landscape {
+    gap: 12px !important;
+    padding: 12px !important;
+  }
+
+  .app-shell-frame.is-tablet-landscape > .app-rail {
+    width: clamp(256px, 27vw, 300px) !important;
+    flex-basis: clamp(256px, 27vw, 300px);
+    border-radius: 22px !important;
+  }
+
+  .app-shell-frame.is-tablet-landscape > .app-shell-main {
+    min-width: 0;
+    border-radius: 22px !important;
+  }
+
+  .app-shell-frame.is-tablet-landscape .workspace-topbar {
+    min-height: 52px !important;
+    height: 52px !important;
+    padding: 4px 18px !important;
+    background: transparent !important;
+    border-bottom: 0 !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .app-shell-frame.is-tablet-landscape .workspace-topbar > .chat-head-trigger {
+    min-height: 44px !important;
+    height: 44px;
+    max-width: min(68%, 34rem);
+    padding: 4px 10px;
+    border-radius: 16px;
+  }
+
+  .app-shell-frame.is-tablet-landscape .workspace-topbar > .chat-head-trigger:hover,
+  .app-shell-frame.is-tablet-landscape .workspace-topbar > .chat-head-trigger[aria-expanded='true'] {
+    background: rgb(var(--paper-raised-rgb) / 0.56);
+  }
+
+  .app-shell-frame.is-tablet-landscape .workspace-sidebar-toggle,
+  .app-shell-frame.is-tablet-landscape .workspace-artifact-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  /* A legacy sub-1024 rule hid this control because phones use their own
+     navigation. iPad portrait uses the same topbar but needs this button to
+     open the chat-list drawer; landscape uses it to collapse the docked rail. */
+  .app-shell-frame .workspace-topbar .workspace-sidebar-toggle {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .app-shell-frame.is-tablet-landscape .workspace-panes {
+    gap: 12px;
+  }
+
+  .app-shell-frame.is-tablet-landscape .chat-workspace-main {
+    min-width: 0;
+  }
+
+  /* Once the full lesson plan is open, it replaces the compact Outputs rail;
+     showing both would squeeze the conversation into an unusable sliver. */
+  .app-shell-frame.is-tablet-landscape .workspace-panes:has(.tablet-plan-pane) > .artifact-drawer {
+    display: none;
+  }
+
+  .app-shell-frame.is-tablet-landscape .tablet-plan-pane {
+    width: clamp(340px, 36vw, 420px);
+    flex-basis: clamp(340px, 36vw, 420px);
+    border-radius: 20px;
+  }
+
+  .app-shell-frame.is-tablet-landscape .composer-dock-surface > div {
+    max-width: 48rem;
+  }
+
+  /* The persistent chat rail is the navigation surface on iPad; the phone
+     bottom tab bar should never appear alongside it. */
+  .app-shell-frame.is-tablet-landscape .mobile-tab-bar {
+    display: none !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199.98px) and (orientation: portrait) {
+  .tablet-chat-brand {
+    display: inline-flex;
+    width: 24px;
+    height: 24px;
+    flex: 0 0 24px;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent-text);
+  }
+
+  .tablet-chat-brand svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  /* Portrait iPad keeps the conversation full-width until the teacher asks
+     for the chat list. The topbar button is the drawer trigger and must stay
+     visible despite the older sub-1024 phone-navigation rule. */
+  .workspace-topbar .workspace-sidebar-toggle {
+    display: inline-flex !important;
+    min-width: 44px;
+    min-height: 44px;
+    align-items: center;
+    justify-content: center;
   }
 }
