@@ -6,8 +6,8 @@ import { useFocusTrap } from '../hooks/useFocusTrap'
 import { ClassSwitcher } from './ClassSwitcher'
 import { WeekPicker } from './WeekPicker'
 
-const POPOVER_WIDTH = 400
-const POPOVER_MAX_HEIGHT = 520
+const POPOVER_WIDTH = 520
+const POPOVER_MAX_HEIGHT = 560
 
 /* Class and week controls shared by the desktop chat header and phone title. */
 export function ChatHeaderSheet({

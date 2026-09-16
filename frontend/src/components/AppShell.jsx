@@ -379,7 +379,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
   return (
     <>
       {collapsed ? (
-        <div className="rail-collapsed-actions flex h-14 shrink-0 items-center justify-center">
+        <div className="rail-collapsed-actions flex h-full min-h-0 shrink-0 flex-col items-center justify-between py-2">
           <Link
             to={classPath}
             onClick={(event) => {
@@ -393,6 +393,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
           >
             <Plus size={20} aria-hidden="true" />
           </Link>
+          <AccountMenu classPath={classPath} collapsed />
         </div>
       ) : (
       <div className="rail-brand-row flex h-14 shrink-0 items-center gap-2 px-3 mt-2">

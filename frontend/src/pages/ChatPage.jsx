@@ -4012,14 +4012,6 @@ export function ChatPage() {
           it, not floating apart from the rest of the pane's own left
           margin. */}
       <div className={`workspace-topbar flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10${(isPhone || isLandscapePhone) && !chatId ? ' mobile-new-chat-header' : ''}${(isPhone || isLandscapePhone) && chatId ? ' mobile-active-chat-header' : ''}`}>
-        <span className="tablet-chat-brand" aria-label="FlexEd logo">
-          <svg viewBox="0 0 64 64" aria-hidden="true">
-            <circle cx="32" cy="32" r="29" fill="transparent" />
-            <circle cx="32" cy="32" r="30.5" fill="none" stroke="currentColor" strokeWidth="1" strokeDasharray="1.6 3.4" />
-            <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" strokeWidth="2.5" />
-            <path d="M20 33l8 8 16-18" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
         {!isPhone && !isLandscapePhone && workspaceRail.toggle && !workspaceRail.documentReading ? (
           <button
             type="button"

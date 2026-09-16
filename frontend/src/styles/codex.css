@@ -2126,7 +2126,13 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
   .rail-collapsed-actions {
     width: 100%;
-    padding-top: 6px;
+  }
+  .app-shell-frame.is-rail-collapsed .rail-collapsed-actions {
+    flex: 1 1 auto !important;
+    height: 100% !important;
+    min-height: 0;
+    margin: 0;
+    padding: 8px 0;
   }
   .app-shell-frame.is-rail-collapsed > .app-rail .chat-workspace-add {
     width: 36px;
@@ -2246,8 +2252,8 @@ body:has(.dialog-scrim) .composer-dock-surface {
   z-index: 311;
   display: flex;
   flex-direction: column;
-  width: min(400px, calc(100vw - 32px));
-  max-height: min(520px, 72dvh);
+  width: min(520px, calc(100vw - 32px));
+  max-height: min(560px, 72dvh);
   overflow: hidden;
   padding: 14px 14px 12px;
   color: var(--ink);
@@ -2287,7 +2293,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
 .chat-header-selection-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
+  gap: 12px;
   min-height: 0;
   flex: 1 1 auto;
 }
@@ -2295,7 +2301,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  padding: 8px;
+  padding: 10px;
   background: var(--paper);
   border: 1px solid var(--edge);
   border-radius: 12px;
@@ -4518,21 +4524,6 @@ body:has(.dialog-scrim) .composer-dock-surface {
    and let a lesson plan sit beside it without the phone's bottom navigation
    or compact header taking over the canvas. */
 @media (min-width: 768px) and (max-width: 1199.98px) and (orientation: landscape) and (min-height: 521px) {
-  .tablet-chat-brand {
-    display: inline-flex;
-    width: 24px;
-    height: 24px;
-    flex: 0 0 24px;
-    align-items: center;
-    justify-content: center;
-    color: var(--accent-text);
-  }
-
-  .tablet-chat-brand svg {
-    width: 24px;
-    height: 24px;
-  }
-
   .app-shell-frame.is-tablet-landscape {
     gap: 12px !important;
     padding: 12px !important;
@@ -4620,21 +4611,6 @@ body:has(.dialog-scrim) .composer-dock-surface {
 }
 
 @media (min-width: 768px) and (max-width: 1199.98px) and (orientation: portrait) {
-  .tablet-chat-brand {
-    display: inline-flex;
-    width: 24px;
-    height: 24px;
-    flex: 0 0 24px;
-    align-items: center;
-    justify-content: center;
-    color: var(--accent-text);
-  }
-
-  .tablet-chat-brand svg {
-    width: 24px;
-    height: 24px;
-  }
-
   /* Portrait iPad keeps the conversation full-width until the teacher asks
      for the chat list. The topbar button is the drawer trigger and must stay
      visible despite the older sub-1024 phone-navigation rule. */
