@@ -10,17 +10,39 @@ import json
 import logging
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
-from . import curriculum, db, docx_build, llm, retrieval, schema, schoolcal, storage, units
+from . import (
+    curriculum,
+    db,
+    docx_build,
+    embeddings,
+    llm,
+    retrieval,
+    schema,
+    schoolcal,
+    storage,
+    units,
+)
 from .entitlement import require_entitlement
 from .errors import AppError
 from .generation_queue import generation_queue
+from .request_context import RequestContext
 from .retrieval import RetrievalResult
 from .template_context import day_names_for_school, has_template_field
 
 log = logging.getLogger("flexedacademy.service")
+
+# Backs prepare()'s internal overlap of the base-query embedding, expand_query,
+# and map_context_for — all three are independent of each other and today ran
+# fully sequentially (expand_query, THEN retrieve_grounded's own embedding,
+# THEN map_context_for after retrieval finished). Deliberately a persistent
+# module-level pool, never a `with ThreadPoolExecutor() as pool:` block around
+# these submits — that would block on __exit__ until every submitted future
+# finishes, re-serializing exactly what this exists to overlap. A handful of
+# workers is generous headroom: one request submits at most 3 tasks here.
+_prepare_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="prepare")
 
 
 # The settings row can hold either form of the subject, and both must resolve or
@@ -189,7 +211,7 @@ def _act_row_expected(act_row: bool, subject_code: str) -> bool:
     return bool(act_row and sections_for and sections_for(subject_code))
 
 
-def identity_for(user_id: str, cls: dict | None) -> dict:
+def identity_for(user_id: str, cls: dict | None, ctx: RequestContext | None = None) -> dict:
     """teacher/course/period to stamp onto a plan.
 
     `course` comes straight from the class's own `name` when a class is
@@ -209,13 +231,20 @@ def identity_for(user_id: str, cls: dict | None) -> dict:
     fallback `_resolve_subject_grade` documents).
     """
     if cls:
-        s = db.get_settings_row(user_id, subject=cls["subject"])
+        s = ctx.settings_row(cls["subject"]) if ctx is not None else db.get_settings_row(user_id, subject=cls["subject"])
         return {"teacher": s["teacher"], "course": cls["name"], "period": s["period"]}
-    s = db.get_settings_row(user_id)
+    s = ctx.settings_row() if ctx is not None else db.get_settings_row(user_id)
     return {"teacher": s["teacher"], "course": s["course"], "period": s["period"]}
 
 
-def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResult:
+def prepare(
+    user_id: str,
+    query: str,
+    cls: dict | None = None,
+    ctx: RequestContext | None = None,
+    model_query: str | None = None,
+    return_map_context_future: bool = False,
+) -> RetrievalResult | tuple[RetrievalResult, Future[str]]:
     """Retrieve, and refuse to spend a token if the request can't be grounded.
 
     Two independent refusals, because they fail differently:
@@ -226,10 +255,30 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
     `cls`, when the caller has it, is the chat's own class — see
     _resolve_subject_grade's own docstring for why this matters and what
     omitting it means.
+
+    `ctx`, when given, is this request's RequestContext (see
+    request_context.py) — used to skip a redundant db.class_school /
+    db.get_settings_row call when the caller already resolved them once.
+
+    `model_query`, when given, is the full conversation/reference-augmented
+    query llm.stream_plan will actually see (routes/generate.py's
+    _generation_query) — NOT the bare teacher request `query` this function
+    grounds retrieval against. It is used only when
+    `return_map_context_future=True`, so a non-streaming caller does not start
+    auxiliary work that it cannot consume.
+
+    Returns the original `RetrievalResult` by default for compatibility. The
+    streaming route opts into `(result, map_context_future)` so it can overlap
+    map-context retrieval with standards retrieval. This keeps the
+    non-streaming path from launching an unused future and then doing the same
+    map-context lookup again inside llm.generate_plan.
     """
     subject_code, grade = require_subject_grade(user_id, cls)
     state = _resolve_state(cls)
-    school_id = _school_for_class(cls, user_id) if cls else db.get_user_school(user_id)
+    if ctx is not None:
+        school_id = ctx.school_id()
+    else:
+        school_id = _school_for_class(cls, user_id) if cls else db.get_user_school(user_id)
     template_id = _selected_template_id(user_id, (cls or {}).get("id"), school_id)
     act_row = has_template_field(
         school_id, "act_alignment", template_id=template_id, user_id=user_id
@@ -244,20 +293,56 @@ def prepare(user_id: str, query: str, cls: dict | None = None) -> RetrievalResul
     # abstract skill statements. See llm.expand_query.
     # Prepending the course and grade gives massive semantic context for the embeddings API.
     contextual_query = f"Course: {subject_code}, Grade: {grade} - {query}"
+    effective_model_query = contextual_query if model_query is None else model_query
+
+    # Launch the base-query embedding and expand_query CONCURRENTLY — these
+    # used to run fully sequentially (expand_query blocking, then
+    # retrieve_grounded re-embedding the base query from scratch alongside its
+    # extras). base_embed_future's failure must propagate (no vectors = can't
+    # ground); expand_query already swallows its own exceptions and returns []
+    # on failure (see its own docstring), so nothing extra is needed here for
+    # that one.
+    base_embed_future = _prepare_pool.submit(embeddings.embed_query, contextual_query, user_id=user_id)
+    expand_future = _prepare_pool.submit(llm.expand_query, user_id, contextual_query)
+
+    # map_context_for is independent of both of the above and used to run
+    # AFTER retrieval finished entirely; launching it now lets the streaming
+    # path overlap it with retrieval. Do not launch it for the ordinary path:
+    # llm.generate_plan performs that lookup synchronously and cannot consume
+    # an extra future, so doing so would duplicate the auxiliary work.
+    map_context_future = None
+    if return_map_context_future:
+        # Only hand it the shared base embedding when it would otherwise embed
+        # the EXACT same text — model_query carries extra conversational /
+        # reference context when it differs, so map_context_for computes its
+        # own embedding in that case, same as today.
+        map_context_future = _prepare_pool.submit(
+            llm.map_context_for,
+            user_id,
+            subject_code,
+            effective_model_query,
+            class_id=(cls or {}).get("id"),
+            query_vector_future=base_embed_future if effective_model_query == contextual_query else None,
+        )
+
+    extra_queries = expand_future.result()
 
     result = retrieval.retrieve_grounded(
         contextual_query,
         subject_code=subject_code,
         grade=grade,
-        extra_queries=llm.expand_query(user_id, contextual_query),
+        extra_queries=extra_queries,
         state=state,
         user_id=user_id,
         include_act=act_row,
+        base_query_vector_future=base_embed_future,
     )
     if result.empty:
         raise retrieval.no_grounded_standards_error(query, result)
     if result.only_act:
         raise retrieval.act_only_grounding_error(query, result, grade)
+    if return_map_context_future:
+        return result, map_context_future  # type: ignore[return-value]
     return result
 
 
@@ -444,8 +529,13 @@ def finalize(
     school_id: str | None = None,
     subject: str | None = None,
     grade: str | None = None,
+    ctx: RequestContext | None = None,
 ) -> dict:
     """Validate, stamp identity, build the .docx, persist. Returns the plan row.
+
+    `ctx`, when given, is this request's RequestContext — passed through to
+    identity_for() so it can reuse an already-fetched settings row instead of
+    a redundant db.get_settings_row call.
 
     `week_number` is the week the teacher actually asked for, when the caller
     knows it. Without it the week is parsed back out of whatever label the model
@@ -496,7 +586,7 @@ def finalize(
         act_alignment_enabled=act_row,
     )
 
-    identity = identity_for(user_id, cls)
+    identity = identity_for(user_id, cls, ctx=ctx)
     plan = schema.with_identity(
         plan, teacher=identity["teacher"], course=identity["course"], period=identity["period"]
     )

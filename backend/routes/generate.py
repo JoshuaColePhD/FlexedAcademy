@@ -28,6 +28,7 @@ from ..features import beta_features_for
 from ..generation_jobs import cancel_job, get_job, start_or_attach
 from ..generation_queue import generation_queue
 from ..ratelimit import limiter
+from ..request_context import RequestContext
 from ..schema import SchemaError
 from ..template_context import day_names_for_school, weekly_template_context
 
@@ -505,7 +506,12 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
         require_entitlement(user_id)
 
     cls = _request_class(user_id, req.class_id, req.chat_id)
-    school_id = db.class_school(cls, user_id)
+    # Request-scoped memoization (see request_context.py) — seeded with the
+    # class already fetched above, so prepare()/finalize()/stream_plan below
+    # reuse this same school lookup instead of each re-deriving it from
+    # scratch. Purely request-local: never cached beyond this one call.
+    ctx = RequestContext(user_id=user_id, class_id=(cls or {}).get("id"), cls=cls)
+    school_id = ctx.school_id()
     template_days = day_names_for_school(school_id)
     query = req.query if req.revise_plan_id else _with_week(req.query, req.week_number, school_id)
     model_query = _generation_query(
@@ -530,6 +536,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
             user_id=user_id,
             req=req,
             cls=cls,
+            ctx=ctx,
             school_id=school_id,
             template_days=template_days,
             query=query,
@@ -570,7 +577,7 @@ def generate_cancel(req: CancelGenerateRequest, request: Request, user_id: str =
     return {"ok": True}
 
 
-def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, model_query):
+def _run_plan_job(job, *, user_id, req, cls, ctx=None, school_id, template_days, query, model_query):
     request_id = job.request_id
     lease = None
 
@@ -640,9 +647,16 @@ def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, mo
         emit({"status": "retrieving", "label": "Matching standards…", "template_days": template_days}, step="retrieval", step_state="active", attempt=req.attempt)
 
         def _prepare():
-            yield service.prepare(user_id, query, cls=cls)
+            yield service.prepare(
+                user_id,
+                query,
+                cls=cls,
+                ctx=ctx,
+                model_query=model_query,
+                return_map_context_future=True,
+            )
 
-        result = None
+        prepared = None
         for item in _with_keepalives(_prepare()):
             if job.cancelled.is_set():
                 job.complete(cancelled=True)
@@ -655,9 +669,10 @@ def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, mo
                     attempt=req.attempt,
                 )
                 continue
-            result = item
-        if result is None:
+            prepared = item
+        if prepared is None:
             raise RuntimeError("prepare returned no retrieval")
+        result, map_context_future = prepared
         if job.cancelled.is_set():
             job.complete(cancelled=True)
             return
@@ -678,7 +693,16 @@ def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, mo
         emit({"status": "thinking", "template_days": template_days}, step="planning", step_state="active", attempt=req.attempt)
         emit({"status": "writing", "template_days": template_days}, step="building", step_state="active", attempt=req.attempt)
         for delta in _with_keepalives(
-            llm.stream_plan(user_id, model_query, result, school_id=school_id, class_id=cls["id"] if cls else None)
+            llm.stream_plan(
+                user_id,
+                model_query,
+                result,
+                school_id=school_id,
+                class_id=cls["id"] if cls else None,
+                cls=cls,
+                ctx=ctx,
+                map_context_future=map_context_future,
+            )
         ):
             if job.cancelled.is_set():
                 job.complete(cancelled=True)
@@ -713,6 +737,7 @@ def _run_plan_job(job, *, user_id, req, cls, school_id, template_days, query, mo
                 school_id=school_id,
                 subject=cls["subject"] if cls else None,
                 grade=cls["grade"] if cls else None,
+                ctx=ctx,
             )
 
         row = None

@@ -34,7 +34,7 @@ import json
 import logging
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -1308,6 +1308,7 @@ def retrieve_grounded(
     state: str = "AL",
     user_id: str | None = None,
     include_act: bool | None = None,
+    base_query_vector_future: Future | None = None,
 ) -> RetrievalResult:
     top_k = top_k or settings.retrieval_top_k
     floor = settings.floor_for(subject_code) if max_distance is None else max_distance
@@ -1338,7 +1339,24 @@ def retrieve_grounded(
     # Every vector we will need, in ONE embeddings call, before any searching.
     # This used to be 30 sequential API round trips for 6 distinct strings —
     # 58% of retrieval, and retrieval was 68% of the whole generation.
-    vectors = embed_queries(searches, user_id=user_id) if user_id else embed_queries(searches)
+    #
+    # `base_query_vector_future`, when the caller (service.prepare) already
+    # kicked off the base query's own embedding concurrently with
+    # llm.expand_query, lets this skip re-embedding it: only the extra queries
+    # expand_query returned still need a fresh batched call. A failure here
+    # must propagate — no vectors means retrieval cannot proceed, same as
+    # today's behavior when embedding fails.
+    if base_query_vector_future is not None:
+        base_vector = base_query_vector_future.result()
+        extras = searches[1:]
+        extra_vectors = (
+            (embed_queries(extras, user_id=user_id) if user_id else embed_queries(extras))
+            if extras
+            else {}
+        )
+        vectors = {**extra_vectors, query: base_vector}
+    else:
+        vectors = embed_queries(searches, user_id=user_id) if user_id else embed_queries(searches)
 
     # db.py now has a ThreadedConnectionPool, so we execute these queries concurrently.
     jobs = [(q, max(top_k * 3, top_k), None) for q in searches]

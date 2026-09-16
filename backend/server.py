@@ -111,16 +111,31 @@ async def _document_build_worker_loop() -> None:
     except Exception:
         log.exception("document build worker: startup database sweep failed; will retry")
     log.info("document build worker loop started")
+    consecutive_pool_timeouts = 0
     while True:
         try:
             job = await loop.run_in_executor(None, db.claim_next_document_build)
+            consecutive_pool_timeouts = 0
             if job:
                 log.info("document build worker: claimed plan_id=%s", job["plan_id"])
                 await loop.run_in_executor(None, service.run_document_build_job, job)
                 continue
         except asyncio.CancelledError:
             raise
+        except TimeoutError:
+            # Expected backpressure (db.borrow's own bounded wait), not a
+            # failure — log it quietly and back off so a genuinely exhausted
+            # pool doesn't turn into a tight ERROR-level retry loop that reads
+            # like an outage in the logs.
+            consecutive_pool_timeouts += 1
+            log.warning(
+                "document build worker: database pool busy, will retry (%d consecutive)",
+                consecutive_pool_timeouts,
+            )
+            await asyncio.sleep(min(30.0, _DOCUMENT_BUILD_POLL_INTERVAL_S * (2 ** min(consecutive_pool_timeouts, 4))))
+            continue
         except Exception:
+            consecutive_pool_timeouts = 0
             log.exception("document build worker: unexpected error")
         await asyncio.sleep(_DOCUMENT_BUILD_POLL_INTERVAL_S)
 

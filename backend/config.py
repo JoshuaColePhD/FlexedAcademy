@@ -43,6 +43,11 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_model: str = "gpt-5.6-luna"
+    # Cheap auxiliary calls (query expansion, chat titles, coaching-memory
+    # extraction) don't need the main generation model's full weight. Default
+    # matches openai_model, so this is a no-op until an operator overrides it
+    # via .env — flipping it later is a config change, not a code deploy.
+    openai_fast_model: str = "gpt-5.6-luna"
     # Operating guardrails. These thresholds are surfaced in the admin usage
     # report; configure matching notifications in the OpenAI billing dashboard.
     openai_monthly_alert_usd: float = Field(default=50.0, ge=0)
@@ -395,10 +400,10 @@ class Settings(BaseSettings):
     retrieval_workers: int = 2
 
     # Short-term backpressure for LLM work. Requests that arrive in a burst are
-    # queued instead of being mistaken for a subscription/usage failure. Default
-    # 1 so a missing env var cannot run two generations (and two retrieval
-    # spikes) at once on a small Render box. Raise only after a load test
-    # confirms RAM and database headroom.
+    # queued instead of being mistaken for a subscription/usage failure. Keep
+    # this at 1 until a production-sized load test confirms that two active
+    # model streams do not contend with other database traffic or exceed the
+    # deployment's memory budget.
     generation_max_concurrent: int = 1
     generation_max_per_user: int = 1
     generation_max_queue: int = 40

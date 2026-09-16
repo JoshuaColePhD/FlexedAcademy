@@ -384,6 +384,22 @@ def main() -> int:
                 f"CREATE INDEX {staging_table}_tsvector_idx ON {staging_table} "
                 "USING gin (document_tsvector)"
             )
+            # Without these, every retrieval query falls back to a parallel
+            # sequential scan of the whole table to apply the state/course/
+            # grade filter before it can sort by distance — measured at
+            # 4.5-20s per query instead of ~200ms. A prior rebuild recreated
+            # only the two indexes above and silently dropped these on swap;
+            # the one-shot migration that originally added them never re-ran
+            # against the new physical table. Keep them here so a rebuild can
+            # never again ship a chunks table without them.
+            cur.execute(
+                f"CREATE INDEX {staging_table}_state_course_grade_idx ON {staging_table} "
+                "((metadata->>'state'), (metadata->>'course'), (metadata->>'grade'))"
+            )
+            cur.execute(
+                f"CREATE INDEX {staging_table}_state_code_idx ON {staging_table} "
+                "((metadata->>'state'), (metadata->>'code'))"
+            )
             conn.commit()
 
     with db.borrow() as conn, conn.cursor() as cur:
@@ -409,6 +425,14 @@ def main() -> int:
             cur.execute(
                 f"ALTER INDEX {staging_table}_tsvector_idx "
                 "RENAME TO chunks_tsvector_idx"
+            )
+            cur.execute(
+                f"ALTER INDEX {staging_table}_state_course_grade_idx "
+                "RENAME TO idx_chunks_state_course_grade"
+            )
+            cur.execute(
+                f"ALTER INDEX {staging_table}_state_code_idx "
+                "RENAME TO idx_chunks_state_code"
             )
             conn.commit()
             print("Atomically swapped the validated staging corpus into chunks.")

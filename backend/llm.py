@@ -19,7 +19,8 @@ import random
 import re
 import time
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from typing import TYPE_CHECKING
 
 from openai import OpenAI
 
@@ -60,6 +61,9 @@ from .schema import (
     plan_patch_json_schema,
 )
 from .template_context import day_names_for_school
+
+if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance only
+    from .request_context import RequestContext
 
 log = logging.getLogger("flexedacademy.llm")
 
@@ -136,11 +140,17 @@ def _check_refusal(message) -> None:
         raise AppError("model_refusal", f"The model declined this request: {refusal}", status=422)
 
 
-def _record(user_id: str, kind: str, usage, *, started_at: float | None = None) -> None:
+def _record(user_id: str, kind: str, usage, *, model: str, started_at: float | None = None) -> None:
     """The other half of entitlement.py's weekly cap — every real model call
     reports what it actually spent here. Never worth failing the call over,
     which is why db.record_usage already swallows its own errors; this just
-    skips the call entirely if OpenAI didn't hand back a usage object."""
+    skips the call entirely if OpenAI didn't hand back a usage object.
+
+    `model` MUST be the model that actually made this call, not a hardcoded
+    default — callers using openai_fast_model for a cheap auxiliary call
+    (expand_query, generate_chat_title, coaching-memory extraction) would
+    otherwise have their usage/cost silently misattributed to openai_model.
+    """
     if not usage:
         return
     tokens_in = getattr(usage, "prompt_tokens", 0) or 0
@@ -152,9 +162,9 @@ def _record(user_id: str, kind: str, usage, *, started_at: float | None = None) 
         tokens_in,
         tokens_out,
         tokens_cached=cached_tokens,
-        model=settings.openai_model,
+        model=model,
         estimated_cost_usd=costs.estimate_text_cost(
-            settings.openai_model,
+            model,
             tokens_in,
             tokens_out,
             cached_tokens=cached_tokens,
@@ -163,11 +173,25 @@ def _record(user_id: str, kind: str, usage, *, started_at: float | None = None) 
     )
 
 
-def map_context_for(user_id: str, subject: str, query: str, class_id: str | None = None) -> str:
+def map_context_for(
+    user_id: str,
+    subject: str,
+    query: str,
+    class_id: str | None = None,
+    query_vector_future: Future | None = None,
+) -> str:
     """Snippets from the teacher's own active pacing guides and global documents, relevant to `query`.
 
     Public (not `_`-prefixed) because the conversational chat model needs this
     exact same lookup.
+
+    `query_vector_future`, when given (service.prepare passes its own
+    base-query embedding future here when it's already embedding the exact
+    same text `query` is), lets this reuse that in-flight/completed vector
+    instead of submitting a second embedding call for the same text. Only
+    valid when the caller's `query` really is the same text being embedded —
+    prepare() only passes it when that holds; otherwise this submits its own
+    embed exactly as before.
     """
     docs = []
     if class_id:
@@ -192,10 +216,19 @@ def map_context_for(user_id: str, subject: str, query: str, class_id: str | None
     # the function's total contribution is bounded, not just the back half
     # of it.
     deadline = time.monotonic() + _MAP_CONTEXT_TIMEOUT_S
-    embed_future = _context_pool.submit(embed_query, query, user_id=user_id)
+    reused_future = query_vector_future is not None
+    embed_future = (
+        query_vector_future
+        if query_vector_future is not None
+        else _context_pool.submit(embed_query, query, user_id=user_id)
+    )
     _embed_done, embed_pending = wait([embed_future], timeout=max(0.0, deadline - time.monotonic()))
     if embed_pending:
-        embed_future.cancel()
+        # A shared future is still wanted by whoever else submitted it
+        # (service.prepare's own retrieve_grounded call) — never cancel it out
+        # from under them, only give up on waiting for it here.
+        if not reused_future:
+            embed_future.cancel()
         log.warning("map context query embedding exceeded %.1fs", _MAP_CONTEXT_TIMEOUT_S)
         return ""
     try:
@@ -236,12 +269,15 @@ def map_context_for(user_id: str, subject: str, query: str, class_id: str | None
     return "\n\n".join(results)
 
 
-def custom_instructions_for(user_id: str) -> str | None:
+def custom_instructions_for(user_id: str, ctx: RequestContext | None = None) -> str | None:
     """A teacher's global custom instructions (settings page) — one column
     on `users`, read alongside settings by every prompt-building call below.
     Public for the same reason map_context_for is: chat_stream (generate.py)
-    needs this exact same lookup too."""
-    user = db.get_user_by_id(user_id)
+    needs this exact same lookup too.
+
+    `ctx`, when given, reuses its memoized user row instead of a fresh
+    db.get_user_by_id call — see request_context.RequestContext."""
+    user = ctx.user_row() if ctx is not None else db.get_user_by_id(user_id)
     return user.get("custom_instructions") if user else None
 
 
@@ -402,7 +438,7 @@ def extract_and_persist_coaching_memory(
         content = _cached_completion(
             user_id,
             "extract_coaching_memory",
-            model=settings.openai_model,
+            model=settings.openai_fast_model,
             max_completion_tokens=500,
             reasoning_effort="none",
             response_format=_response_format("coaching_memories", COACHING_MEMORY_SCHEMA),
@@ -451,11 +487,18 @@ def plan_completion_tokens_for(user_id: str) -> int:
     return PLAN_COMPLETION_CEILING
 
 
-def class_custom_instructions_for(user_id: str, class_id: str | None) -> str | None:
+def class_custom_instructions_for(
+    user_id: str, class_id: str | None, cls: dict | None = None
+) -> str | None:
     """The per-class layer on top of custom_instructions_for — one column on
     `classes` (migration 44), additive to the account-wide instructions
     rather than a replacement. None when there's no class in play (a
-    class-less chat, a global curriculum map) rather than an error."""
+    class-less chat, a global curriculum map) rather than an error.
+
+    `cls`, when the caller already has the class row (routes/generate.py's
+    _request_class), is used directly instead of a fresh db.get_class call."""
+    if cls is not None:
+        return cls.get("custom_instructions")
     if not class_id:
         return None
     cls = db.get_class(user_id, class_id)
@@ -503,7 +546,7 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
     started_at = time.perf_counter()
     openai_client = _rewrite_client() if rewrite_timeout else client()
     resp = openai_client.chat.completions.create(**kwargs)
-    _record(user_id, kind, resp.usage, started_at=started_at)
+    _record(user_id, kind, resp.usage, model=model, started_at=started_at)
     choice = resp.choices[0]
     if getattr(choice, "finish_reason", None) == "length":
         raise SchemaError(
@@ -522,26 +565,36 @@ def _cached_completion(user_id: str, kind: str, **kwargs):
     return msg.content
 
 
-def _prompt_subject_grade(user_id: str, class_id: str | None) -> tuple[str, str]:
+def _prompt_subject_grade(
+    user_id: str, class_id: str | None, cls: dict | None = None
+) -> tuple[str, str]:
     """Resolve the subject/grade for the prompt from the active class.
 
     Retrieval already scopes itself from the selected class in service.prepare,
     so the generation prompt must use that same source. Reading the most
     recently updated settings row here could describe one class while the
     retrieved standards belong to another.
+
+    `cls`, when the caller already has the class row, is used directly
+    instead of a fresh db.get_class call — see routes/generate.py's
+    _run_plan_job, which already fetched this class once for the whole
+    request.
     """
-    if class_id:
+    if cls is None and class_id:
         cls = db.get_class(user_id, class_id)
-        if cls:
-            return str(cls.get("subject") or "").strip() or "this class", str(cls.get("grade") or "11")
+    if cls:
+        return str(cls.get("subject") or "").strip() or "this class", str(cls.get("grade") or "11")
     s = db.get_settings_row(user_id)
     return str(s.get("subject") or "").strip() or "this class", str(s.get("grade") or "11")
 
 
-def _class_period_minutes(user_id: str, class_id: str | None) -> int | None:
-    if not class_id:
-        return None
-    cls = db.get_class(user_id, class_id)
+def _class_period_minutes(
+    user_id: str, class_id: str | None, cls: dict | None = None
+) -> int | None:
+    if cls is None:
+        if not class_id:
+            return None
+        cls = db.get_class(user_id, class_id)
     value = (cls or {}).get("period_minutes")
     return int(value) if value is not None else None
 
@@ -592,15 +645,47 @@ def generate_plan(user_id: str, query: str, result: RetrievalResult, *, school_i
     return loads_lenient(content or "")
 
 
-def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id: str, class_id: str | None = None) -> Iterator[str]:
+def stream_plan(
+    user_id: str,
+    query: str,
+    result: RetrievalResult,
+    *,
+    school_id: str,
+    class_id: str | None = None,
+    cls: dict | None = None,
+    ctx: RequestContext | None = None,
+    map_context_future: Future | None = None,
+) -> Iterator[str]:
     """Yield raw content deltas. The caller accumulates and validates.
 
     See generate_plan's own docstring for why `school_id` is a parameter
-    rather than resolved internally."""
-    subject, grade = _prompt_subject_grade(user_id, class_id)
-    period_minutes = _class_period_minutes(user_id, class_id)
+    rather than resolved internally.
+
+    `cls`/`ctx`, when the caller already has them (routes/generate.py's
+    _run_plan_job, seeded from service.prepare), let the helpers below reuse
+    the class row/settings/user row already fetched for this request instead
+    of re-fetching them — see request_context.RequestContext.
+
+    `map_context_future`, when given (service.prepare launched it
+    concurrently with retrieval — see its own docstring), replaces the
+    synchronous map_context_for call below with a near-zero-timeout check:
+    map_context_for already self-bounds its own total work at
+    _MAP_CONTEXT_TIMEOUT_S, computed from when IT was submitted, so waiting
+    another full timeout here would defeat the overlap this exists to create.
+    Any failure or a future still pending degrades to "" — this must never be
+    the reason a plan fails to generate.
+    """
+    subject, grade = _prompt_subject_grade(user_id, class_id, cls=cls)
+    period_minutes = _class_period_minutes(user_id, class_id, cls=cls)
     template_days = day_names_for_school(school_id, user_id=user_id)
-    map_context = map_context_for(user_id, subject, query, class_id=class_id)
+    if map_context_future is not None:
+        try:
+            map_context = map_context_future.result(timeout=0.1)
+        except Exception as e:  # noqa: BLE001 — map context is a nice-to-have, never a hard failure
+            log.warning("map context future failed or timed out: %s", e)
+            map_context = ""
+    else:
+        map_context = map_context_for(user_id, subject, query, class_id=class_id)
     output_length = output_length_for(user_id)
     started_at = time.perf_counter()
     stream = client().chat.completions.create(
@@ -616,8 +701,8 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
                     subject=subject,
                     grade=grade,
                     map_context=map_context,
-                    custom_instructions=custom_instructions_for(user_id),
-                    class_custom_instructions=class_custom_instructions_for(user_id, class_id),
+                    custom_instructions=custom_instructions_for(user_id, ctx=ctx),
+                    class_custom_instructions=class_custom_instructions_for(user_id, class_id, cls=cls),
                     school_id=school_id,
                     output_length=output_length,
                     period_minutes=period_minutes,
@@ -639,7 +724,7 @@ def stream_plan(user_id: str, query: str, result: RetrievalResult, *, school_id:
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None):
-                _record(user_id, "stream_plan", chunk.usage, started_at=started_at)
+                _record(user_id, "stream_plan", chunk.usage, model=settings.openai_model, started_at=started_at)
             if not chunk.choices:
                 continue
             finish_reason = getattr(chunk.choices[0], "finish_reason", None) or finish_reason
@@ -1201,7 +1286,7 @@ def stream_plan_revision(
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None):
-                _record(user_id, "stream_plan_revision", chunk.usage, started_at=started_at)
+                _record(user_id, "stream_plan_revision", chunk.usage, model=settings.openai_model, started_at=started_at)
             if not chunk.choices:
                 continue
             finish_reason = getattr(chunk.choices[0], "finish_reason", None) or finish_reason
@@ -1263,7 +1348,7 @@ def expand_query(user_id: str, query: str) -> list[str]:
         content = _cached_completion(
             user_id,
             "expand_query",
-            model=settings.openai_model,
+            model=settings.openai_fast_model,
             max_completion_tokens=300,
             response_format=_response_format("expanded_queries", QUERY_EXPANSION_SCHEMA),
             messages=[
@@ -1316,7 +1401,7 @@ def generate_chat_title(user_id: str, message: str) -> str:
         content = _cached_completion(
             user_id,
             "generate_chat_title",
-            model=settings.openai_model,
+            model=settings.openai_fast_model,
             max_completion_tokens=60,
             response_format=_response_format("chat_title", TITLE_SCHEMA),
             messages=[
@@ -1554,7 +1639,7 @@ def judge_builder_render(
         ],
     )
     msg = resp.choices[0].message
-    _record(user_id, "judge_builder_render", resp.usage)
+    _record(user_id, "judge_builder_render", resp.usage, model=settings.openai_model)
     _check_refusal(msg)
     return loads_lenient(msg.content or "")
 
@@ -1777,7 +1862,7 @@ def generate_bell_ringer(user_id: str, subject: str, grade: str, topic: str | No
         ],
     )
     msg = resp.choices[0].message
-    _record(user_id, "bell_ringer", resp.usage)
+    _record(user_id, "bell_ringer", resp.usage, model=settings.openai_model)
     _check_refusal(msg)
     data = json.loads(msg.content or "{}")
     prompt = str(data.get("prompt", "")).strip()
@@ -2260,7 +2345,7 @@ def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> I
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None):
-                _record(user_id, "stream_chat", chunk.usage, started_at=started_at)
+                _record(user_id, "stream_chat", chunk.usage, model=settings.openai_model, started_at=started_at)
             if not chunk.choices:
                 continue
             choice = chunk.choices[0]
@@ -2430,7 +2515,7 @@ def extract_standards_from_text(text: str) -> list[dict]:
             response_format=_response_format("standards_extraction", STANDARDS_EXTRACTION_SCHEMA),
         )
         _check_refusal(response.choices[0].message)
-        _record("system", "extract_standards", response.usage)
+        _record("system", "extract_standards", response.usage, model=settings.openai_model)
         
         parsed = json.loads(response.choices[0].message.content)
         return parsed.get("standards", [])
