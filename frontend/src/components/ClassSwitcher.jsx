@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { Check, ChevronsUpDown, Plus, X } from 'lucide-react'
+import { ChevronsUpDown, Plus, X } from 'lucide-react'
 import { classColor } from '../lib/classColor'
 import { haptic } from '../lib/haptics'
 import { useExitTransition } from '../hooks/useExitTransition'
@@ -271,7 +271,6 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
                           style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
                         />
                         <span className="min-w-0 flex-1 truncate">{displayName.get(c.id)}</span>
-                        {selected ? <Check size={18} aria-hidden="true" className="shrink-0 text-ok" /> : null}
                       </button>
                     </li>
                   )
@@ -322,9 +321,6 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
                     style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
                   />
                   <span className="min-w-0 flex-1 truncate">{displayName.get(c.id)}</span>
-                  {c.id === activeClass?.id ? (
-                    <Check size={13} aria-hidden="true" className="shrink-0 text-ok" />
-                  ) : null}
                 </button>
               </li>
             ))}
@@ -381,7 +377,6 @@ function ClassList({ classes, activeClass, displayName, onChoose, onAdd }) {
                 style={{ '--class-dot-color': `rgb(${classColor(c.id).rgb})` }}
               />
               <span className="min-w-0 flex-1 truncate">{displayName.get(c.id)}</span>
-              {selected ? <Check size={13} aria-hidden="true" className="shrink-0 text-ok" /> : null}
             </button>
           </li>
         )
