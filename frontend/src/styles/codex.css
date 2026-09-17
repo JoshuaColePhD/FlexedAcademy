@@ -2429,7 +2429,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .chat-header-sheet {
     width: 100%;
     max-height: min(78dvh, 640px);
-    padding: 28px 16px calc(16px + var(--safe-b, 0px));
+    padding: 16px 16px calc(16px + var(--safe-b, 0px));
     border-radius: 20px 20px 0 0;
   }
   .chat-header-sheet-heading { gap: 12px; margin-bottom: 14px; }
@@ -3750,18 +3750,6 @@ body:has(.dialog-scrim) .composer-dock-surface {
     box-shadow: 0 -18px 44px rgb(0 0 0 / 0.28) !important;
     -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
     backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
-  }
-
-  .chat-header-sheet::before {
-    position: absolute;
-    top: 10px;
-    left: 50%;
-    width: 36px;
-    height: 4px;
-    content: '';
-    background: rgb(var(--ink-muted-rgb) / 0.58);
-    border-radius: 999px;
-    transform: translateX(-50%);
   }
 
   :root[data-theme='dark'] .chat-header-sheet {

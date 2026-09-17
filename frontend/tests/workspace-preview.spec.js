@@ -215,8 +215,10 @@ test('phone keeps its dedicated reader and fits the viewport', async ({ page }) 
   await expect(page.locator('#composer-input')).toBeVisible()
   await expect(page.locator('.is-composer-overlay')).toHaveCount(0)
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
-  await page.getByRole('button', { name: 'Open lesson plan', exact: true }).click()
-  await expect(page.locator('.is-mobile-reader')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Open lesson plan', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: /View lesson plan/i }).click()
+  await expect(page.locator('.mobile-composer-plan-sheet.is-plan-open')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Close document', exact: true })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 
@@ -268,7 +270,7 @@ test('phone lesson-plan peek follows a long thumb pull to the transcript edge', 
   await page.mouse.move(handleBox.x + handleBox.width / 2, Math.max(1, handleBox.y - 600), { steps: 8 })
   await page.mouse.up()
 
-  await expect(handle).toHaveAttribute('aria-expanded', 'true')
+  await expect(handle).toHaveCount(0)
   await page.waitForTimeout(260)
   const openBody = await sheet.locator('.plan-peek-body').boundingBox()
   const transcript = await page.locator('.workspace-chat .scroll-y').boundingBox()
@@ -276,18 +278,31 @@ test('phone lesson-plan peek follows a long thumb pull to the transcript edge', 
   expect(openBody.height).toBeGreaterThan(initialBody.height + 200)
   expect(Math.abs(openSheet.y - transcript.y)).toBeLessThanOrEqual(2)
 
-  const openHandleBox = await handle.boundingBox()
-  await page.mouse.move(openHandleBox.x + openHandleBox.width / 2, openHandleBox.y + openHandleBox.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(openHandleBox.x + openHandleBox.width / 2, openHandleBox.y + openBody.height + 12, { steps: 8 })
-  await page.mouse.up()
-
+  await page.getByRole('button', { name: 'Close document', exact: true }).click()
+  await expect(handle).toBeVisible()
   await expect(handle).toHaveAttribute('aria-expanded', 'false')
   await page.waitForTimeout(220)
   const closedBody = await sheet.locator('.plan-peek-body').boundingBox()
   const closedSheet = await sheet.boundingBox()
   expect(closedBody.height).toBeLessThanOrEqual(2)
   expect(closedSheet.y).toBeGreaterThan(openSheet.y + 200)
+})
+
+test('phone class/week sheet has no swipe grabber', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(seed)
+  await page.getByRole('button', { name: /Change course or week/i }).click()
+  const dialog = page.getByRole('dialog', { name: 'Class and week' })
+  await expect(dialog).toBeVisible()
+  const grabber = await dialog.evaluate((el) => {
+    const before = getComputedStyle(el, '::before')
+    return {
+      content: before.content,
+      height: before.height,
+      display: before.display,
+    }
+  })
+  expect(grabber.content === 'none' || grabber.height === '0px' || grabber.display === 'none').toBe(true)
 })
 
 test('chat header shows the week and opens a list instead of a nested dropdown', async ({ page }) => {

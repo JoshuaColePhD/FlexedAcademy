@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, ChevronUp, FileText } from 'lucide-react'
+import { ChevronUp, FileText } from 'lucide-react'
 import { haptic } from '../lib/haptics'
 
 /*
@@ -25,7 +25,6 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
   // handle to the bottom of the phone's header so a pull can reach the full
   // available reader height on every device.
   const MIN_OPEN_DRAG_DISTANCE = 104
-  const MIN_CLOSE_DRAG_DISTANCE = 88
 
   useEffect(() => () => {
     if (previewFrameRef.current != null) window.cancelAnimationFrame(previewFrameRef.current)
@@ -93,15 +92,10 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
       }, 120)
     }
 
-    // A quick, confident flick snaps the sheet even before it crosses the
-    // distance threshold. A slow gesture has to travel far enough to make the
-    // intended resting point unambiguous.
+    // Pull is only mounted while closed. Open snaps on a confident upward
+    // flick or a long enough drag; the document Close button dismisses it.
     const openDistance = openHeightRef.current || MIN_OPEN_DRAG_DISTANCE
-    const closeDistance = Math.max(MIN_CLOSE_DRAG_DISTANCE, openHeightRef.current || MIN_CLOSE_DRAG_DISTANCE)
-    if (open && (delta > closeDistance * 0.24 || velocity > 0.7)) {
-      haptic('light')
-      onToggle(false)
-    } else if (!open && (-delta > openDistance * 0.24 || velocity < -0.5)) {
+    if (-delta > openDistance * 0.24 || velocity < -0.5) {
       haptic('light')
       onToggle(true)
     }
@@ -109,7 +103,7 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
 
   const onPointerDown = (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return
-    if (!open) measureOpenHeight()
+    measureOpenHeight()
     pointerRef.current = { y: event.clientY, at: performance.now() }
     setDragging(true)
     setPreview(0)
@@ -121,14 +115,9 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
     const start = pointerRef.current
     if (!start) return
     const delta = event.clientY - start.y
-    // The sheet itself grows with the gesture. Closed: an upward pull reveals
-    // the first slice of the document. Open: a downward pull collapses that
-    // slice before release. This keeps the thumb connected to the content
-    // instead of translating a handle over a still-hidden panel.
-    const closeDistance = Math.max(MIN_CLOSE_DRAG_DISTANCE, openHeightRef.current || MIN_CLOSE_DRAG_DISTANCE)
-    const next = open
-      ? Math.min(closeDistance, Math.max(0, delta))
-      : Math.min(openHeightRef.current || MIN_OPEN_DRAG_DISTANCE, Math.max(0, -delta))
+    // Closed: an upward pull reveals the first slice of the document before
+    // release so the thumb stays connected to the growing sheet.
+    const next = Math.min(openHeightRef.current || MIN_OPEN_DRAG_DISTANCE, Math.max(0, -delta))
     setPreview(next)
     if (event.cancelable) event.preventDefault()
   }
@@ -143,15 +132,13 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
 
   const handleClick = () => {
     if (suppressClickRef.current) return
-    if (!open) measureOpenHeight()
+    measureOpenHeight()
     haptic('light')
-    onToggle(!open)
+    onToggle(true)
   }
 
-  const handleLabel = open ? 'Lesson plan' : 'View lesson plan'
-  const handleAriaLabel = open
-    ? `Collapse lesson plan${weekLabel ? ` for ${weekLabel}` : ''}`
-    : `View lesson plan${weekLabel ? ` for ${weekLabel}` : ''}`
+  const handleLabel = 'View lesson plan'
+  const handleAriaLabel = `View lesson plan${weekLabel ? ` for ${weekLabel}` : ''}`
 
   return (
     <section
@@ -159,24 +146,28 @@ export function PlanPeek({ open, onToggle, weekLabel, children }) {
       className={`plan-peek${open ? ' is-open' : ''}${dragging ? ' is-dragging' : ''}${previewing ? ' is-drag-preview' : ''}`}
       aria-label="Lesson plan preview"
     >
-      <button
-        type="button"
-        className="plan-peek-handle"
-        aria-expanded={open}
-        aria-controls="plan-peek-body"
-        aria-label={handleAriaLabel}
-        onClick={handleClick}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={finishPointer}
-        onPointerCancel={cancelPointer}
-      >
-        <FileText className="plan-peek-handle-icon" size={15} strokeWidth={1.9} aria-hidden="true" />
-        <span className="plan-peek-handle-label">{handleLabel}</span>
-        <span className="plan-peek-handle-action" aria-hidden="true">
-          {open ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-        </span>
-      </button>
+      {/* Once open, the document's own Close control dismisses the reader —
+         keeping this pull around during the lift just duplicates that exit. */}
+      {!open ? (
+        <button
+          type="button"
+          className="plan-peek-handle"
+          aria-expanded={false}
+          aria-controls="plan-peek-body"
+          aria-label={handleAriaLabel}
+          onClick={handleClick}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={finishPointer}
+          onPointerCancel={cancelPointer}
+        >
+          <FileText className="plan-peek-handle-icon" size={15} strokeWidth={1.9} aria-hidden="true" />
+          <span className="plan-peek-handle-label">{handleLabel}</span>
+          <span className="plan-peek-handle-action" aria-hidden="true">
+            <ChevronUp size={16} />
+          </span>
+        </button>
+      ) : null}
       <div id="plan-peek-body" className="plan-peek-body" aria-hidden={!open} inert={!open}>
         <div className="plan-peek-body-inner">{children}</div>
       </div>
