@@ -4411,7 +4411,7 @@ export function ChatPage() {
       {renderComposerDock(
         <div
           ref={composerDockRef}
-          className={`relative shrink-0 z-10${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-host' : ''}`}
+          className={`composer-dock-host relative shrink-0 z-10${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-host' : ''}`}
           style={{ pointerEvents: 'auto' }}
         >
       {/* While a plan is still being written, retain the compact progress row.

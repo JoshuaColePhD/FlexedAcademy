@@ -175,8 +175,8 @@
   --mobile-tabbar-h: 72px;
   --mobile-glass-blur: 28px;
   --mobile-glass-saturation: 160%;
-  --liquid-glass-fill: rgb(255 255 255 / 0.72);
-  --liquid-glass-fill-strong: rgb(255 255 255 / 0.82);
+  --liquid-glass-fill: rgb(255 255 255 / 0.58);
+  --liquid-glass-fill-strong: rgb(255 255 255 / 0.70);
   --liquid-glass-rim: rgb(0 0 0 / 0.08);
   --liquid-glass-highlight: rgb(255 255 255 / 0.9);
   --liquid-glass-shadow:
@@ -509,8 +509,8 @@
      on #262522 so the tag renders as a bare outline. */
   --district-tag-bg: rgb(var(--doc-blue-rgb) / 0.18);
 
-  --liquid-glass-fill: rgb(58 56 54 / 0.72);
-  --liquid-glass-fill-strong: rgb(64 62 60 / 0.82);
+  --liquid-glass-fill: rgb(48 46 44 / 0.52);
+  --liquid-glass-fill-strong: rgb(54 52 50 / 0.62);
   --liquid-glass-rim: rgb(255 255 255 / 0.14);
   --liquid-glass-highlight: rgb(255 255 255 / 0.16);
   --liquid-glass-shadow:

@@ -3205,11 +3205,20 @@ body:has(.dialog-scrim) .composer-dock-surface {
 
   /* An open conversation should read as one continuous canvas. Header and
      composer float as Liquid Glass controls; the transcript scrolls underneath
-     them the way Calendar’s day grid scrolls under “Today” / icon pills. */
+     them the way Calendar’s day grid scrolls under “Today” / icon pills.
+     Note: composer-dock-surface is nested inside .composer-dock-host — the
+     host is the flex child that must be taken out of flow. */
   .workspace-chat.mobile-active-chat-shell,
   .workspace-chat.mobile-new-chat-shell {
     --fa-mobile-header-h: 76px;
-    --fa-mobile-composer-h: calc(96px + var(--safe-b));
+    /* Composer pill + dock padding. Grows when the plan handle is present. */
+    --fa-mobile-composer-h: calc(108px + var(--safe-b));
+  }
+
+  .workspace-chat.mobile-active-chat-shell:has(.mobile-composer-plan-sheet.has-plan),
+  .workspace-chat.mobile-new-chat-shell:has(.mobile-composer-plan-sheet.has-plan) {
+    /* View-lesson-plan handle (~48) + gap + composer (~58) + dock pad. */
+    --fa-mobile-composer-h: calc(168px + var(--safe-b));
   }
 
   .workspace-topbar.mobile-active-chat-header,
@@ -3232,8 +3241,8 @@ body:has(.dialog-scrim) .composer-dock-surface {
     pointer-events: auto;
   }
 
-  .workspace-chat.mobile-active-chat-shell > .composer-dock-surface:not(.is-plan-peek-open),
-  .workspace-chat.mobile-new-chat-shell > .composer-dock-surface:not(.is-plan-peek-open) {
+  .workspace-chat.mobile-active-chat-shell > .composer-dock-host:not(.is-plan-peek-host),
+  .workspace-chat.mobile-new-chat-shell > .composer-dock-host:not(.is-plan-peek-host) {
     position: absolute;
     right: 0;
     bottom: 0;
@@ -3241,6 +3250,24 @@ body:has(.dialog-scrim) .composer-dock-surface {
     z-index: 24;
     background: transparent !important;
     box-shadow: none !important;
+  }
+
+  .workspace-chat.mobile-active-chat-shell > .composer-dock-host:not(.is-plan-peek-host) .composer-dock-surface,
+  .workspace-chat.mobile-new-chat-shell > .composer-dock-host:not(.is-plan-peek-host) .composer-dock-surface {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* No opaque veil above the dock — content must stay readable as it scrolls
+     under the glass pills. */
+  .workspace-chat.mobile-active-chat-shell > .composer-dock-host:not(.is-plan-peek-host) .composer-dock-surface::before,
+  .workspace-chat.mobile-new-chat-shell > .composer-dock-host:not(.is-plan-peek-host) .composer-dock-surface::before {
+    height: 40px;
+    background: linear-gradient(
+      to top,
+      rgb(var(--paper-rgb) / 0.28),
+      rgb(var(--paper-rgb) / 0)
+    );
   }
 
   .workspace-chat.mobile-active-chat-shell > .chat-transcript-scroll,
