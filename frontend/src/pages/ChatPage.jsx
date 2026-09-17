@@ -5,7 +5,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, PanelRightOpen, Plus, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, Plus, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { haptic } from '../lib/haptics'
 import { useToast } from '../lib/toastContext'
@@ -4181,23 +4181,22 @@ export function ChatPage() {
               <Plus size={22} strokeWidth={1.8} aria-hidden="true" />
             </button>
           ) : null}
-          {(hasArtifact || (!isPhone && !isLandscapePhone)) ? (
+          {/* Phone opens the plan from the composer pull; keep the rail toggle
+             for desktop where there is no plan-peek handle. */}
+          {!isPhone && !isLandscapePhone ? (
             <button
               type="button"
               className="workspace-artifact-toggle fa-press relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--accent-text)]"
-              aria-label={isPhone ? 'Open lesson plan' : railOpen ? 'Close artifacts panel' : 'Open artifacts panel'}
-              title={isPhone ? 'Open lesson plan' : railOpen ? 'Close artifacts panel' : 'Open artifacts panel'}
-              aria-expanded={isPhone ? undefined : railOpen}
-              aria-controls={isPhone ? undefined : 'artifacts-panel'}
-              /* A phone has no docked rail, so this opens the reader. On
-                 desktop it opens and closes the persistent outputs panel. */
+              aria-label={railOpen ? 'Close artifacts panel' : 'Open artifacts panel'}
+              title={railOpen ? 'Close artifacts panel' : 'Open artifacts panel'}
+              aria-expanded={railOpen}
+              aria-controls="artifacts-panel"
               onClick={() => {
                 haptic('light')
-                if (isPhone) openDocument()
-                else setRailOpen((open) => !open)
+                setRailOpen((open) => !open)
               }}
             >
-              {isPhone ? <PanelRightOpen size={18} aria-hidden="true" /> : <PanelRight size={18} aria-hidden="true" />}
+              <PanelRight size={18} aria-hidden="true" />
               {hasArtifact && !railOpen ? (
                 <span
                   className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[rgb(var(--rail-pop-rgb))]"
