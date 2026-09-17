@@ -192,7 +192,7 @@ function ClassRoutes() {
  * show a quiet skeleton in the content stage instead. */
 function WorkspaceFallback({ label = 'Loading workspace…' }) {
   return (
-    <div className="route-stage flex h-full min-h-0 flex-col gap-4 p-6" aria-busy="true">
+    <div className="flex h-full min-h-0 flex-col gap-4 p-6" aria-busy="true">
       <Skeleton width="9rem" height="0.75rem" />
       <SkeletonText lines={5} />
       <SkeletonText lines={3} width="86%" />

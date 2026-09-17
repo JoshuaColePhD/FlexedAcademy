@@ -4762,9 +4762,9 @@ body:has(.dialog-scrim) .composer-dock-surface {
     z-index: 1;
   }
 
-  /* Once the peek is open it is a contextual reader, not another flex item
-     competing with the transcript for height. With the phone header floating
-     over the canvas, the sheet can use the full content region. */
+  /* Once the peek is open it is a contextual reader over the full chat
+     canvas. The floating header pills stay above it; do not reserve a 76px
+     floor here or a full thumb pull stops short of the transcript edge. */
   .workspace-chat > .is-plan-peek-host {
     position: absolute;
     top: 0;
@@ -4773,7 +4773,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
     left: 0;
     display: flex;
     flex-direction: column;
-    padding-top: var(--fa-mobile-header-h, 76px);
+    padding-top: 0;
   }
 
   .composer-dock-surface.is-plan-peek-open {
