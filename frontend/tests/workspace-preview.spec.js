@@ -322,6 +322,48 @@ test('chat header shows the week and opens a list instead of a nested dropdown',
   expect(Math.abs(courseBox.y - weekBox.y)).toBeLessThan(24)
 })
 
+test('phone class and week lists only scroll vertically', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto(seed)
+
+  await page.getByRole('button', { name: /Change course or week/i }).click()
+  const dialog = page.getByRole('dialog', { name: 'Class and week' })
+  await expect(dialog).toBeVisible()
+
+  const courseList = dialog.getByRole('listbox', { name: 'Your classes' })
+  const weekList = dialog.getByRole('listbox', { name: /weeks/i })
+  await expect(courseList).toBeVisible()
+  await expect(weekList).toBeVisible()
+
+  const metrics = await page.evaluate(() => {
+    const lists = [
+      document.querySelector('.class-switcher-embedded'),
+      document.querySelector('.week-picker-embedded'),
+    ]
+    return lists.map((el) => {
+      const style = getComputedStyle(el)
+      return {
+        className: el.className,
+        overflowX: style.overflowX,
+        touchAction: style.touchAction,
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+        scrollLeft: el.scrollLeft,
+        widestChild: Math.max(0, ...[...el.querySelectorAll('button, a')].map((child) => child.getBoundingClientRect().right - el.getBoundingClientRect().left)),
+      }
+    })
+  })
+
+  expect(metrics).toHaveLength(2)
+  for (const list of metrics) {
+    expect(list.overflowX).toBe('hidden')
+    expect(list.touchAction).toBe('pan-y')
+    expect(list.scrollWidth).toBeLessThanOrEqual(list.clientWidth + 1)
+    expect(list.widestChild).toBeLessThanOrEqual(list.clientWidth + 1)
+    expect(list.scrollLeft).toBe(0)
+  }
+})
+
 test('new chat targets the upcoming week and earlier weeks reopen existing chats', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/preview.html?fresh=0&at=/c/c1')
