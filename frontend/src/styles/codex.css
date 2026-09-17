@@ -4762,15 +4762,17 @@ body:has(.dialog-scrim) .composer-dock-surface {
     z-index: 1;
   }
 
-  /* Once the peek is open it is a contextual reader over the full chat
-     canvas. The floating header pills stay above it; do not reserve a 76px
-     floor here or a full thumb pull stops short of the transcript edge. */
+  /* Once the peek is open it is a full-canvas reader. Sit above the floating
+     header (z-index 24) so the grabber at the transcript edge stays draggable
+     — otherwise header pills steal the close gesture. Do not reserve a 76px
+     floor or a full thumb pull stops short of the transcript edge. */
   .workspace-chat > .is-plan-peek-host {
     position: absolute;
     top: 0;
     right: 0;
     bottom: 0;
     left: 0;
+    z-index: 30;
     display: flex;
     flex-direction: column;
     padding-top: 0;
