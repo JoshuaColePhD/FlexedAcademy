@@ -2943,16 +2943,16 @@ body:has(.dialog-scrim) .composer-dock-surface {
     padding-right: max(10px, var(--safe-r)) !important;
     padding-bottom: 8px !important;
     padding-left: max(10px, var(--safe-l)) !important;
-    border-bottom: 1px solid rgb(var(--edge-strong-rgb) / 0.48) !important;
-    background: rgb(var(--paper-raised-rgb) / 0.74) !important;
-    box-shadow: 0 10px 28px rgb(0 0 0 / 0.16) !important;
-    backdrop-filter: blur(24px) saturate(135%);
-    -webkit-backdrop-filter: blur(24px) saturate(135%);
+    border-bottom: 1px solid var(--liquid-glass-rim) !important;
+    background: var(--liquid-glass-fill) !important;
+    box-shadow: var(--liquid-glass-shadow) !important;
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
   }
 
   :root[data-theme='dark'] .workspace-topbar {
-    background: rgb(39 38 40 / 0.72) !important;
-    border-bottom-color: rgb(255 255 255 / 0.12) !important;
+    background: var(--liquid-glass-fill) !important;
+    border-bottom-color: var(--liquid-glass-rim) !important;
   }
 
   .mobile-chat-home .rail-brand-row {
@@ -2965,16 +2965,16 @@ body:has(.dialog-scrim) .composer-dock-surface {
     padding-right: max(10px, var(--safe-r));
     padding-bottom: 8px;
     padding-left: max(12px, var(--safe-l));
-    background: rgb(var(--paper-raised-rgb) / 0.72);
-    border-bottom: 1px solid rgb(255 255 255 / 0.10);
-    box-shadow: 0 8px 22px rgb(0 0 0 / 0.14);
+    background: var(--liquid-glass-fill);
+    border-bottom: 1px solid var(--liquid-glass-rim);
+    box-shadow: var(--liquid-glass-shadow);
     -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
     backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
   }
 
   :root[data-theme='dark'] .mobile-chat-home .rail-brand-row {
-    background: rgb(39 38 40 / 0.78);
-    border-bottom-color: rgb(255 255 255 / 0.10);
+    background: var(--liquid-glass-fill);
+    border-bottom-color: var(--liquid-glass-rim);
   }
 
   .mobile-chat-back,
@@ -3030,9 +3030,21 @@ body:has(.dialog-scrim) .composer-dock-surface {
 
   /* Primary mobile navigation is its own Liquid Glass functional layer. The
      content above it remains matte; the bar floats over the bottom edge and
-     respects the phone's home-indicator inset. */
-  .mobile-tab-bar {
+     respects the phone's home-indicator inset — soft ambient elevation rather
+     than a heavy charcoal slab. Chat lists scroll underneath it. */
+  .app-shell-main:has(> .mobile-tab-bar) {
     position: relative;
+  }
+
+  .app-shell-main:has(> .mobile-tab-bar) > .min-h-0.flex-1 {
+    padding-bottom: calc(var(--mobile-tabbar-h) + var(--safe-b));
+  }
+
+  .mobile-tab-bar {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
     z-index: 30;
     display: flex;
     flex: 0 0 auto;
@@ -3040,16 +3052,21 @@ body:has(.dialog-scrim) .composer-dock-surface {
     align-items: stretch;
     justify-content: space-around;
     padding: 6px max(6px, var(--safe-r)) var(--safe-b) max(6px, var(--safe-l));
-    background: rgb(var(--paper-raised-rgb) / 0.78);
-    border-top: 1px solid rgb(255 255 255 / 0.12);
-    box-shadow: 0 -10px 28px rgb(0 0 0 / 0.18);
+    background: var(--liquid-glass-fill);
+    border-top: 1px solid var(--liquid-glass-rim);
+    box-shadow:
+      0 -1px 0 var(--liquid-glass-highlight),
+      0 -8px 24px rgb(0 0 0 / 0.06);
     -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
     backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
   }
 
   :root[data-theme='dark'] .mobile-tab-bar {
-    background: rgb(39 38 40 / 0.82);
-    border-top-color: rgb(255 255 255 / 0.11);
+    background: var(--liquid-glass-fill);
+    border-top-color: var(--liquid-glass-rim);
+    box-shadow:
+      0 -1px 0 var(--liquid-glass-highlight),
+      0 -10px 28px rgb(0 0 0 / 0.28);
   }
 
   .mobile-tab-item {
@@ -3107,30 +3124,33 @@ body:has(.dialog-scrim) .composer-dock-surface {
     z-index: 12;
     min-height: 52px !important;
     height: 52px !important;
-    background: rgb(var(--paper-raised-rgb) / 0.76);
-    border-bottom: 1px solid rgb(255 255 255 / 0.10) !important;
-    box-shadow: 0 8px 22px rgb(0 0 0 / 0.12);
+    background: var(--liquid-glass-fill);
+    border-bottom: 1px solid var(--liquid-glass-rim) !important;
+    box-shadow: var(--liquid-glass-shadow);
     -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
     backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
   }
 
   :root[data-theme='dark'] .mobile-app-brand-bar {
-    background: rgb(39 38 40 / 0.80);
-    border-bottom-color: rgb(255 255 255 / 0.10) !important;
+    background: var(--liquid-glass-fill);
+    border-bottom-color: var(--liquid-glass-rim) !important;
   }
 
   .mobile-primary-action {
     min-height: 48px;
     color: white !important;
-    background: var(--onboarding-forward) !important;
-    border: 1px solid rgb(255 255 255 / 0.16);
+    background: rgb(var(--onboarding-forward-rgb) / 0.92) !important;
+    border: 1px solid rgb(255 255 255 / 0.28);
     border-radius: 999px !important;
-    box-shadow: 0 8px 18px rgb(var(--onboarding-forward-rgb) / 0.22);
+    box-shadow:
+      inset 0 0.5px 0 rgb(255 255 255 / 0.32),
+      0 1px 1px rgb(0 0 0 / 0.05),
+      0 8px 20px rgb(var(--onboarding-forward-rgb) / 0.22);
   }
 
   .mobile-primary-action:active {
-    filter: brightness(0.94);
-    transform: scale(0.98);
+    filter: brightness(0.96);
+    transform: scale(0.97);
   }
 
   .plans-page-title {
@@ -3183,34 +3203,62 @@ body:has(.dialog-scrim) .composer-dock-surface {
     margin-left: auto !important;
   }
 
-  /* An open conversation should read as one continuous matte canvas. Keep
-     the header's controls floating above it, but remove the opaque strip and
-     divider that made the top feel like a separate panel. */
-  .workspace-topbar.mobile-active-chat-header,
-  :root[data-theme='dark'] .workspace-topbar.mobile-active-chat-header {
-    background: transparent !important;
-    border-bottom-color: transparent !important;
-    box-shadow: none !important;
+  /* An open conversation should read as one continuous canvas. Header and
+     composer float as Liquid Glass controls; the transcript scrolls underneath
+     them the way Calendar’s day grid scrolls under “Today” / icon pills. */
+  .workspace-chat.mobile-active-chat-shell,
+  .workspace-chat.mobile-new-chat-shell {
+    --fa-mobile-header-h: 76px;
+    --fa-mobile-composer-h: calc(96px + var(--safe-b));
   }
 
-  /* A blank chat is the same continuous canvas as an active chat. The header
-     controls float over that canvas; only their individual glass surfaces
-     should be visible, not a second opaque strip behind them. */
+  .workspace-topbar.mobile-active-chat-header,
+  :root[data-theme='dark'] .workspace-topbar.mobile-active-chat-header,
   .workspace-chat.mobile-new-chat-shell > .workspace-topbar.mobile-new-chat-header,
   :root[data-theme='dark'] .workspace-chat.mobile-new-chat-shell > .workspace-topbar.mobile-new-chat-header {
     position: absolute;
     top: 0;
     right: 0;
     left: 0;
+    z-index: 24;
     background: transparent !important;
     border-bottom-color: transparent !important;
     box-shadow: none !important;
+    pointer-events: none;
   }
 
-  /* Keep the active-chat header in flow. Overlaying it on the transcript
-     (position:absolute + 76px scroll padding) reserved a 76px floor the
-     composer plan sheet cannot compress, so a full thumb pull stopped 76px
-     short of the transcript edge and hid Open lesson plan behind the glass. */
+  .workspace-topbar.mobile-active-chat-header > *,
+  .workspace-chat.mobile-new-chat-shell > .workspace-topbar.mobile-new-chat-header > * {
+    pointer-events: auto;
+  }
+
+  .workspace-chat.mobile-active-chat-shell > .composer-dock-surface:not(.is-plan-peek-open),
+  .workspace-chat.mobile-new-chat-shell > .composer-dock-surface:not(.is-plan-peek-open) {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 24;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .workspace-chat.mobile-active-chat-shell > .chat-transcript-scroll,
+  .workspace-chat.mobile-active-chat-shell > .chat-main-scroll,
+  .workspace-chat.mobile-new-chat-shell > .chat-transcript-scroll,
+  .workspace-chat.mobile-new-chat-shell > .chat-main-scroll {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    padding-top: var(--fa-mobile-header-h);
+    padding-bottom: var(--fa-mobile-composer-h);
+    scroll-padding-top: var(--fa-mobile-header-h);
+    scroll-padding-bottom: var(--fa-mobile-composer-h);
+  }
+
+  /* A blank chat is the same continuous canvas as an active chat. The header
+     controls float over that canvas; only their individual glass surfaces
+     should be visible, not a second opaque strip behind them. */
 
   .chat-head-trigger-copy {
     display: flex;
@@ -3305,24 +3353,21 @@ body:has(.dialog-scrim) .composer-dock-surface {
     z-index: 20;
     display: inline-flex;
     width: 116px;
-    height: 52px;
+    height: 48px;
     align-items: center;
     justify-content: center;
     gap: 9px;
     color: white;
-    background: linear-gradient(
-      145deg,
-      rgb(var(--onboarding-forward-rgb) / 0.68),
-      rgb(var(--onboarding-forward-rgb) / 0.48)
-    );
-    border: 1px solid rgb(255 255 255 / 0.14);
-    border-radius: 22px;
-    -webkit-backdrop-filter: blur(16px) saturate(112%);
-    backdrop-filter: blur(16px) saturate(112%);
+    background: rgb(var(--onboarding-forward-rgb) / 0.92);
+    border: 1px solid rgb(255 255 255 / 0.28);
+    border-radius: 999px;
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
     box-shadow:
-      0 10px 24px rgb(0 0 0 / 0.28),
-      0 3px 12px rgb(var(--onboarding-forward-rgb) / 0.20);
-    transition: transform 140ms var(--ease-spring), filter 140ms var(--ease), box-shadow 140ms var(--ease);
+      inset 0 0.5px 0 rgb(255 255 255 / 0.32),
+      0 1px 1px rgb(0 0 0 / 0.05),
+      0 8px 20px rgb(var(--onboarding-forward-rgb) / 0.24);
+    transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 140ms var(--ease), box-shadow 140ms var(--ease);
   }
 
   .mobile-chat-home .mobile-floating-new-chat svg {
@@ -3337,11 +3382,11 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
 
   .mobile-chat-home .mobile-floating-new-chat:active {
-    filter: brightness(0.94);
-    transform: translateY(1px) scale(0.95);
+    filter: brightness(0.96);
+    transform: scale(0.96);
     box-shadow:
-      0 5px 12px rgb(0 0 0 / 0.28),
-      inset 0 2px 4px rgb(0 0 0 / 0.18);
+      inset 0 0.5px 0 rgb(255 255 255 / 0.28),
+      0 2px 8px rgb(var(--onboarding-forward-rgb) / 0.2);
   }
 
   .mobile-chat-home .mobile-floating-new-chat:focus-visible {
@@ -3456,14 +3501,14 @@ body:has(.dialog-scrim) .composer-dock-surface {
     height: 58px !important;
     min-height: 58px !important;
     max-height: 152px !important;
-    border: 1px solid rgb(var(--edge-strong-rgb) / 0.52) !important;
+    border: 1px solid var(--liquid-glass-rim) !important;
     border-radius: 999px !important;
-    background: rgb(var(--paper-raised-rgb) / 0.78) !important;
+    background: var(--liquid-glass-fill-strong) !important;
     box-shadow:
-      0 10px 24px rgb(0 0 0 / 0.20),
-      inset 0 1px 0 rgb(255 255 255 / 0.10) !important;
-    backdrop-filter: blur(22px) saturate(135%);
-    -webkit-backdrop-filter: blur(22px) saturate(135%);
+      inset 0 0.5px 0 var(--liquid-glass-highlight),
+      var(--liquid-glass-shadow) !important;
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
   }
 
   /* Composer.jsx measures the textarea as the draft grows. Let that measured
@@ -3483,16 +3528,16 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
 
   :root[data-theme='dark'] .composer-shell {
-    background: rgb(49 48 51 / 0.76) !important;
-    border-color: rgb(255 255 255 / 0.14) !important;
+    background: var(--liquid-glass-fill-strong) !important;
+    border-color: var(--liquid-glass-rim) !important;
   }
 
   .composer-shell:focus-within {
-    border-color: rgb(176 139 255 / 0.72) !important;
+    border-color: rgb(var(--accent-rgb) / 0.45) !important;
     box-shadow:
-      0 10px 24px rgb(0 0 0 / 0.20),
-      0 0 0 3px rgb(145 103 245 / 0.18),
-      inset 0 1px 0 rgb(255 255 255 / 0.10) !important;
+      inset 0 0.5px 0 var(--liquid-glass-highlight),
+      var(--liquid-glass-shadow),
+      0 0 0 3px rgb(var(--accent-rgb) / 0.14) !important;
   }
 
   .composer-control-row {
@@ -3504,15 +3549,15 @@ body:has(.dialog-scrim) .composer-dock-surface {
 
   .composer-accessories > button {
     color: var(--ink-soft) !important;
-    background: rgb(var(--paper-inset-rgb) / 0.72) !important;
-    border: 1px solid rgb(var(--edge-strong-rgb) / 0.32);
+    background: var(--liquid-glass-fill) !important;
+    border: 1px solid var(--liquid-glass-rim);
     border-radius: 999px !important;
   }
 
   :root[data-theme='dark'] .composer-accessories > button {
-    color: rgb(244 241 249) !important;
-    background: rgb(255 255 255 / 0.09) !important;
-    border-color: rgb(255 255 255 / 0.10);
+    color: var(--ink) !important;
+    background: var(--liquid-glass-fill) !important;
+    border-color: var(--liquid-glass-rim);
   }
 
   .composer-input {
@@ -3581,19 +3626,14 @@ body:has(.dialog-scrim) .composer-dock-surface {
     margin: 0 auto 6px;
     padding: 0 42px 0 16px !important;
     color: var(--ink-soft) !important;
-    background: linear-gradient(
-      180deg,
-      rgb(255 255 255 / 0.15),
-      rgb(255 255 255 / 0.07)
-    ) !important;
-    border: 1px solid rgb(255 255 255 / 0.16) !important;
+    background: var(--liquid-glass-fill-strong) !important;
+    border: 1px solid var(--liquid-glass-rim) !important;
     border-radius: 999px !important;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.15),
-      inset 0 -1px 0 rgb(0 0 0 / 0.12),
-      0 5px 14px rgb(0 0 0 / 0.14) !important;
-    -webkit-backdrop-filter: blur(20px) saturate(135%);
-    backdrop-filter: blur(20px) saturate(135%);
+      inset 0 0.5px 0 var(--liquid-glass-highlight),
+      var(--liquid-glass-shadow) !important;
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
   }
 
   .mobile-composer-plan-sheet.has-plan .plan-peek-handle::before,
@@ -3613,10 +3653,11 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
 
   .mobile-composer-plan-sheet.has-plan .plan-peek-handle:active {
-    background: rgb(255 255 255 / 0.17) !important;
+    background: var(--liquid-glass-fill-strong) !important;
+    transform: scale(0.97);
     box-shadow:
-      inset 0 2px 5px rgb(0 0 0 / 0.16),
-      0 2px 8px rgb(0 0 0 / 0.12) !important;
+      inset 0 0.5px 0 var(--liquid-glass-highlight),
+      var(--liquid-glass-shadow-press) !important;
   }
 
   .mobile-composer-plan-sheet.has-plan .composer-shell {
@@ -3811,20 +3852,19 @@ body:has(.dialog-scrim) .composer-dock-surface {
     gap: 8px;
     padding: 8px 14px;
     color: var(--ink-soft);
-    background: rgb(var(--paper-raised-rgb) / 0.78);
-    border: 1px solid rgb(255 255 255 / 0.12);
+    background: var(--liquid-glass-fill);
+    border: 1px solid var(--liquid-glass-rim);
     border-radius: 999px;
-    -webkit-backdrop-filter: blur(16px) saturate(110%);
-    backdrop-filter: blur(16px) saturate(110%);
-    box-shadow:
-      0 6px 16px rgb(0 0 0 / 0.16),
-      inset 0 1px 0 rgb(255 255 255 / 0.06);
-    transition: background 140ms var(--ease), transform 140ms var(--ease-spring);
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    box-shadow: var(--liquid-glass-shadow);
+    transition: background 140ms var(--ease), transform 140ms var(--ease-spring), box-shadow 140ms var(--ease);
   }
 
   .mobile-context-pill:active {
-    background: rgb(var(--paper-inset-rgb) / 0.84);
-    transform: scale(0.98);
+    background: var(--liquid-glass-fill-strong);
+    transform: scale(0.97);
+    box-shadow: var(--liquid-glass-shadow-press);
   }
 
   .mobile-context-pill:focus-visible {
@@ -3858,9 +3898,10 @@ body:has(.dialog-scrim) .composer-dock-surface {
     color: var(--ink-faint);
   }
 
-  /* Liquid Glass is reserved for controls, not the entire canvas. These
-     controls use a clear material, a hairline edge, and a soft inner highlight
-     so they read as floating actions over the matte FlexEd surface. */
+  /* Liquid Glass controls — Calendar-style frosted pills.
+     Clear frosted fill, quiet hairline rim, soft ambient elevation. No wet
+     specular wash or heavy inset dig: those read as gimmick glass next to
+     Apple's floating "Today" / icon-group capsules. */
   .mobile-chat-back,
   .mobile-new-chat,
   .workspace-topbar .workspace-artifact-toggle,
@@ -3871,18 +3912,13 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .split-layout-mobile-tabs button,
   .split-layout-general-tabs button,
   .chat-header-sheet-heading > button {
-    -webkit-backdrop-filter: blur(20px) saturate(135%);
-    backdrop-filter: blur(20px) saturate(135%);
-    background: linear-gradient(
-      180deg,
-      rgb(255 255 255 / 0.16),
-      rgb(255 255 255 / 0.07)
-    ) !important;
-    border: 1px solid rgb(255 255 255 / 0.19) !important;
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    background: var(--liquid-glass-fill) !important;
+    border: 1px solid var(--liquid-glass-rim) !important;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.18),
-      inset 0 -1px 0 rgb(0 0 0 / 0.10),
-      0 5px 14px rgb(0 0 0 / 0.16) !important;
+      inset 0 0.5px 0 var(--liquid-glass-highlight),
+      var(--liquid-glass-shadow) !important;
   }
 
   .mobile-chat-back,
@@ -3898,6 +3934,8 @@ body:has(.dialog-scrim) .composer-dock-surface {
     position: absolute;
   }
 
+  /* Quiet top sheen only — enough to suggest frosted thickness, not a
+     diagonal game-UI specular sweep. */
   .mobile-chat-back::before,
   .mobile-new-chat::before,
   .workspace-topbar .workspace-artifact-toggle::before,
@@ -3905,17 +3943,16 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .mobile-chat-home .mobile-floating-new-chat::before,
   .mobile-primary-action::before {
     position: absolute;
-    inset: 1px;
+    inset: 0;
     content: '';
     pointer-events: none;
     background: linear-gradient(
-      122deg,
-      rgb(255 255 255 / 0.18),
-      rgb(255 255 255 / 0.05) 34%,
-      transparent 58%,
-      rgb(255 255 255 / 0.06)
+      180deg,
+      rgb(255 255 255 / 0.28),
+      transparent 42%
     );
     border-radius: inherit;
+    opacity: 0.55;
   }
 
   .mobile-chat-back > *,
@@ -3941,24 +3978,20 @@ body:has(.dialog-scrim) .composer-dock-surface {
       border-color 140ms var(--ease),
       box-shadow 140ms var(--ease),
       color 140ms var(--ease),
-      transform 160ms var(--ease-spring);
+      transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
 
   .mobile-chat-back {
     position: relative;
-    min-height: 48px;
-    padding-right: 12px;
-    padding-left: 7px;
+    min-height: 44px;
+    padding-right: 14px;
+    padding-left: 10px;
     border-radius: 999px !important;
   }
 
   .mobile-new-chat {
-    color: rgb(248 246 253) !important;
-    background: linear-gradient(
-      180deg,
-      rgb(255 255 255 / 0.19),
-      rgb(255 255 255 / 0.08)
-    ) !important;
+    color: var(--ink) !important;
+    background: var(--liquid-glass-fill-strong) !important;
     border-radius: 999px !important;
   }
 
@@ -3970,53 +4003,49 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .split-layout-mobile-tabs button:active,
   .split-layout-general-tabs button:active,
   .chat-header-sheet-heading > button:active {
-    transform: scale(0.95);
-    background: rgb(255 255 255 / 0.18) !important;
+    transform: scale(0.96);
+    background: var(--liquid-glass-fill-strong) !important;
     box-shadow:
-      inset 0 2px 5px rgb(0 0 0 / 0.16),
-      0 2px 7px rgb(0 0 0 / 0.12) !important;
+      inset 0 0.5px 0 var(--liquid-glass-highlight),
+      var(--liquid-glass-shadow-press) !important;
   }
 
   .mobile-context-pill {
-    background: linear-gradient(
-      180deg,
-      rgb(255 255 255 / 0.18),
-      rgb(255 255 255 / 0.08)
-    ) !important;
+    background: var(--liquid-glass-fill) !important;
     border-radius: 999px !important;
   }
 
   .mobile-context-pill:active {
-    background: rgb(255 255 255 / 0.18) !important;
+    background: var(--liquid-glass-fill-strong) !important;
   }
 
   .mobile-chat-home .mobile-floating-new-chat {
     z-index: 40;
+    color: #fff !important;
+    background: rgb(var(--onboarding-forward-rgb) / 0.92) !important;
+    border-color: rgb(255 255 255 / 0.28) !important;
+    box-shadow:
+      inset 0 0.5px 0 rgb(255 255 255 / 0.35),
+      0 1px 1px rgb(0 0 0 / 0.06),
+      0 8px 22px rgb(var(--onboarding-forward-rgb) / 0.28) !important;
+  }
+
+  .mobile-chat-home .mobile-floating-new-chat::before {
     background: linear-gradient(
       180deg,
-      rgb(var(--onboarding-forward-rgb) / 0.86),
-      rgb(var(--onboarding-forward-rgb) / 0.62)
-    ) !important;
-    border-color: rgb(255 255 255 / 0.34) !important;
-    box-shadow:
-      0 0 0 5px rgb(20 19 22 / 0.72),
-      inset 0 1px 0 rgb(255 255 255 / 0.28),
-      inset 0 -1px 0 rgb(0 0 0 / 0.12),
-      0 12px 28px rgb(0 0 0 / 0.34),
-      0 5px 16px rgb(var(--onboarding-forward-rgb) / 0.30) !important;
+      rgb(255 255 255 / 0.28),
+      transparent 48%
+    );
+    opacity: 0.7;
   }
 
   :root[data-theme='dark'] .mobile-chat-home .mobile-floating-new-chat {
-    background: linear-gradient(
-      180deg,
-      rgb(151 121 255 / 0.88),
-      rgb(105 73 190 / 0.68)
-    ) !important;
+    background: rgb(151 121 255 / 0.88) !important;
   }
 
   /* The chats landing screen has two related actions: start a conversation
-     and choose the course that scopes the list. Keep them in one reachable
-     bottom shelf so the course control no longer competes with the wordmark. */
+     and choose the course that scopes the list. One floating frosted shelf —
+     Calendar’s bottom pill group — instead of a dark charcoal tray. */
   .mobile-chat-home-actions {
     position: absolute;
     right: max(14px, var(--safe-r));
@@ -4026,16 +4055,16 @@ body:has(.dialog-scrim) .composer-dock-surface {
     display: flex;
     min-width: 0;
     align-items: center;
-    gap: 8px;
-    padding: 4px;
-    background: rgb(20 19 22 / 0.90);
-    border: 1px solid rgb(255 255 255 / 0.12);
-    border-radius: 30px;
+    gap: 6px;
+    padding: 5px;
+    background: var(--liquid-glass-fill);
+    border: 1px solid var(--liquid-glass-rim);
+    border-radius: 999px;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.10),
-      0 8px 18px rgb(0 0 0 / 0.24);
-    -webkit-backdrop-filter: blur(18px) saturate(115%);
-    backdrop-filter: blur(18px) saturate(115%);
+      inset 0 0.5px 0 var(--liquid-glass-highlight),
+      var(--liquid-glass-shadow);
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
   }
 
   .mobile-chat-home {
@@ -4049,11 +4078,10 @@ body:has(.dialog-scrim) .composer-dock-surface {
     left: auto;
     flex: 0 0 116px;
     width: 116px;
-    height: 52px;
+    height: 48px;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.28),
-      inset 0 -1px 0 rgb(0 0 0 / 0.12),
-      0 6px 16px rgb(var(--onboarding-forward-rgb) / 0.28) !important;
+      inset 0 0.5px 0 rgb(255 255 255 / 0.35),
+      0 4px 14px rgb(var(--onboarding-forward-rgb) / 0.22) !important;
   }
 
   .mobile-chat-home-course-selector {
@@ -4068,25 +4096,21 @@ body:has(.dialog-scrim) .composer-dock-surface {
 
   .mobile-chat-home-course-selector > div > button {
     width: 100%;
-    min-height: 52px !important;
+    min-height: 48px !important;
     min-width: 0;
     padding: 10px 12px !important;
-    color: rgb(244 242 249) !important;
-    background: linear-gradient(
-      180deg,
-      rgb(255 255 255 / 0.14),
-      rgb(255 255 255 / 0.06)
-    ) !important;
-    border: 1px solid rgb(255 255 255 / 0.16) !important;
+    color: var(--ink) !important;
+    background: transparent !important;
+    border: 0 !important;
     border-radius: 999px !important;
-    box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.14),
-      inset 0 -1px 0 rgb(0 0 0 / 0.10) !important;
-    -webkit-backdrop-filter: blur(20px) saturate(130%);
-    backdrop-filter: blur(20px) saturate(130%);
+    box-shadow: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
   }
 
-  .mobile-chat-home-course-selector > div > button:hover,
+
+
+.mobile-chat-home-course-selector > div > button:hover,
   .mobile-chat-home-course-selector > div > button[aria-expanded='true'] {
     background: rgb(255 255 255 / 0.16) !important;
   }
@@ -4264,16 +4288,14 @@ body:has(.dialog-scrim) .composer-dock-surface {
     min-height: 44px;
     padding: 0 16px;
     color: var(--ink-soft) !important;
-    background:
-      linear-gradient(180deg, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.05)),
-      rgb(var(--paper-raised-rgb) / 0.90) !important;
-    border: 1px solid rgb(255 255 255 / 0.14);
+    background: var(--liquid-glass-fill-strong) !important;
+    border: 1px solid var(--liquid-glass-rim);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.12),
-      0 6px 16px rgb(0 0 0 / 0.20);
+      inset 0 0.5px 0 var(--liquid-glass-highlight),
+      var(--liquid-glass-shadow);
     pointer-events: auto;
-    -webkit-backdrop-filter: blur(20px) saturate(118%);
-    backdrop-filter: blur(20px) saturate(118%);
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
   }
 
   @keyframes mobile-course-sheet-in {
@@ -4296,29 +4318,23 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
 
   .mobile-primary-action {
-    background: linear-gradient(
-      180deg,
-      rgb(var(--onboarding-forward-rgb) / 0.88),
-      rgb(var(--onboarding-forward-rgb) / 0.64)
-    ) !important;
-    border-color: rgb(255 255 255 / 0.25) !important;
+    color: #fff !important;
+    background: rgb(var(--onboarding-forward-rgb) / 0.92) !important;
+    border-color: rgb(255 255 255 / 0.28) !important;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.24),
-      0 8px 18px rgb(var(--onboarding-forward-rgb) / 0.24) !important;
+      inset 0 0.5px 0 rgb(255 255 255 / 0.32),
+      0 1px 1px rgb(0 0 0 / 0.05),
+      0 8px 20px rgb(var(--onboarding-forward-rgb) / 0.24) !important;
   }
 
   .mobile-tab-item.is-active .mobile-tab-icon {
-    width: 60px;
-    height: 40px;
-    background: linear-gradient(
-      180deg,
-      rgb(var(--onboarding-forward-rgb) / 0.34),
-      rgb(var(--onboarding-forward-rgb) / 0.18)
-    );
-    border: 1px solid rgb(255 255 255 / 0.16);
+    width: 56px;
+    height: 36px;
+    background: rgb(var(--onboarding-forward-rgb) / 0.16);
+    border: 1px solid rgb(var(--onboarding-forward-rgb) / 0.18);
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.18),
-      0 3px 9px rgb(var(--onboarding-forward-rgb) / 0.16);
+      inset 0 0.5px 0 rgb(255 255 255 / 0.35),
+      0 2px 8px rgb(var(--onboarding-forward-rgb) / 0.12);
     -webkit-backdrop-filter: blur(16px) saturate(140%);
     backdrop-filter: blur(16px) saturate(140%);
   }
@@ -4331,15 +4347,11 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .split-layout-general-tabs button.is-active,
   .split-layout-mobile-tabs button[aria-current='page'] {
     color: var(--onboarding-forward) !important;
-    background: linear-gradient(
-      180deg,
-      rgb(var(--onboarding-forward-rgb) / 0.34),
-      rgb(var(--onboarding-forward-rgb) / 0.18)
-    ) !important;
-    border-color: rgb(var(--onboarding-forward-rgb) / 0.40) !important;
+    background: rgb(var(--onboarding-forward-rgb) / 0.14) !important;
+    border-color: rgb(var(--onboarding-forward-rgb) / 0.22) !important;
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 0.18),
-      0 4px 10px rgb(var(--onboarding-forward-rgb) / 0.14) !important;
+      inset 0 0.5px 0 rgb(255 255 255 / 0.35),
+      0 2px 8px rgb(var(--onboarding-forward-rgb) / 0.10) !important;
   }
 
   .chat-header-sheet-heading > button {
@@ -4412,10 +4424,9 @@ body:has(.dialog-scrim) .composer-dock-surface {
     transform: scale(0.98);
   }
 
-  /* Backdrop blur still needs a material underneath it. The earlier glass
-     controls were mostly transparent, so scrolling content could resolve as
-     vertical bands through the surface. A stable tint keeps the blur and
-     highlight while making the material visually calm. */
+  /* Backdrop blur still needs a material underneath it. Prefer a calm frosted
+     fill (Calendar-style) over a mostly-transparent wet gradient that reads
+     as muddy banding while content scrolls underneath. */
   .mobile-chat-back,
   .mobile-new-chat,
   .workspace-topbar .workspace-artifact-toggle,
@@ -4427,16 +4438,10 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .mobile-composer-plan-sheet.has-plan .plan-peek-handle,
   .composer-shell,
   .mobile-composer-plan-sheet.has-plan .composer-shell {
-    background:
-      linear-gradient(
-        180deg,
-        rgb(255 255 255 / 0.14),
-        rgb(255 255 255 / 0.06)
-      ),
-      rgb(var(--paper-raised-rgb) / 0.86) !important;
+    background: var(--liquid-glass-fill-strong) !important;
     background-clip: padding-box;
-    -webkit-backdrop-filter: blur(24px) saturate(118%);
-    backdrop-filter: blur(24px) saturate(118%);
+    -webkit-backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
+    backdrop-filter: blur(var(--mobile-glass-blur)) saturate(var(--mobile-glass-saturation));
   }
 
   :root[data-theme='dark'] .mobile-chat-back,
@@ -4450,13 +4455,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
   :root[data-theme='dark'] .mobile-composer-plan-sheet.has-plan .plan-peek-handle,
   :root[data-theme='dark'] .composer-shell,
   :root[data-theme='dark'] .mobile-composer-plan-sheet.has-plan .composer-shell {
-    background:
-      linear-gradient(
-        180deg,
-        rgb(255 255 255 / 0.14),
-        rgb(255 255 255 / 0.06)
-      ),
-      rgb(39 38 40 / 0.86) !important;
+    background: var(--liquid-glass-fill-strong) !important;
   }
 
   /* The Chats-page course menu is opened from the thumb-level action shelf.
@@ -4717,14 +4716,16 @@ body:has(.dialog-scrim) .composer-dock-surface {
     right: 0;
     bottom: 100%;
     left: 0;
-    height: 52px;
+    height: 64px;
     z-index: -1;
     pointer-events: none;
     content: '';
+    /* Soft veil only — content should remain readable under the glass dock,
+       not get crushed by an opaque paper fade. */
     background: linear-gradient(
       to top,
-      rgb(var(--paper-sunken-rgb) / 0.76),
-      rgb(var(--paper-sunken-rgb) / 0)
+      rgb(var(--paper-rgb) / 0.55),
+      rgb(var(--paper-rgb) / 0)
     );
   }
 
@@ -4735,17 +4736,17 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
 
   /* Once the peek is open it is a contextual reader, not another flex item
-     competing with the transcript for height. Let it occupy the content
-     region below the compact phone header while the transcript remains
-     underneath and the composer stays docked to the bottom. */
+     competing with the transcript for height. With the phone header floating
+     over the canvas, the sheet can use the full content region. */
   .workspace-chat > .is-plan-peek-host {
     position: absolute;
-    top: 76px;
+    top: 0;
     right: 0;
     bottom: 0;
     left: 0;
     display: flex;
     flex-direction: column;
+    padding-top: var(--fa-mobile-header-h, 76px);
   }
 
   .composer-dock-surface.is-plan-peek-open {
