@@ -31,8 +31,8 @@ export function MobileTabBar({ classId }) {
             to={target}
             end={id === 'chats'}
             state={id === 'chats' ? { mobileHome: true } : undefined}
-            onClick={() => haptic('light')}
-            className={`mobile-tab-item${active ? ' is-active' : ''}`}
+            onClick={(event) => haptic('light', event)}
+            className={`mobile-tab-item fa-press${active ? ' is-active' : ''}`}
             aria-current={active ? 'page' : undefined}
           >
             <span className="mobile-tab-icon" aria-hidden="true">

@@ -21,6 +21,7 @@ import { useAuth, EXPLICIT_SIGNOUT_KEY, KNOWN_AUTHED_KEY } from './lib/authConte
 import { safeReturnTo, withReturnTo } from './lib/returnTo'
 import { readAccountStorage, writeAccountStorage } from './lib/accountStorage'
 import { BootScreen } from './components/BootScreen'
+import { Skeleton, SkeletonText, LoadingAnnouncement } from './components/Skeleton'
 import { AppShell } from './components/AppShell'
 import { CommandPalette } from './components/CommandPalette'
 import { useClasses } from './hooks/useAppData'
@@ -158,7 +159,7 @@ function ClassRoutes() {
       <RememberClass />
       <AppShell>
         <RouteTransition>
-          <Suspense fallback={<BootScreen label="Loading workspace…" />}>
+          <Suspense fallback={<WorkspaceFallback label="Loading workspace…" />}>
             {/* Let the nested router read the current location from context.
                 Passing the parent render's location here became stale while
                 RouteTransition kept the previous class screen mounted for
@@ -186,8 +187,19 @@ function ClassRoutes() {
   )
 }
 
-/* One transition around the outlet gives every destination the same calm
- * handoff while leaving the persistent shell and sidebar in place. */
+/* Soft in-shell placeholder for lazy route chunks. A full BootScreen inside
+ * AppShell made every tab hop feel like a cold reload; keep the chrome and
+ * show a quiet skeleton in the content stage instead. */
+function WorkspaceFallback({ label = 'Loading workspace…' }) {
+  return (
+    <div className="flex h-full min-h-0 flex-col gap-4 p-6" aria-busy="true">
+      <Skeleton width="9rem" height="0.75rem" />
+      <SkeletonText lines={5} />
+      <SkeletonText lines={3} width="86%" />
+      <LoadingAnnouncement>{label}</LoadingAnnouncement>
+    </div>
+  )
+}
 function RouteTransition({ children }) {
   const location = useLocation()
   const prefersReducedMotion = useReducedMotion()

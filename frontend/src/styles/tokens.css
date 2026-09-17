@@ -170,10 +170,21 @@
   --tabbar-h: 56px;
   /* Mobile functional chrome. Keep Liquid Glass values semantic so the web
      shell and a future SwiftUI shell can share the same hierarchy without
-     sharing implementation details. */
+     sharing implementation details. Tuned toward iOS Calendar–style floating
+     frosted pills: soft ambient elevation, high blur, quiet hairline rim. */
   --mobile-tabbar-h: 72px;
-  --mobile-glass-blur: 22px;
-  --mobile-glass-saturation: 135%;
+  --mobile-glass-blur: 28px;
+  --mobile-glass-saturation: 160%;
+  --liquid-glass-fill: rgb(255 255 255 / 0.58);
+  --liquid-glass-fill-strong: rgb(255 255 255 / 0.70);
+  --liquid-glass-rim: rgb(0 0 0 / 0.08);
+  --liquid-glass-highlight: rgb(255 255 255 / 0.9);
+  --liquid-glass-shadow:
+    0 1px 1px rgb(0 0 0 / 0.04),
+    0 6px 18px rgb(0 0 0 / 0.08);
+  --liquid-glass-shadow-press:
+    0 1px 1px rgb(0 0 0 / 0.05),
+    0 2px 8px rgb(0 0 0 / 0.08);
   --sheet-max-h: 85vh;
   --sheet-radius: var(--r-xl);
 
@@ -497,4 +508,15 @@
      small chip fill behind --ink-soft text, and at 0.12 it disappears entirely
      on #262522 so the tag renders as a bare outline. */
   --district-tag-bg: rgb(var(--doc-blue-rgb) / 0.18);
+
+  --liquid-glass-fill: rgb(48 46 44 / 0.52);
+  --liquid-glass-fill-strong: rgb(54 52 50 / 0.62);
+  --liquid-glass-rim: rgb(255 255 255 / 0.14);
+  --liquid-glass-highlight: rgb(255 255 255 / 0.16);
+  --liquid-glass-shadow:
+    0 1px 1px rgb(0 0 0 / 0.28),
+    0 8px 22px rgb(0 0 0 / 0.32);
+  --liquid-glass-shadow-press:
+    0 1px 1px rgb(0 0 0 / 0.24),
+    0 3px 10px rgb(0 0 0 / 0.28);
 }

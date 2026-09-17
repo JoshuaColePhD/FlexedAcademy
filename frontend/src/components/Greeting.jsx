@@ -54,7 +54,7 @@ export function Greeting({ onOpenVoice, className: courseName, week, hint, onOpe
     // near the header makes the large empty canvas feel accidental on phone.
     // The scroll container still allows the copy and optional actions to grow
     // naturally on short screens or with larger text settings.
-    <div className="grid min-h-0 flex-1 items-center justify-items-center overflow-y-auto px-gutter py-4">
+    <div className="chat-main-scroll grid min-h-0 flex-1 items-center justify-items-center overflow-y-auto px-gutter py-4">
       <div className="w-full max-w-measure flex flex-col items-center justify-center text-center fa-rise">
         
         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-ink mb-2">
