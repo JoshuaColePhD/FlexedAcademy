@@ -139,6 +139,13 @@ test('phone secondary pages expose visible thumb-sized back controls', async ({ 
   await settingsBack.click()
   await expect(page.locator('.mobile-chat-home')).toBeVisible()
 
+  await page.locator('button[aria-haspopup="listbox"]').first().click()
+  const classPicker = page.locator('.mobile-course-picker-sheet')
+  await expect(classPicker).toBeVisible()
+  await expect(classPicker.getByRole('heading', { name: 'Choose a class' })).toBeVisible()
+  await expect(page.locator('.mobile-course-picker-grabber')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Close class picker' }).last().click()
+
   await page.goto('/preview.html?fresh=0&at=/c/c2/plans')
   const plansBack = page.getByRole('button', { name: 'Back to chats' })
   await expect(plansBack).toBeVisible()
