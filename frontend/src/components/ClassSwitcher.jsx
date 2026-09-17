@@ -237,7 +237,6 @@ export function ClassSwitcher({ classes, activeClass, inline = false, variant = 
               aria-modal="true"
               aria-labelledby="mobile-course-picker-title"
             >
-              <div className="mobile-course-picker-grabber" aria-hidden="true" />
               <div className="mobile-course-picker-heading">
                 <div className="min-w-0">
                   <h2 id="mobile-course-picker-title">Choose a class</h2>

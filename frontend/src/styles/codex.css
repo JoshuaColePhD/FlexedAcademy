@@ -4204,21 +4204,13 @@ body:has(.dialog-scrim) .composer-dock-surface {
     animation: mobile-course-sheet-out 150ms var(--ease-out) both;
   }
 
-  .mobile-course-picker-grabber {
-    width: 38px;
-    height: 4px;
-    margin: 10px auto 2px;
-    background: rgb(var(--ink-muted-rgb) / 0.48);
-    border-radius: 99px;
-  }
-
   .mobile-course-picker-heading {
     display: flex;
     min-height: 68px;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 8px 18px 10px;
+    padding: 14px 18px 10px;
   }
 
   .mobile-course-picker-heading h2 {
