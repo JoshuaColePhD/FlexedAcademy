@@ -667,6 +667,11 @@ export function Composer({
   // while a draft (or an attachment) sends. Keeping the decision here means
   // the icon, label, disabled state, and click handler cannot drift apart.
   const showSendAction = hasContent
+  /* While a reply is streaming, a typed follow-up should keep the primary
+     control as Send (queue). Stop only owns the slot when the box is empty —
+     otherwise teachers mistap Pause instead of queueing the next turn. */
+  const showStopAction = Boolean(isStreaming && onStop && !showSendAction)
+  const showQueuedSend = Boolean(isStreaming && onStop && showSendAction && canSend)
 
   // canSend's own false→true edge — a scale-pop the instant the send
   // button actually becomes pressable, so "you can go now" isn't only a
@@ -1003,54 +1008,79 @@ export function Composer({
               offers dictation, and the moment a draft exists it morphs into
               send. Recording, transcription, and streaming still take over
               the same control without shifting the composer layout. */}
-          <div className="composer-action-cluster relative flex shrink-0 flex-row items-center">
+          <div className="composer-action-cluster relative flex shrink-0 flex-row items-center gap-1.5">
+            {showQueuedSend ? (
+              <button
+                type="button"
+                className="fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full bg-paper-raised text-ink-soft transition-all duration-300 hover:shadow-sm md:h-9 md:w-9"
+                onClick={() => {
+                  haptic('medium')
+                  onStop()
+                }}
+                aria-label="Pause reply"
+                title="Pause reply"
+              >
+                <Pause size={16} className="md:size-[15px]" aria-hidden="true" />
+              </button>
+            ) : null}
             <button
               type="button"
               className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 md:h-9 md:w-9 ${
                 isRecording
                   ? 'fa-listening bg-mark text-white hover:bg-mark/90'
-                  : isStreaming && onStop
+                  : showStopAction
                     ? 'bg-paper-raised text-ink-soft hover:shadow-sm'
-                    : isStreaming
+                    : isStreaming && !showSendAction
                       ? 'bg-transparent text-ink-muted'
                       : showSendAction
                         ? 'bg-accent text-accent-on hover:bg-accent-hover'
                         : 'bg-mark text-white hover:bg-mark/90 disabled:opacity-50'
               } ${motionState === 'submit' ? 'fa-settle' : motionState === 'ready' ? 'fa-ready-pop' : ''}`}
               onClick={
-                isStreaming && onStop
-                  ? onStop
-                  : isStreaming || isTranscribing
+                showStopAction
+                  ? () => {
+                      haptic('medium')
+                      onStop()
+                    }
+                  : isStreaming && !showSendAction
                     ? undefined
                     : isRecording
                       ? stopRecording
                       : showSendAction
                         ? submit
-                      : startRecording
+                        : startRecording
               }
               onPointerDown={() => {
+                if (showStopAction) return
                 if (!isStreaming && !isTranscribing) haptic(isRecording || showSendAction ? 'medium' : 'light')
+                else if (showSendAction) haptic('medium')
               }}
               disabled={
                 isTranscribing
-                || (isStreaming && !onStop)
+                || (isStreaming && !onStop && !showSendAction)
                 || (!isRecording && !showSendAction && voiceModeActive)
-                || (!isStreaming && showSendAction && !canSend)
+                || (showSendAction && !canSend)
               }
               aria-label={
-                isStreaming && onStop
+                showStopAction
                   ? 'Pause reply'
                   : isTranscribing
                     ? 'Transcribing'
                     : isRecording
                       ? 'Stop recording'
                       : showSendAction
-                        ? sendLabel
+                        ? (isStreaming ? 'Queue message' : sendLabel)
                         : voiceModeActive
                           ? 'Dictate (already listening in voice mode)'
                           : 'Dictate'
               }
-              title={!isRecording && !isTranscribing && !showSendAction && voiceModeActive ? "Already listening — it's transcribing straight into the chat" : undefined}
+              title={
+                showQueuedSend
+                  ? 'Send queues until this reply finishes'
+                  : !isRecording && !isTranscribing && !showSendAction && voiceModeActive
+                    ? "Already listening — it's transcribing straight into the chat"
+                    : undefined
+              }
             >
               <Mic
                 size={19}
@@ -1062,7 +1092,7 @@ export function Composer({
               <ArrowUp
                 size={19}
                 className={`absolute transition-all duration-300 md:size-[18px] ${
-                  !isRecording && !isTranscribing && !isStreaming && showSendAction ? 'scale-100 rotate-0 opacity-100' : 'scale-50 rotate-90 opacity-0'
+                  !isRecording && !isTranscribing && showSendAction && !showStopAction ? 'scale-100 rotate-0 opacity-100' : 'scale-50 rotate-90 opacity-0'
                 }`}
                 strokeWidth={3}
                 aria-hidden="true"
@@ -1070,21 +1100,21 @@ export function Composer({
               <Loader2
                 size={20}
                 className={`absolute animate-spin transition-all duration-300 md:size-[18px] ${
-                  isTranscribing || (isStreaming && !onStop) ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
+                  isTranscribing || (isStreaming && !onStop && !showSendAction) ? 'scale-100 opacity-100' : 'scale-50 opacity-0'
                 }`}
                 aria-hidden="true"
               />
               <Pause
                 size={16}
                 className={`absolute transition-all duration-300 md:size-[15px] ${
-                  isStreaming && onStop ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
+                  showStopAction ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
                 }`}
                 aria-hidden="true"
               />
               <Square
                 size={15}
                 className={`absolute transition-all duration-300 md:size-3.5 ${
-                  isRecording && !(isStreaming && onStop) ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
+                  isRecording && !showStopAction ? 'scale-100 rotate-0 opacity-100' : 'scale-50 -rotate-90 opacity-0'
                 }`}
                 fill="currentColor"
                 aria-hidden="true"

@@ -1359,7 +1359,15 @@
     border-radius: 0 !important;
     background: var(--paper-raised) !important;
     box-shadow: none !important;
-    transition: width var(--t-panel) var(--ease-out), box-shadow var(--t-fast) var(--ease-out) !important;
+    transition: width var(--t-panel) var(--ease-out), opacity var(--t-panel) var(--ease-out), box-shadow var(--t-fast) var(--ease-out), margin var(--t-panel) var(--ease-out), border-color var(--t-fast) var(--ease-out) !important;
+  }
+  .workspace-panes > .artifact-drawer.is-closing {
+    width: 0 !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    opacity: 0;
+    border-color: transparent !important;
+    pointer-events: none;
   }
   .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body {
     display: flex;
@@ -1802,7 +1810,11 @@
   box-shadow: none !important;
 }
 .fa-press:active {
-  transform: translateY(1px) !important;
+  transform: translateY(1px) scale(0.97) !important;
+  transition: transform 90ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+.fa-press.is-pressed {
+  transform: translateY(1px) scale(0.97) !important;
 }
 
 @media (max-width: 767.98px) {

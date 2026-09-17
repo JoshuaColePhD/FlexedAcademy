@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
+import { useExitTransition } from '../hooks/useExitTransition'
 import {
   AlertTriangle,
   ChevronDown,
@@ -425,15 +426,23 @@ export function ArtifactRail({
  * ChatPage so the panel can be hidden while a document overlay is active.
  */
 export function ArtifactDrawer({ open, onClose, hasArtifact, busy, ...railProps }) {
-  if (!open) return null
+  /* Keep the node mounted through close so the width/opacity CSS can play.
+     Unmounting on `open === false` made the chat column snap open instead of
+     gliding into the freed space the way ChatGPT/Grok side panels do. */
+  const { mounted, closing } = useExitTransition(open, 280)
+  if (!mounted) return null
 
   return (
     // glass-panel + rounded-2xl, same treatment as the left nav rail's own
     // outer wrapper (AppShell.jsx's .app-rail) and the chat pane itself.
-    <div id="artifacts-panel" className={`artifact-drawer glass-panel rounded-2xl shadow-sm overflow-hidden${open ? ' is-open' : ''}`}>
+    <div
+      id="artifacts-panel"
+      className={`artifact-drawer glass-panel rounded-2xl shadow-sm overflow-hidden${open && !closing ? ' is-open' : ''}${closing ? ' is-closing' : ''}`}
+      aria-hidden={closing || !open ? true : undefined}
+    >
       <div className="artifact-drawer-heading">
         <span>Outputs</span>
-        <button type="button" className="btn-icon" onClick={onClose} aria-label="Close workspace" title="Close workspace"><X size={18} aria-hidden="true" /></button>
+        <button type="button" className="btn-icon fa-press" onClick={onClose} aria-label="Close workspace" title="Close workspace"><X size={18} aria-hidden="true" /></button>
       </div>
       <div className="artifact-drawer-body h-full">
         <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />

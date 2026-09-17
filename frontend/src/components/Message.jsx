@@ -184,23 +184,11 @@ function MessageImpl({
     )
   }
 
-  /* Keep the empty assistant placeholder in the transcript so ordinary chat
-     replies have a quiet, Claude-like waiting state in the exact slot where
-     the reply will land. Action runs get their richer WorkActivityCard from
-     ChatPage instead; this remains intentionally lightweight. */
+  /* Empty assistant placeholder stays in the same message row as the eventual
+     bubble so AnimatePresence can cross-fade thinking → content in place.
+     An early return here used to remount the row on the first token and kill
+     that handoff. Action runs still get WorkActivityCard from ChatPage. */
   const isThinking = !isUser && message.streaming && !message.content?.trim()
-  if (isThinking) {
-    return (
-      <motion.div
-        className="message-row group flex w-full justify-start"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-      >
-        <ThinkingIndicator label={message.thinkingLabel} />
-      </motion.div>
-    )
-  }
 
   /* fa-rise was written for exactly this and then never attached to anything,
      so every message simply appeared — which is most of why the transcript felt
@@ -236,14 +224,14 @@ function MessageImpl({
             a reply arriving. Cross-fading them in the same slot (instead of
             the whole message remounting) makes that a single continuous
             moment: dots fade out as the bubble fades in. */}
-        <AnimatePresence mode="wait" initial={false}>
+        <AnimatePresence initial={false}>
           {isThinking ? (
             <motion.div
               key="thinking"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
+              transition={{ duration: 0.14 }}
             >
               <ThinkingIndicator label={message.thinkingLabel} />
             </motion.div>
@@ -253,7 +241,7 @@ function MessageImpl({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
+              transition={{ duration: 0.16 }}
               // Do not FLIP-animate a streaming bubble's height. Every token
               // changed layout and forced a second measurement of the entire
               // transcript, which was the most visible source of hitching on
@@ -286,13 +274,14 @@ function MessageImpl({
                 {isUser ? (
                   <p className="m-0 whitespace-pre-wrap">{message.youSaid ? `You said: ${message.youSaid}` : message.content}</p>
                 ) : (
-                  <div className="msg-markdown">
+                  <div className={`msg-markdown${message.streaming ? ' is-streaming' : ''}`}>
                     {/* Partial markdown is expensive and unstable while the
-                        model is emitting tokens. Plain text keeps the live
-                        turn cheap and tactile; the full parser takes over
-                        once the message settles, when its layout is stable. */}
+                        model is emitting tokens. Stream as pre-wrapped text
+                        inside the same markdown surface (matching paragraph
+                        metrics) so settling into ReactMarkdown does not snap
+                        line height or padding. */}
                     {message.streaming ? (
-                      <p className="m-0 whitespace-pre-wrap">{message.content}</p>
+                      <p className="msg-stream-text m-0 whitespace-pre-wrap">{message.content}</p>
                     ) : (
                       <ReactMarkdown>{message.content}</ReactMarkdown>
                     )}

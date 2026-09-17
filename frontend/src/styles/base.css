@@ -5196,7 +5196,7 @@
        too thin to reliably see or click. */
     width: 18px;
     height: 100%;
-    transition: width var(--t-base) var(--ease-out);
+    transition: width var(--t-base) var(--ease-out), opacity var(--t-base) var(--ease-out);
   }
   .artifact-drawer.is-open {
     /* Approximating "15% of the page" with a floor and a ceiling — a bare
@@ -5209,6 +5209,11 @@
        "Scho…" at ordinary laptop widths (15vw is under 220px from roughly
        1024–1466px wide, i.e. most laptops). */
     width: clamp(280px, 24vw, 360px);
+  }
+  .artifact-drawer.is-closing {
+    width: 0;
+    opacity: 0;
+    pointer-events: none;
   }
 
   /* Landscape iPhones report a tablet-width viewport but only leave roughly
@@ -7826,6 +7831,15 @@
   .msg-markdown p:last-child {
     margin-bottom: 0;
   }
+  /* Match settled markdown paragraph metrics while tokens are still arriving
+     so the ReactMarkdown handoff does not jump line-box spacing. */
+  .msg-markdown .msg-stream-text {
+    margin: 0;
+    line-height: inherit;
+  }
+  .msg-markdown.is-streaming {
+    min-height: 1.4em;
+  }
   .msg-markdown ul,
   .msg-markdown ol {
     margin: var(--sp-2) 0;
@@ -10260,6 +10274,15 @@
     overflow-y: auto;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pinch-zoom;
+    /* Prefer compositor scrolling; avoid scroll-smooth on the container itself
+       so programmatic follow-scroll and finger flicks do not fight each other. */
+    scroll-behavior: auto;
+  }
+  .scroll-y.chat-transcript-scroll {
+    /* A slightly taller bottom inset keeps the last bubble clear of the dock
+       without inventing a second fade layer that drifts during momentum. */
+    scroll-padding-bottom: calc(24px + var(--composer-h, 0px));
   }
   .scroll-x {
     overflow-x: auto;
@@ -11275,8 +11298,20 @@
 
 /* A single short press response makes controls feel physical without adding
    layout work or a spring animation to every interaction. */
-.fa-press:active {
+.fa-press:active,
+.fa-press.is-pressed,
+.btn:active,
+.btn.is-pressed,
+.btn-icon:active,
+.btn-icon.is-pressed,
+.mobile-tab-item:active,
+.mobile-tab-item.is-pressed {
   transform: scale(0.97);
+}
+button.is-pressed:not(.fa-press),
+[role="button"].is-pressed:not(.fa-press) {
+  transform: scale(0.98);
+  transition: transform 90ms var(--ease-out, cubic-bezier(0.2, 0.8, 0.2, 1));
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -11288,7 +11323,16 @@
   .boot-screen-mark,
   .boot-screen-mark::after,
   .skeleton::after { animation: none; }
-  .fa-press:active { transform: none; }
+  .fa-press:active,
+  .fa-press.is-pressed,
+  .btn:active,
+  .btn.is-pressed,
+  .btn-icon:active,
+  .btn-icon.is-pressed,
+  .mobile-tab-item:active,
+  .mobile-tab-item.is-pressed,
+  button.is-pressed,
+  [role="button"].is-pressed { transform: none; }
 }
 
   /* Thick Glass Effect — lets .app-blob's drifting orbs (AppShell.jsx) show

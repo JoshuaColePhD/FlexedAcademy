@@ -1041,6 +1041,35 @@ export function ChatPage() {
      makes the response visible immediately and keeps streaming replies in
      view until the teacher deliberately scrolls upward. */
   const followLatestIdRef = useRef(null)
+  /* While the teacher is actively dragging/wheeling the transcript, ignore
+     follow-scroll for a beat after the gesture ends. Instant programmatic
+     jumps mid-gesture are what made the list feel slippery — native momentum
+     would start, then get yanked to the bottom every streamed frame. */
+  const userScrollLockRef = useRef(false)
+  const userScrollUnlockTimerRef = useRef(null)
+  const lockUserScroll = useCallback((ms = 420) => {
+    userScrollLockRef.current = true
+    window.clearTimeout(userScrollUnlockTimerRef.current)
+    userScrollUnlockTimerRef.current = window.setTimeout(() => {
+      userScrollLockRef.current = false
+    }, ms)
+  }, [])
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return undefined
+    const onPointer = () => lockUserScroll(520)
+    const onWheel = () => lockUserScroll(380)
+    const onTouch = () => lockUserScroll(520)
+    el.addEventListener('pointerdown', onPointer, { passive: true })
+    el.addEventListener('wheel', onWheel, { passive: true })
+    el.addEventListener('touchstart', onTouch, { passive: true })
+    return () => {
+      el.removeEventListener('pointerdown', onPointer)
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouch)
+      window.clearTimeout(userScrollUnlockTimerRef.current)
+    }
+  }, [lockUserScroll, chatId])
   const activeChat = chats.find((c) => c.id === chatId)
   useDocumentTitle(activeChat?.title || (chatId ? 'New plan' : null))
 
@@ -3446,10 +3475,15 @@ export function ChatPage() {
   // when a background tab becomes visible again, using the latest height.
   useEffect(() => {
     if (!followLatestIdRef.current && !atBottom) return undefined
+    if (userScrollLockRef.current && !followLatestIdRef.current) return undefined
     const frame = requestAnimationFrame(() => {
       followLatestIdRef.current = null
       const scroller = scrollRef.current
-      if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'instant' })
+      if (!scroller) return
+      // Direct scrollTop assignment keeps follow-scroll in lockstep with the
+      // growing bubble without invoking smooth/instant scrollTo behavior that
+      // can cancel native inertia mid-flick on some browsers.
+      scroller.scrollTop = scroller.scrollHeight
     })
     return () => cancelAnimationFrame(frame)
   }, [messages, atBottom, chatStream.text])
@@ -4206,7 +4240,7 @@ export function ChatPage() {
           onOpenSettings={handleOpenSettings}
         />
       ) : (
-        <div className="min-h-0 flex-1 scroll-y" ref={scrollRef} onScroll={onScroll}>
+        <div className="min-h-0 flex-1 scroll-y chat-transcript-scroll" ref={scrollRef} onScroll={onScroll}>
           <div className={`chat-transcript-column chat-column mx-auto flex w-full flex-col px-gutter py-8 transition-all duration-500 ease-out ${
             voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
           }`}>
