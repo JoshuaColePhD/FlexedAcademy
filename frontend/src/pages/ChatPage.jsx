@@ -1876,6 +1876,16 @@ export function ChatPage() {
       // reply bubble was still landing. Real completion is finishWorkActivity
       // from the lesson/quiz/revision callbacks.
       if (event.code === 'complete' || event.status === 'complete' || event.done) return
+      // Put the phase on the live turn as well. These codes previously reached
+      // only updateActiveWorkActivity, which is a no-op on a plain
+      // conversational turn, so a long wait showed one unchanging label and no
+      // sign of progress. ThinkingIndicator ignores the codes that say nothing.
+      const liveId = liveMessageIdRef.current
+      if (liveId) {
+        setMessages((prev) => prev.map((m) => (
+          m.id === liveId && m.streaming ? { ...m, statusCode: event.code } : m
+        )))
+      }
       updateActiveWorkActivity(event)
     },
     onRetry: () => {

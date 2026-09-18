@@ -98,3 +98,32 @@ but they make failure recoverable and testable.
 
 **Tradeoff:** The demo needs stable fixture records and an explicitly configured
   deployment secret. It must never be implemented as a frontend-only convention.
+
+## 9. Let the model choose the tool; do not gate it with a keyword test
+
+**Decision:** Typed chat carries every artifact tool on every turn. Whether to
+call one is the model's judgment, shaped by the tool descriptions and one
+conversational policy. A heuristic may still decide *emphasis* — which context
+to spend a lookup on, whether an open plan is being edited — but never
+*capability*.
+
+**Why:** The previous gate required an action verb and a literal artifact noun
+("lesson plan", "quiz") in the last user message. It denied tools to "make a
+lesson", "build me next week" and "draft week 7", and because it read only the
+last message it denied them to every answer to a clarifying question — so the
+chat could ask what a week should cover and was then structurally unable to act
+on the reply. Meanwhile the prompt still told the model the week belonged in
+`generate_lesson_plan`. Instructed to call a tool it had not been given, the
+model did the only thing left and typed the whole week into the transcript.
+
+The asymmetry is the point. A false negative on emphasis costs a slightly less
+pointed prompt. A false negative on capability costs the entire feature, and it
+fails silently — the reply looks fluent, so nothing reports an error.
+
+**Tradeoff:** Tool choice becomes a model behavior rather than a branch, so it
+cannot be asserted exactly in the no-network suite. Offline tests assert
+*availability* and the transport contract; tool *choice* is covered by a
+live-model table in `docs/chat-behavior.md`. Two deterministic backstops guard
+the failure that motivated the change: a required `preamble` argument, so the
+teacher always gets a sentence before an artifact appears, and a prose limit in
+the stream that ends a turn still writing the artifact into the chat.

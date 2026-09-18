@@ -214,7 +214,7 @@ function MessageImpl({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.14 }}
             >
-              <ThinkingIndicator label={message.thinkingLabel} />
+              <ThinkingIndicator label={message.thinkingLabel} code={message.statusCode} />
             </motion.div>
           ) : (
             <motion.div
