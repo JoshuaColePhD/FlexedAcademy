@@ -138,6 +138,149 @@ def test_chat_context_labels_all_class_and_account_materials(monkeypatch):
     assert "snippet for global-map" in context
 
 
+def test_class_map_context_excludes_course_shaped_global_docs(monkeypatch):
+    """A Pre-AP Algebra 2 chat must not retrieve a global AP Lang pacing guide.
+
+    Global uploads default to kind=pacing_guide. Without a class filter, a
+    generic 'lesson plan' query pulls every prep's week 24 — quadratics from
+    the Algebra class map mashed with The Cask of Amontillado from AP Lang.
+    """
+    class_doc = {
+        "id": "alg-map",
+        "class_id": "alg-2",
+        "kind": "pacing_guide",
+        "original_name": "Pre-AP Algebra 2 pacing.docx",
+    }
+    global_pacing = {
+        "id": "ap-lang-global",
+        "class_id": None,
+        "kind": "pacing_guide",
+        "original_name": "AP Lang year map.docx",
+    }
+    global_syllabus = {
+        "id": "ap-lang-syllabus",
+        "class_id": None,
+        "kind": "syllabus",
+        "original_name": "AP Lang syllabus.docx",
+    }
+    global_other = {
+        "id": "dept-policy",
+        "class_id": None,
+        "kind": "other",
+        "original_name": "department policies.pdf",
+    }
+    snippets = {
+        "alg-map": "Week 24: quadratic functions in vertex, factored, and standard form.",
+        "ap-lang-global": "Week 24: voice and tone with The Cask of Amontillado.",
+        "ap-lang-syllabus": "Anchor texts include The Cask of Amontillado.",
+        "dept-policy": "Use the department late-work policy.",
+    }
+    monkeypatch.setattr(llm.db, "list_class_documents", lambda *_args: [class_doc])
+    monkeypatch.setattr(
+        llm.db,
+        "list_global_documents",
+        lambda *_args: [global_pacing, global_syllabus, global_other],
+    )
+    monkeypatch.setattr(llm, "embed_query", lambda *_args, **_kwargs: [0.1, 0.2])
+    monkeypatch.setattr(
+        llm.curriculum,
+        "retrieve_map_context",
+        lambda map_id, *_args, **_kwargs: snippets[map_id],
+    )
+
+    context = llm.map_context_for(
+        "teacher-1",
+        "Pre-AP Algebra 2",
+        "I want to work on my lesson plan. Any ideas?",
+        class_id="alg-2",
+    )
+
+    assert "quadratic functions" in context
+    assert "[class material: Pre-AP Algebra 2 pacing.docx]" in context
+    assert "[account material: department policies.pdf]" in context
+    assert "Cask of Amontillado" not in context
+    assert "AP Lang year map.docx" not in context
+    assert "AP Lang syllabus.docx" not in context
+
+
+def test_subject_map_context_excludes_course_shaped_global_docs(monkeypatch):
+    """The legacy subject path must not mix a global AP Lang map into Algebra."""
+    subject_map = {
+        "id": "alg-map",
+        "class_id": None,
+        "kind": "pacing_guide",
+        "original_name": "Pre-AP Algebra 2 pacing.docx",
+        "subject": "Pre-AP Algebra 2",
+    }
+    global_pacing = {
+        "id": "ap-lang-global",
+        "class_id": None,
+        "kind": "pacing_guide",
+        "original_name": "AP Lang year map.docx",
+    }
+    monkeypatch.setattr(llm.db, "get_active_curriculum_map", lambda *_args: subject_map)
+    monkeypatch.setattr(llm.db, "list_global_documents", lambda *_args: [global_pacing])
+    monkeypatch.setattr(llm, "embed_query", lambda *_args, **_kwargs: [0.1, 0.2])
+    monkeypatch.setattr(
+        llm.curriculum,
+        "retrieve_map_context",
+        lambda map_id, *_args, **_kwargs: (
+            "Week 24: quadratic functions."
+            if map_id == "alg-map"
+            else "Week 24: The Cask of Amontillado."
+        ),
+    )
+
+    context = llm.map_context_for("teacher-1", "Pre-AP Algebra 2", "lesson plan")
+
+    assert "quadratic functions" in context
+    assert "Cask of Amontillado" not in context
+
+
+def test_chat_prompt_locks_to_the_open_class_subject(monkeypatch):
+    from backend.routes import generate
+
+    monkeypatch.setattr(
+        generate,
+        "_request_class",
+        lambda *_args, **_kwargs: {
+            "id": "alg-2",
+            "subject": "Pre-AP Algebra 2",
+            "grade": "11",
+            "period_minutes": 50,
+            "custom_instructions": "",
+        },
+    )
+    monkeypatch.setattr(generate.db, "class_school", lambda *_args, **_kwargs: "florence-high")
+    monkeypatch.setattr(generate.llm, "output_length_for", lambda *_args, **_kwargs: "medium")
+    monkeypatch.setattr(generate, "_teacher_first_name", lambda *_args, **_kwargs: "Josh")
+    monkeypatch.setattr(generate.prompts, "class_period_block", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(generate, "weekly_template_context", lambda *_args, **_kwargs: "Monday through Friday")
+    monkeypatch.setattr(generate.schoolcal, "school_weeks", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(generate.llm, "custom_instructions_for", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        generate.llm,
+        "coaching_context_for",
+        lambda *_args, **_kwargs: "I teach AP Lang with The Cask of Amontillado.",
+    )
+    monkeypatch.setattr(generate.llm, "map_context_for", lambda *_args, **_kwargs: "")
+    monkeypatch.setattr(generate.llm, "prior_plan_context_for", lambda *_args, **_kwargs: "")
+
+    prompt = generate._build_chat_system_prompt(
+        "teacher-1",
+        None,
+        24,
+        "brainstorm",
+        last_user="I want to work on my lesson plan. Any ideas?",
+        class_id="alg-2",
+    )
+
+    assert "teaching partner for Pre-AP Algebra 2 (Grade 11)" in prompt
+    assert "This conversation is only for Pre-AP Algebra 2 (Grade 11)." in prompt
+    assert "Do not import texts, authors, skills, units, or routines from any other course" in prompt
+    assert "use them only when they apply to THIS class" in prompt
+
+
 def test_framework_catalog_is_scoped_to_a_non_alabama_state(monkeypatch):
     monkeypatch.setattr(misc.settings, "database_url", "")
     monkeypatch.setattr(misc.db, "framework_titles", lambda state: {"ELA": "Georgia ELA"})

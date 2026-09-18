@@ -173,6 +173,23 @@ def _record(user_id: str, kind: str, usage, *, model: str, started_at: float | N
     )
 
 
+# Pacing guides, syllabi, and curriculum maps are course-shaped even when
+# uploaded as account-wide (class_id NULL, subject GLOBAL). Mixing them into
+# every class's retrieval is how AP Lang week 24 (Cask of Amontillado) lands
+# in a Pre-AP Algebra 2 planning chat. Kind "other" (department policies,
+# generic rubrics) can still apply across classes.
+_COURSE_SHAPED_DOCUMENT_KINDS = frozenset({"pacing_guide", "syllabus", "curriculum_map"})
+
+
+def _account_reference_documents(user_id: str) -> list[dict]:
+    """Account-wide docs that can sit next to a class's own materials."""
+    return [
+        doc
+        for doc in db.list_global_documents(user_id)
+        if (doc.get("kind") or "other") not in _COURSE_SHAPED_DOCUMENT_KINDS
+    ]
+
+
 def map_context_for(
     user_id: str,
     subject: str,
@@ -180,10 +197,14 @@ def map_context_for(
     class_id: str | None = None,
     query_vector_future: Future | None = None,
 ) -> str:
-    """Snippets from the teacher's own active pacing guides and global documents, relevant to `query`.
+    """Snippets from this class's materials plus account-wide references, relevant to `query`.
 
     Public (not `_`-prefixed) because the conversational chat model needs this
     exact same lookup.
+
+    Course-shaped global documents (pacing guides, syllabi, curriculum maps)
+    are excluded: they have no class_id, so a generic "lesson plan" query
+    otherwise retrieves every prep's week at once.
 
     `query_vector_future`, when given (service.prepare passes its own
     base-query embedding future here when it's already embedding the exact
@@ -200,8 +221,8 @@ def map_context_for(
         active = db.get_active_curriculum_map(user_id, subject)
         if active:
             docs.append(active)
-            
-    docs.extend(db.list_global_documents(user_id))
+
+    docs.extend(_account_reference_documents(user_id))
 
     if not docs:
         return ""

@@ -14,6 +14,7 @@ Flexed typed chat treats advice, clarification, separate plan creation, whole-we
 - Every typed artifact tool takes a required `preamble`, declared first in its schema so it streams to the browser before the remaining arguments. The SSE order for an artifact turn is `chunk`* -> `tool_call` -> `done`. A turn that emits no preamble gets a per-tool default, so the transcript never jumps straight to a work card with nothing said.
 - Typed `stream_chat` sends function tools on every turn. `gpt-5.6-luna` on Chat Completions rejects that unless `reasoning_effort` is `none`; any other value 400s the turn before a token is produced. Tool-less calls may still use `low`.
 - The saved plan is supplied whenever one is open, unconditionally.
+- `map_context_for` retrieves the open class's documents plus account-wide `other` references (department policies, generic rubrics). Global pacing guides, syllabi, and curriculum maps are excluded so another prep's texts cannot enter this class's chat. The system prompt also locks the conversation to the open class's subject.
 - Original teacher requests and selected standards remain the generation query. Conversation history, question-card wording, and the model's summary carry supporting constraints. Completion messages follow successful saves, including single-day revisions.
 
 ## Teaching behavior

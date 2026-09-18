@@ -159,6 +159,7 @@ def test_single_persona_carries_the_behavior_the_regex_gate_used_to():
     assert "invite them to say what they need" in text
     assert "no question card on that turn" in text
     assert "A visible plan is context, not permission to edit it." in text
+    assert "Do not import texts, authors, skills, or units from another course" in text
     # The rule the whole change exists for.
     assert "NEVER WRITE THE ARTIFACT INTO THE CHAT" in raw
     assert "Never type Monday through Friday" in text
