@@ -174,7 +174,7 @@ def test_single_persona_carries_the_behavior_the_regex_gate_used_to():
     assert "invite them to say what they need" in text
     assert "no question card on that turn" in text
     assert "A visible plan is context, not permission to edit it." in text
-    assert "Do not import texts, authors, skills, or units from another course" in text
+    assert "mixed another course into this class" in text
     assert "choice box above the composer" in text
     assert "any ideas" in text
     # The rule the whole change exists for.
@@ -187,6 +187,16 @@ def test_single_persona_carries_the_behavior_the_regex_gate_used_to():
     assert "call generate_lesson_plan (or" not in raw
     assert "`generate_quiz`" not in raw
     assert "interview the teacher" in " ".join(PLAN_OPEN_OVERLAY.split())
+
+
+def test_math_course_lock_rejects_literary_mashups():
+    from backend.chat_policy import course_lock_block
+
+    lock = course_lock_block("Pre-AP Algebra 2", "Pre-AP Algebra 2 (Grade 11)")
+    assert "This conversation is only for Pre-AP Algebra 2 (Grade 11)." in lock
+    assert "that was an error" in lock
+    assert "This is a mathematics class." in lock
+    assert "literary texts" in lock
 
 
 @pytest.mark.parametrize(
@@ -274,6 +284,7 @@ def test_plan_context_reads_the_recent_exchange_not_one_message():
     ) is False
     assert references_plan_context("Can we rethink Wednesday's exit ticket?") is True
     assert references_plan_context("Why does the model feel less personal?") is False
+    assert references_plan_context("what are your suggestions?") is True
 
 
 def test_command_surface_needs_both_an_open_plan_and_a_plan(monkeypatch):

@@ -203,8 +203,9 @@ def map_context_for(
     exact same lookup.
 
     Course-shaped global documents (pacing guides, syllabi, curriculum maps)
-    are excluded: they have no class_id, so a generic "lesson plan" query
-    otherwise retrieves every prep's week at once.
+    are excluded on the subject path. When a class_id is set, only that class's
+    own documents are retrieved — account-wide files stay out so another prep
+    cannot enter this chat.
 
     `query_vector_future`, when given (service.prepare passes its own
     base-query embedding future here when it's already embedding the exact
@@ -217,12 +218,15 @@ def map_context_for(
     docs = []
     if class_id:
         docs.extend(db.list_class_documents(user_id, class_id))
+        # Class chats stay on this class's own materials. Account-wide pacing
+        # guides already leak other preps; even kind "other" can be a mixed
+        # year-long packet. Global references still apply on the legacy
+        # subject path below, where there is no class to prefer.
     else:
         active = db.get_active_curriculum_map(user_id, subject)
         if active:
             docs.append(active)
-
-    docs.extend(_account_reference_documents(user_id))
+        docs.extend(_account_reference_documents(user_id))
 
     if not docs:
         return ""
@@ -302,15 +306,74 @@ def custom_instructions_for(user_id: str, ctx: RequestContext | None = None) -> 
     return user.get("custom_instructions") if user else None
 
 
-def coaching_context_for(user_id: str) -> str:
+_LITERARY_CONTENT = re.compile(
+    r"\b(?:amontillado|gatsby|faulkner|poe\b|shakespeare|rhetorical analysis|"
+    r"space cat|close reading|anchor text|poem|poetry|short story|novel|"
+    r"ap language|ap lang)\b",
+    re.IGNORECASE,
+)
+_MATH_CONTENT = re.compile(
+    r"\b(?:algebra|quadratic|geometry|calculus|precalculus|vertex form|"
+    r"completing the square)\b",
+    re.IGNORECASE,
+)
+_MATH_SUBJECT = re.compile(
+    r"algebra|geometry|calculus|precalculus|pre-calculus|statistics|\bmath(?:ematics)?\b",
+    re.IGNORECASE,
+)
+_ELA_SUBJECT = re.compile(
+    r"language|english|literature|\bela\b|composition|rhetoric",
+    re.IGNORECASE,
+)
+
+
+def _other_class_subjects(user_id: str, subject: str | None) -> list[str]:
+    if not subject:
+        return []
+    current = subject.casefold()
+    names = []
+    try:
+        rows = db.list_classes(user_id)
+    except Exception:  # noqa: BLE001 — coaching must not fail a chat turn
+        return []
+    for row in rows:
+        name = str(row.get("subject") or "").strip()
+        if name and name.casefold() != current:
+            names.append(name)
+    return names
+
+
+def _foreign_to_subject(text: str, subject: str | None, other_subjects: list[str]) -> bool:
+    """True when a memory is about another prep, not this class."""
+
+    if not subject or not text:
+        return False
+    lower = text.casefold()
+    current = subject.casefold()
+    for other in other_subjects:
+        name = other.strip()
+        if len(name) < 4:
+            continue
+        if name.casefold() in lower and current not in lower:
+            return True
+    if _MATH_SUBJECT.search(subject) and _LITERARY_CONTENT.search(text):
+        return True
+    if _ELA_SUBJECT.search(subject) and _MATH_CONTENT.search(text) and not _ELA_SUBJECT.search(text):
+        return True
+    return False
+
+
+def coaching_context_for(user_id: str, subject: str | None = None) -> str:
     """Bounded teacher-owned context for the conversational coach.
 
     These are preferences and teaching goals, not hidden instructions.  The
     prompt labels them that way so a memory can personalize a reply without
-    becoming a prompt-injection channel.
+    becoming a prompt-injection channel. Memories about another prep are
+    dropped when `subject` is set so AP Lang texts cannot steer Algebra 2.
     """
     profile = db.get_coaching_profile(user_id)
     memories = db.list_coaching_memories(user_id, 12)
+    other_subjects = _other_class_subjects(user_id, subject)
     lines = []
     labels = {
         "teaching_context": "Teaching context",
@@ -325,8 +388,11 @@ def coaching_context_for(user_id: str) -> str:
             lines.append(f"{label}: {value[:1200]}")
     for memory in memories:
         value = str(memory.get("memory") or "").strip()
-        if value:
-            lines.append(f"Remembered teacher preference ({memory.get('category', 'context')}): {value[:500]}")
+        if not value:
+            continue
+        if _foreign_to_subject(value, subject, other_subjects):
+            continue
+        lines.append(f"Remembered teacher preference ({memory.get('category', 'context')}): {value[:500]}")
     return "\n".join(lines)
 
 

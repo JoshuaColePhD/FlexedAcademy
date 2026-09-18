@@ -134,8 +134,8 @@ def test_chat_context_labels_all_class_and_account_materials(monkeypatch):
 
     assert "[class material: AP Lang syllabus.docx]" in context
     assert "snippet for class-map" in context
-    assert "[account material: department policies.pdf]" in context
-    assert "snippet for global-map" in context
+    assert "[account material: department policies.pdf]" not in context
+    assert "snippet for global-map" not in context
 
 
 def test_class_map_context_excludes_course_shaped_global_docs(monkeypatch):
@@ -197,7 +197,7 @@ def test_class_map_context_excludes_course_shaped_global_docs(monkeypatch):
 
     assert "quadratic functions" in context
     assert "[class material: Pre-AP Algebra 2 pacing.docx]" in context
-    assert "[account material: department policies.pdf]" in context
+    assert "[account material: department policies.pdf]" not in context
     assert "Cask of Amontillado" not in context
     assert "AP Lang year map.docx" not in context
     assert "AP Lang syllabus.docx" not in context
@@ -277,8 +277,46 @@ def test_chat_prompt_locks_to_the_open_class_subject(monkeypatch):
 
     assert "teaching partner for Pre-AP Algebra 2 (Grade 11)" in prompt
     assert "This conversation is only for Pre-AP Algebra 2 (Grade 11)." in prompt
-    assert "Do not import texts, authors, skills, units, or routines from any other course" in prompt
+    assert "If an earlier message in this chat mixed in another course, that was an error" in prompt
+    assert "This is a mathematics class." in prompt
+    assert "Do not use literary texts" in prompt
     assert "use them only when they apply to THIS class" in prompt
+
+
+def test_algebra_coaching_drops_literary_memories(monkeypatch):
+    monkeypatch.setattr(
+        llm.db,
+        "get_coaching_profile",
+        lambda *_args, **_kwargs: {
+            "teaching_context": "I teach AP Lang and Pre-AP Algebra 2.",
+            "strengths": "",
+            "challenges": "",
+            "preferences": "Keep Wednesday discussion-based.",
+            "goals": "",
+        },
+    )
+    monkeypatch.setattr(
+        llm.db,
+        "list_coaching_memories",
+        lambda *_args, **_kwargs: [
+            {"memory": "Use The Cask of Amontillado for voice and tone.", "category": "texts"},
+            {"memory": "Keep Friday as a review day in Algebra.", "category": "pacing"},
+        ],
+    )
+    monkeypatch.setattr(
+        llm.db,
+        "list_classes",
+        lambda *_args, **_kwargs: [
+            {"subject": "AP Language & Composition"},
+            {"subject": "Pre-AP Algebra 2"},
+        ],
+    )
+
+    context = llm.coaching_context_for("teacher-1", subject="Pre-AP Algebra 2")
+
+    assert "Keep Wednesday discussion-based." in context
+    assert "Keep Friday as a review day in Algebra." in context
+    assert "Cask of Amontillado" not in context
 
 
 def test_framework_catalog_is_scoped_to_a_non_alabama_state(monkeypatch):
