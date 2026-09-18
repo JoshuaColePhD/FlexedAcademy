@@ -7810,15 +7810,6 @@
   .msg-bubble-user.is-group-last {
     border-top-right-radius: 5px;
   }
-  .msg-bubble-assistant.is-group-first,
-  .msg-bubble-assistant.is-group-middle,
-  .msg-bubble-assistant.is-group-last {
-    border-bottom-left-radius: 5px;
-  }
-  .msg-bubble-assistant.is-group-middle,
-  .msg-bubble-assistant.is-group-last {
-    border-top-left-radius: 5px;
-  }
   /* The assistant's own words, not a plan cell — the model writes markdown
      (bold day labels, numbered lists) and it used to render as literal
      asterisks because nothing parsed it. */

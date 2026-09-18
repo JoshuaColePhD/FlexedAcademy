@@ -56,15 +56,9 @@ function focusDuring(plan) {
   return { dayIndex, name: day.name, field: 'during' }
 }
 
-/* One exchange on the page.
- *
- * Both turns sit in the same neo-raised, rounded box now — the teacher's own
- * message tinted with the accent color, the app's reply in the plain
- * neutral card surface (bg-paper-raised) the rest of the app already uses
- * for a "card." Same shape, different fill: that's what keeps "said by you"
- * distinct from "said by the app" without giving the assistant an avatar or
- * a second speaker's identity — it's still the page talking back, just
- * boxed like everything else here. */
+/* One exchange on the page. User turns use the purple message bubble; the
+ * assistant's response stays inline on the transcript without a container
+ * that makes it look like another speaker bubble. */
 function MessageImpl({
   message,
   subject,
@@ -219,11 +213,11 @@ function MessageImpl({
       <div className={`flex max-w-full flex-col ${isUser ? 'items-end' : 'w-full items-start'}`}>
         {/* Thinking dots and the real reply used to be two entirely separate
             component returns — the dots vanished the instant content
-            arrived and the bubble popped in a beat later with no visual
+            arrived and the response appeared a beat later with no visual
             relationship between the two, reading as a hard cut rather than
             a reply arriving. Cross-fading them in the same slot (instead of
             the whole message remounting) makes that a single continuous
-            moment: dots fade out as the bubble fades in. */}
+            moment: dots fade out as the response fades in. */}
         <AnimatePresence initial={false}>
           {isThinking ? (
             <motion.div
@@ -262,12 +256,7 @@ function MessageImpl({
                       `msg-bubble msg-bubble-user is-group-${bubbleGroup} neo-raised rounded-2xl px-4 py-3 text-[0.9375rem] leading-relaxed`
                     : message.isError
                       ? 'msg-error text-[0.9375rem] leading-relaxed'
-                      : /* Same neo-raised box as the teacher's own bubble, but
-                           bg-paper-raised instead of bg-accent-tint — the app's
-                           existing neutral "card" surface (see DecisionStack,
-                           VoiceModePanel), not a colored one, so the two turns are
-                           still visually distinct while both read as boxed. */
-                        `msg-bubble msg-bubble-assistant is-group-${bubbleGroup} neo-raised rounded-2xl bg-paper-raised px-4 py-3 text-[0.9375rem] leading-relaxed text-ink${assistantSettled ? ' fa-settle' : ''}`
+                      : `msg-assistant w-full max-w-[48rem] text-[0.9375rem] leading-relaxed text-ink${assistantSettled ? ' fa-settle' : ''}`
                 }
                 style={isUser ? { color: 'var(--ink)' } : undefined}
               >
