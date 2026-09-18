@@ -695,17 +695,17 @@ export function AppShell({ children }) {
       </a>
 
       {/* docked */}
-      {usesDockedRail && !effectiveRailCollapsed ? (
+      {usesDockedRail ? (
         <div
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
-            width: 'var(--sidebar-w)',
+            width: effectiveRailCollapsed ? '52px' : 'var(--sidebar-w)',
             transitionDuration: documentReading ? 'var(--t-reader)' : 'var(--t-base)',
             transitionTimingFunction: documentReading ? 'var(--ease-glide)' : 'var(--ease-out)',
           }}
         >
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <Rail onToggleCollapse={toggleRailCollapsed} touchActions={isTouch} />
+            <Rail collapsed={effectiveRailCollapsed} onToggleCollapse={toggleRailCollapsed} touchActions={isTouch} />
           </div>
         </div>
       ) : null}
