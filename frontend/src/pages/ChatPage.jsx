@@ -987,11 +987,12 @@ export function ChatPage() {
     // visible, so resizing cannot leave the dock using an old layout.
     // The bottom inset always follows the anchor's live bottom edge, so
     // browser scaling and the lesson-plan overlay cannot strand the dock.
-    // Workspace surfaces animate independently. The composer never animates
-    // its measured geometry; its small settle response is applied directly to
-    // the shell after a panel state change.
-    el.style.transition = 'none'
-    el.style.willChange = 'auto'
+    // Follow the measured chat lane with the same timing as the output drawer.
+    // A shorter, different transition made the portaled footer arrive at the
+    // chat seam before the drawer finished moving, which read as a gap/overlap
+    // glitch while Outputs opened or closed.
+    el.style.transition = 'left var(--t-reader) var(--ease-glide), width var(--t-reader) var(--ease-glide)'
+    el.style.willChange = 'left, width'
     return el
   })
   /* The document opens over the chat, but it uses the SAME composer geometry
@@ -3629,30 +3630,27 @@ export function ChatPage() {
     }
   }, [artifactFullscreen, overlayOpen, railOpen])
   const setDocumentReading = workspaceRail.setDocumentReading
-  // Capture the command bar once from the center transcript's content bounds.
-  // Panels may open, close, or overlap that transcript, but they never get to
-  // resize or reposition the composer.
+  // Snapshot the command bar before opening a lesson-plan reader. The reader
+  // intentionally changes the workspace geometry, but the composer should
+  // keep the exact width and screen position it had in the chat view so it
+  // can remain over the document instead of collapsing into the chat rail.
   const captureComposerReaderAnchor = useCallback(() => {
     if (isPhone || isLandscapePhone || artifactFullscreen) return
-    if (overlayOpen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-    if (composerReaderAnchorRef.current) return
+    const dock = composerDockRef.current
+    const shell = dock?.querySelector('.composer-shell')
     const anchor = composerAnchorRef.current
-    const workspace = anchor?.closest('.workspace-panes')
-    const transcript = workspace?.querySelector('.chat-workspace-main .chat-transcript-column')
-    const transcriptRect = transcript?.getBoundingClientRect()
-    const styles = transcript ? window.getComputedStyle(transcript) : null
-    const leftInset = styles ? Number.parseFloat(styles.paddingLeft) || 0 : 0
-    const rightInset = styles ? Number.parseFloat(styles.paddingRight) || 0 : 0
-    const width = transcriptRect ? transcriptRect.width - leftInset - rightInset : 0
-    if (!transcriptRect || width < 100) return
+    if (!dock || !shell || !anchor) return
+    const dockRect = dock.getBoundingClientRect()
+    const shellRect = shell.getBoundingClientRect()
+    if (dockRect.width < 100 || shellRect.width < 100) return
     composerReaderAnchorRef.current = {
-      left: transcriptRect.left + leftInset,
-      width,
-      laneWidth: width,
-      shellLeft: transcriptRect.left + leftInset,
-      shellInset: 0,
+      left: dockRect.left,
+      width: dockRect.width,
+      laneWidth: Math.max(0, dockRect.width),
+      shellLeft: shellRect.left,
+      shellInset: shellRect.left - dockRect.left,
     }
-  }, [artifactFullscreen, composerReaderSettling, desktopInspectorOpen, isLandscapePhone, isPhone, overlayOpen])
+  }, [artifactFullscreen, isLandscapePhone, isPhone])
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('is-document-reading', Boolean(desktopInspectorOpen))
     setDocumentReading?.(Boolean(desktopInspectorOpen))
@@ -3661,13 +3659,19 @@ export function ChatPage() {
       setDocumentReading?.(false)
     }
   }, [desktopInspectorOpen, setDocumentReading])
-  // Let first paint settle before taking the permanent center-composer
-  // rectangle. This avoids capturing a partially animated workspace width.
+  // Capture the settled centered composer geometry before the reader opens.
+  // The reader narrows the available lane, but the composer remains anchored
+  // in the middle workspace instead of moving into the collapsed chat rail.
   useLayoutEffect(() => {
     if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-    const settleTimer = window.setTimeout(captureComposerReaderAnchor, 500)
+    const capture = () => {
+      if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
+      captureComposerReaderAnchor()
+    }
+    capture()
+    const settleTimer = window.setTimeout(capture, 450)
     return () => window.clearTimeout(settleTimer)
-  }, [artifactFullscreen, captureComposerReaderAnchor, composerDockH, composerReaderSettling, desktopInspectorOpen, overlayOpen])
+  }, [artifactFullscreen, captureComposerReaderAnchor, composerDockH, composerReaderSettling, desktopInspectorOpen, overlayOpen, railOpen])
   // Fullscreen: the host becomes the true viewport. Docked: the host
   // becomes exactly the box #main used to provide for free (before this
   // was always portaled, .artifact-overlay's own position:fixed picked up
@@ -3742,9 +3746,9 @@ export function ChatPage() {
       window.removeEventListener('resize', sync)
     }
   }, [artifactFullscreen, overlayPortalHost, desktopInspectorOpen])
-  // Keep the persistent composer in its one permanent center slot. Its
-  // portal is necessary for layering above readers, but panel geometry must
-  // never be allowed to resize the command surface after first paint.
+  // Keep the persistent footer matched to the live anchor. When the lesson
+  // plan opens, preserve the centered composer position and narrow its lane
+  // from the right rather than moving it into the collapsed chat rail.
   useEffect(() => {
     const anchor = artifactFullscreen
       ? overlayPortalHost
@@ -3756,42 +3760,72 @@ export function ChatPage() {
     const getDrawer = () => workspace?.querySelector(':scope > .artifact-drawer')
     const sync = () => {
       const r = anchor.getBoundingClientRect()
-      const transcript = !artifactFullscreen
-        ? workspace?.querySelector('.chat-workspace-main .chat-transcript-column')
-        : null
-      const transcriptRect = transcript?.getBoundingClientRect()
-      const transcriptStyles = transcript ? window.getComputedStyle(transcript) : null
-      const transcriptLeftInset = transcriptStyles ? Number.parseFloat(transcriptStyles.paddingLeft) || 0 : 0
-      const transcriptRightInset = transcriptStyles ? Number.parseFloat(transcriptStyles.paddingRight) || 0 : 0
-      const transcriptContent = transcriptRect && transcriptRect.width >= 100
-        ? {
-          left: transcriptRect.left + transcriptLeftInset,
-          width: Math.max(0, transcriptRect.width - transcriptLeftInset - transcriptRightInset),
+      // Outputs is an in-flow inspector column. Size the command lane to the
+      // chat canvas rather than stretching it to the drawer edge, which would
+      // hide the gutter the composer is supposed to keep between the rails.
+      const drawer = getDrawer()
+      const drawerOpen = Boolean(
+        !document.documentElement.classList.contains('is-document-reading') &&
+        drawer?.classList.contains('is-open') &&
+        !drawer.classList.contains('is-closing')
+      )
+      const drawerLeft = drawerOpen ? drawer.getBoundingClientRect().left : null
+      const laneWidth = Math.max(
+        0,
+        Math.min(r.width, drawerLeft == null ? r.width : drawerLeft - 24 - r.left),
+      )
+      const documentReading = document.documentElement.classList.contains('is-document-reading')
+      // Do not overwrite the pre-reader anchor during the return journey.
+      // Between the document unmounting and Outputs reaching its resting
+      // width, the live lane briefly spans the whole chat area. Capturing
+      // that transient value was the source of the close-time bounce.
+      const retainingReaderAnchor = desktopInspector && composerReaderSettling
+      if (!overlayOpen && !desktopInspectorOpen && !documentReading && !artifactFullscreen && !retainingReaderAnchor) {
+        const dock = composerDockRef.current
+        const shell = dock?.querySelector('.composer-shell')
+        const dockRect = dock?.getBoundingClientRect()
+        const shellRect = shell?.getBoundingClientRect()
+        if (dockRect && shellRect && dockRect.width >= 100 && shellRect.width >= 100) {
+          composerReaderAnchorRef.current = {
+            left: dockRect.left,
+            width: dockRect.width,
+            laneWidth,
+            shellLeft: shellRect.left,
+            shellInset: shellRect.left - dockRect.left,
+          }
         }
-        : null
-      const liveContent = transcriptContent ?? { left: r.left, width: r.width }
-      // Use that same saved rectangle everywhere: normal chat, Outputs,
-      // docked reader, fullscreen reader, and rail transitions. The fallback
-      // exists only for the first render before a transcript can be measured.
+      }
+      // Keep the composer pinned to its pre-reader geometry while the lesson
+      // plan is actually mounted. Once the reader has left, size the command
+      // lane to the live chat column so it does not sit over the in-flow
+      // Outputs inspector. Inner max-width: 54rem still aligns the bar with
+      // the transcript reading measure inside that lane.
       const cachedReaderAnchor = composerReaderAnchorRef.current
       const hasValidCachedAnchor = Boolean(
         cachedReaderAnchor &&
         cachedReaderAnchor.width >= 100 &&
-        cachedReaderAnchor.laneWidth >= 100 &&
-        Math.abs(cachedReaderAnchor.width - cachedReaderAnchor.laneWidth) <= 24 &&
-        cachedReaderAnchor.left >= -24 &&
-        cachedReaderAnchor.left + cachedReaderAnchor.width <= window.innerWidth + 24,
+        cachedReaderAnchor.laneWidth >= 100,
       )
       if (cachedReaderAnchor && !hasValidCachedAnchor) composerReaderAnchorRef.current = null
-      const keepReaderComposer = Boolean(hasValidCachedAnchor && !isPhone && !isLandscapePhone)
+      const keepReaderComposer = Boolean(
+        desktopInspector &&
+        hasValidCachedAnchor &&
+        desktopInspectorOpen &&
+        !artifactFullscreen &&
+        !isPhone &&
+        !isLandscapePhone
+      )
       const readerAnchor = keepReaderComposer ? composerReaderAnchorRef.current : null
-      const hostLeft = readerAnchor?.left ?? liveContent.left
-      const hostWidth = readerAnchor?.width ?? liveContent.width
-      const visibleLaneWidth = readerAnchor?.laneWidth ?? liveContent.width
-      // The command bar itself is intentionally motionless. Panel surfaces
-      // animate around it; animating this portal's measured rectangle was the
-      // source of its late second slide after an otherwise-complete panel move.
-      portalHost.style.transition = 'none'
+      const hostLeft = (readerAnchor?.shellLeft != null && readerAnchor.shellInset != null
+        ? readerAnchor.shellLeft - readerAnchor.shellInset
+        : readerAnchor?.left ?? r.left)
+      const hostWidth = readerAnchor?.width ?? r.width
+      const visibleLaneWidth = readerAnchor
+        ? readerAnchor.laneWidth
+        : laneWidth
+      portalHost.style.transition = documentReading || desktopInspectorOpen
+        ? 'width var(--t-reader) var(--ease-glide)'
+        : 'left var(--t-reader) var(--ease-glide), width var(--t-reader) var(--ease-glide)'
       portalHost.style.left = `${hostLeft}px`
       portalHost.style.width = `${Math.max(0, hostWidth)}px`
       portalHost.style.top = 'auto'
@@ -4534,7 +4568,7 @@ export function ChatPage() {
         className={`composer-dock-surface shrink-0 bg-transparent pb-5 pt-3${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-open' : ''}`}
         style={isPhone && keyboardInset > 8 ? { paddingBottom: `${keyboardInset + 8}px` } : undefined}
       >
-        <div className={`relative mx-auto w-full max-w-4xl${isPhone ? ' px-gutter' : ' px-0'}`}>
+        <div className="relative mx-auto w-full max-w-4xl px-gutter">
           {generationStatus ? (
             <div className="composer-writing-status composer-generation-status mb-2" role="status" aria-live="polite">
               <span className="composer-writing-status-mark" aria-hidden="true">
