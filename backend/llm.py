@@ -358,9 +358,11 @@ def _foreign_to_subject(text: str, subject: str | None, other_subjects: list[str
             return True
     if _MATH_SUBJECT.search(subject) and _LITERARY_CONTENT.search(text):
         return True
-    if _ELA_SUBJECT.search(subject) and _MATH_CONTENT.search(text) and not _ELA_SUBJECT.search(text):
-        return True
-    return False
+    return bool(
+        _ELA_SUBJECT.search(subject)
+        and _MATH_CONTENT.search(text)
+        and not _ELA_SUBJECT.search(text)
+    )
 
 
 def coaching_context_for(user_id: str, subject: str | None = None) -> str:
