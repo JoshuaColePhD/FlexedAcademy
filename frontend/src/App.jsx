@@ -16,6 +16,7 @@ import { ConfirmProvider } from './components/ConfirmProvider'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './components/AuthProvider'
 import { BillingProvider } from './components/BillingProvider'
+import { SubscriptionAccessScreen } from './components/SubscriptionAccessScreen'
 import { VoiceProvider } from './components/VoiceProvider'
 import { useAuth, EXPLICIT_SIGNOUT_KEY, KNOWN_AUTHED_KEY } from './lib/authContext'
 import { safeReturnTo, withReturnTo } from './lib/returnTo'
@@ -30,6 +31,7 @@ import { PHONE, useMediaQuery } from './hooks/useMediaQuery'
 import './styles/base.css'
 import './styles/codex.css'
 import { useTheme } from './hooks/useTheme'
+import { useBilling } from './lib/billingContext'
 
 const lazyNamed = (loader, name) => lazy(() => loader().then((module) => ({ default: module[name] })))
 const loadChatPage = () => import('./pages/ChatPage.jsx')
@@ -391,6 +393,30 @@ function Gate() {
   )
 }
 
+/**
+ * An expired, unsubscribed account has no workable path inside the product.
+ * Replace the app shell with billing rather than leaving every navigation item
+ * live-looking and only refusing a request after the teacher starts work.
+ * Billing-disabled deployments remain fully usable by entitlement design.
+ */
+function SubscriptionAccessGate() {
+  const { entitlement, billingEnabled, priceLabel, startCheckout, busy } = useBilling()
+  const { logout } = useAuth()
+
+  if (billingEnabled && entitlement?.trial_expired) {
+    return (
+      <SubscriptionAccessScreen
+        priceLabel={priceLabel}
+        busy={busy}
+        onSubscribe={startCheckout}
+        onSignOut={logout}
+      />
+    )
+  }
+
+  return <Gate />
+}
+
 /** Honours ?next= after a successful sign-in — but only once we know the
  *  account isn't brand-new. next is almost always a class-scoped URL (a
  *  colleague clicking a shared plan/week link IS how someone new to the
@@ -492,7 +518,7 @@ export default function App() {
                           <div className="app-blob absolute inset-0 z-0" aria-hidden="true" />
                           <Suspense fallback={<BootScreen />}>
                             <CommandPalette />
-                            <Gate />
+                            <SubscriptionAccessGate />
                           </Suspense>
                         </div>
                       </VoiceProvider>

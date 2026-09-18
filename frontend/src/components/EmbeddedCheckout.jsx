@@ -153,8 +153,10 @@ function CheckoutForm({
     setIsSubmitting(true)
     setErrorMessage('')
     try {
-      const returnUrl = `${window.location.origin}${window.location.pathname}?checkout=return&session_id={CHECKOUT_SESSION_ID}`
-      const confirmResult = await result.checkout.confirm({ returnUrl })
+      // The server creates this Elements Checkout Session with its canonical
+      // `return_url`. Stripe rejects a second return URL at confirmation time,
+      // so confirmation deliberately reuses the session's configured route.
+      const confirmResult = await result.checkout.confirm()
       if (confirmResult.type === 'error') {
         onCheckoutEvent('embedded_confirm_failed')
         setErrorMessage(confirmResult.error.message || 'The payment could not be completed.')

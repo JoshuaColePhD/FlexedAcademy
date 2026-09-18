@@ -3766,6 +3766,121 @@
     }
   }
 
+  /* ── subscription access ────────────────────────────────────────────────
+     An expired account has one clear next step. This replaces, rather than
+     merely overlays, the workspace so no inactive navigation remains visible
+     behind the billing decision. */
+  .subscription-access-screen {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    width: 100%;
+    min-height: 100%;
+    place-items: center;
+    overflow: auto;
+    padding: clamp(24px, 6vw, 72px);
+    background:
+      radial-gradient(circle at 18% 12%, rgb(var(--accent-rgb) / 0.14), transparent 34%),
+      radial-gradient(circle at 84% 86%, rgb(var(--ok-rgb) / 0.1), transparent 30%),
+      var(--paper-sunken);
+  }
+  .subscription-access-card {
+    width: min(100%, 34rem);
+    padding: clamp(28px, 5vw, 48px);
+    border: 1px solid var(--edge-strong);
+    border-radius: 28px;
+    background: rgb(var(--paper-raised-rgb) / 0.94);
+    box-shadow: 0 24px 80px rgb(0 0 0 / 0.16);
+  }
+  .subscription-access-mark {
+    display: grid;
+    width: 46px;
+    height: 46px;
+    place-items: center;
+    border-radius: 16px;
+    color: var(--accent-text);
+    background: rgb(var(--accent-rgb) / 0.13);
+  }
+  .subscription-access-eyebrow {
+    margin: 20px 0 0;
+    color: var(--ink-muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .subscription-access-card h1 {
+    margin: 8px 0 0;
+    color: var(--ink);
+    font-size: clamp(1.8rem, 4vw, 2.4rem);
+    line-height: 1.08;
+  }
+  .subscription-access-copy {
+    margin: 14px 0 0;
+    color: var(--ink-soft);
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+  .subscription-access-plan {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 26px;
+    padding: 16px;
+    border: 1px solid rgb(var(--accent-rgb) / 0.24);
+    border-radius: 16px;
+    background: rgb(var(--accent-rgb) / 0.07);
+  }
+  .subscription-access-plan span,
+  .subscription-access-plan small {
+    display: block;
+  }
+  .subscription-access-plan span { color: var(--ink); font-weight: 700; }
+  .subscription-access-plan small { margin-top: 3px; color: var(--ink-muted); }
+  .subscription-access-plan strong { color: var(--ink); white-space: nowrap; }
+  .subscription-access-benefits {
+    display: grid;
+    gap: 11px;
+    margin: 22px 0 0;
+    padding: 0;
+    color: var(--ink-soft);
+    font-size: 0.9rem;
+    list-style: none;
+  }
+  .subscription-access-benefits li {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+  }
+  .subscription-access-benefits svg { flex: none; margin-top: 2px; color: var(--ok); }
+  .subscription-access-cta {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 48px;
+    margin-top: 28px;
+  }
+  .subscription-access-signout {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    width: 100%;
+    margin-top: 14px;
+    color: var(--ink-muted);
+    font-size: 0.875rem;
+  }
+  .subscription-access-signout:hover,
+  .subscription-access-signout:focus-visible { color: var(--ink); }
+  @media (max-width: 480px) {
+    .subscription-access-screen { padding: 16px; }
+    .subscription-access-card { padding: 28px 22px; border-radius: 22px; }
+    .subscription-access-plan { align-items: flex-start; flex-direction: column; gap: 6px; }
+  }
+
   /* ── confirm dialog ─────────────────────────────────────────────────────
      Above every app surface, including the document/composer portal hosts.
      Those hosts intentionally sit at z-index 100/200 so their controls can
