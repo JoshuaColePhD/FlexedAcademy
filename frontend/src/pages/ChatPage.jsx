@@ -1052,6 +1052,20 @@ export function ChatPage() {
      makes the response visible immediately and keeps streaming replies in
      view until the teacher deliberately scrolls upward. */
   const followLatestIdRef = useRef(null)
+  /* Which turn is pinned to the TOP of the viewport for this exchange, and the
+     spacer that makes that possible. Scrolling to the absolute bottom meant a
+     streaming reply crawled up from the bottom edge, so the line being read
+     never held still. Pinning the question to the top and letting the answer
+     fill the space beneath it is what ChatGPT and Claude both do.
+
+     The spacer is sized so that (content below the anchor + spacer) exactly
+     fills one viewport. As the reply grows the spacer shrinks by the same
+     amount, so total scroll height — and therefore the pinned position — stays
+     put while the text arrives, and the spacer reaches zero on its own once the
+     reply is tall enough to stand alone. No dead space left behind, and no
+     jump from removing it. */
+  const followAnchorIdRef = useRef(null)
+  const spacerRef = useRef(null)
   /* While the teacher is actively dragging/wheeling the transcript, ignore
      follow-scroll for a beat after the gesture ends. Instant programmatic
      jumps mid-gesture are what made the list feel slippery — native momentum
@@ -1069,15 +1083,25 @@ export function ChatPage() {
     const el = scrollRef.current
     if (!el) return undefined
     const onPointer = () => lockUserScroll(520)
-    const onWheel = () => lockUserScroll(380)
-    const onTouch = () => lockUserScroll(520)
+    // Direction matters: scrolling TOWARD the bottom is the teacher asking to
+    // keep up, and locking on it suppressed the very follow they wanted.
+    const onWheel = (e) => { if (e.deltaY < 0) lockUserScroll(380) }
+    let touchY = null
+    const onTouch = (e) => { touchY = e.touches?.[0]?.clientY ?? null }
+    const onTouchMove = (e) => {
+      const y = e.touches?.[0]?.clientY
+      if (touchY != null && y != null && y > touchY) lockUserScroll(520)
+      touchY = y ?? touchY
+    }
     el.addEventListener('pointerdown', onPointer, { passive: true })
     el.addEventListener('wheel', onWheel, { passive: true })
     el.addEventListener('touchstart', onTouch, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: true })
     return () => {
       el.removeEventListener('pointerdown', onPointer)
       el.removeEventListener('wheel', onWheel)
       el.removeEventListener('touchstart', onTouch)
+      el.removeEventListener('touchmove', onTouchMove)
       window.clearTimeout(userScrollUnlockTimerRef.current)
     }
   }, [lockUserScroll, chatId])
@@ -2626,6 +2650,7 @@ export function ChatPage() {
       // and clears it, so the reply that's about to arrive doesn't drag the
       // view any further than this turn's own opening line.
       followLatestIdRef.current = newUserMessage.id
+      followAnchorIdRef.current = newUserMessage.id
       activityAnchorRef.current = newUserMessage.id
       pendingActivityKindRef.current = null
 
@@ -3489,20 +3514,63 @@ export function ChatPage() {
   // Coalesce streamed chunks into one update per frame. Only move this
   // scroller: scrollIntoView also moves ancestor panes. A queued frame runs
   // when a background tab becomes visible again, using the latest height.
+  const applyFollow = useCallback(() => {
+    const scroller = scrollRef.current
+    if (!scroller) return
+    const spacer = spacerRef.current
+    const anchorId = followAnchorIdRef.current
+    const anchor = anchorId
+      ? scroller.querySelector(`[data-message-id="${CSS.escape(String(anchorId))}"]`)
+      : null
+    if (!anchor) {
+      if (spacer) spacer.style.height = '0px'
+      // Direct scrollTop assignment keeps follow-scroll in lockstep with the
+      // growing bubble without invoking smooth/instant scrollTo behavior that
+      // can cancel native inertia mid-flick on some browsers.
+      scroller.scrollTop = scroller.scrollHeight
+      return
+    }
+    const gutter = 12
+    const anchorTop = Math.max(0, anchor.offsetTop - gutter)
+    const currentSpacer = spacer ? spacer.offsetHeight : 0
+    const contentHeight = scroller.scrollHeight - currentSpacer
+    const needed = Math.max(0, anchorTop + scroller.clientHeight - contentHeight)
+    if (spacer) spacer.style.height = `${needed}px`
+    scroller.scrollTop = anchorTop
+  }, [])
+
   useEffect(() => {
     if (!followLatestIdRef.current && !atBottom) return undefined
     if (userScrollLockRef.current && !followLatestIdRef.current) return undefined
     const frame = requestAnimationFrame(() => {
       followLatestIdRef.current = null
-      const scroller = scrollRef.current
-      if (!scroller) return
-      // Direct scrollTop assignment keeps follow-scroll in lockstep with the
-      // growing bubble without invoking smooth/instant scrollTo behavior that
-      // can cancel native inertia mid-flick on some browsers.
-      scroller.scrollTop = scroller.scrollHeight
+      applyFollow()
     })
     return () => cancelAnimationFrame(frame)
-  }, [messages, atBottom, chatStream.text])
+  }, [messages, atBottom, chatStream.text, applyFollow])
+
+  /* A pin belongs to one exchange. Leaving it set across a chat switch would
+     keep a spacer sized for a conversation that is no longer on screen. */
+  useEffect(() => {
+    followAnchorIdRef.current = null
+    if (spacerRef.current) spacerRef.current.style.height = '0px'
+  }, [chatId])
+
+  /* Progressive markdown changes height on frames where chatStream.text has
+     not changed — KaTeX laying out, a table finalizing, a font swapping in — so
+     the effect above cannot see them. Safari has no overflow-anchor, so this is
+     the portable answer. */
+  useEffect(() => {
+    const scroller = scrollRef.current
+    if (!scroller || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(() => {
+      if (!followAnchorIdRef.current) return
+      if (userScrollLockRef.current || !atBottom) return
+      applyFollow()
+    })
+    for (const child of scroller.children) observer.observe(child)
+    return () => observer.disconnect()
+  }, [atBottom, applyFollow, messages.length])
 
   /* Voice mode's other half — see VoiceProvider for the mic button's. One
      effect watching `messages` catches every assistant reply this component
@@ -4401,7 +4469,7 @@ export function ChatPage() {
                 ? groupEnd ? 'last' : 'middle'
                 : groupEnd ? 'single' : 'first'
               return (
-                <div key={m.id}>
+                <div key={m.id} data-message-id={m.id}>
                   {daySep ? (
                     <div className={i === 0 ? 'pb-4' : 'pb-4 pt-3'}>
                       <DaySeparator label={dayLabel(m.created_at)} />
@@ -4513,6 +4581,8 @@ export function ChatPage() {
                 not scrolling away with the transcript — so this keeps only
                 the eyebrow label here; isPhone still gets the full list,
                 since phone has no rail to carry it. */}
+            {/* Sized imperatively by applyFollow; see followAnchorIdRef. */}
+            <div ref={spacerRef} aria-hidden="true" />
             <div ref={endRef} />
           </div>
         </div>

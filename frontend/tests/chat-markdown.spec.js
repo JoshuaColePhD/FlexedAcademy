@@ -138,3 +138,35 @@ test('regenerate is offered on a reply that succeeded', async ({ page }) => {
   await expect(page.getByText('A short answer.')).toBeVisible()
   await expect(page.getByLabel('Regenerate this reply')).toBeVisible()
 })
+
+test('the new question pins to the top and the reply fills in beneath it', async ({ page }) => {
+  await openChat(page)
+  await queue(page, [
+    { chunk: 'First paragraph.\n\n' },
+    '__HOLD__',
+    { chunk: `${'More text that makes the reply tall. '.repeat(40)}\n` },
+    { done: true },
+  ])
+  await send(page, 'a question I should still be able to see')
+
+  const topOf = async () => page.evaluate(() => {
+    const scroller = document.querySelector('[data-message-id]')?.closest('div[class*="overflow"]')
+      || [...document.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 40)
+    const rows = [...document.querySelectorAll('[data-message-id]')]
+    const mine = rows.reverse().find((r) => r.textContent.includes('a question I should still'))
+    if (!scroller || !mine) return null
+    return Math.round(mine.getBoundingClientRect().top - scroller.getBoundingClientRect().top)
+  })
+
+  const before = await topOf()
+  expect(before).not.toBeNull()
+  // Pinned near the top of the scroller, not pushed up off the viewport.
+  expect(before).toBeLessThan(60)
+
+  await page.evaluate(() => window.releaseStream?.())
+  await expect(reply(page)).toContainText('More text that makes the reply tall.')
+  // The spacer shrinks by exactly what the reply grows, so the pinned question
+  // does not drift while the answer arrives.
+  const after = await topOf()
+  expect(Math.abs(after - before)).toBeLessThan(24)
+})
