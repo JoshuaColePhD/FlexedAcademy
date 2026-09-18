@@ -17,6 +17,8 @@
   --t-enter: 180ms;
   --t-panel: 220ms;
   --t-reader: 380ms;
+  --t-workspace: 280ms;
+  --ease-workspace: cubic-bezier(0.22, 1, 0.36, 1);
   --t-slow: 220ms;
   --motion-lift: 1px;
   --motion-reveal: 2px;
@@ -814,7 +816,7 @@
     inset: 0 0 0 calc(var(--sidebar-w) + 0.5rem) !important;
     width: auto !important;
     pointer-events: auto;
-    animation: workspace-document-in var(--t-reader) var(--ease-glide) both !important;
+    animation: workspace-document-in var(--t-workspace) var(--ease-workspace) both !important;
     backdrop-filter: none !important;
     will-change: transform;
   }
@@ -847,7 +849,7 @@
     overflow-wrap: anywhere;
   }
   .artifact-overlay.is-composer-overlay.is-closing:not(.is-overlay-fullscreen) {
-    animation: workspace-document-out var(--t-reader) var(--ease-glide) both !important;
+    animation: workspace-document-out var(--t-workspace) var(--ease-workspace) both !important;
     pointer-events: none;
   }
   .is-composer-overlay .doc-sheet {
@@ -859,12 +861,12 @@
 }
 
 @keyframes workspace-document-in {
-  from { transform: translateX(28px); }
-  to { transform: translateX(0); }
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 @keyframes workspace-document-out {
-  from { transform: translateX(0); }
-  to { transform: translateX(28px); }
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(20px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .artifact-overlay.is-composer-overlay,
@@ -882,8 +884,11 @@
     transition-duration: var(--t-reader);
     transition-timing-function: var(--ease-glide);
   }
+  .workspace-panes {
+    transition: gap var(--t-workspace) var(--ease-workspace);
+  }
   .chat-workspace-main {
-    transition: flex-basis var(--t-reader) var(--ease-glide), width var(--t-reader) var(--ease-glide), max-width var(--t-reader) var(--ease-glide);
+    transition: flex-basis var(--t-workspace) var(--ease-workspace), width var(--t-workspace) var(--ease-workspace), max-width var(--t-workspace) var(--ease-workspace);
   }
   html.is-document-reading .chat-workspace-main,
   .workspace-panes:has(.document-stage) .chat-workspace-main {
@@ -893,7 +898,9 @@
     will-change: flex-basis, width, max-width;
   }
   .workspace-panes:has(.document-stage) {
-    gap: 10px;
+    /* The reader docks directly to the condensed chat lane. A physical
+       gutter here exposed the workspace underneath as a false divider. */
+    gap: 0;
   }
   .document-stage {
     display: flex;
@@ -1370,13 +1377,24 @@
     border-radius: 0 !important;
     background: var(--paper-raised) !important;
     box-shadow: none !important;
-    transition: width var(--t-panel) var(--ease-out), opacity var(--t-panel) var(--ease-out), box-shadow var(--t-fast) var(--ease-out), margin var(--t-panel) var(--ease-out), border-color var(--t-fast) var(--ease-out) !important;
+    transform: translateX(0);
+    backface-visibility: hidden;
+    will-change: width, transform, opacity;
+    transition:
+      flex-basis var(--t-workspace) var(--ease-workspace),
+      width var(--t-workspace) var(--ease-workspace),
+      margin var(--t-workspace) var(--ease-workspace),
+      opacity 180ms ease-out,
+      transform var(--t-workspace) var(--ease-workspace),
+      border-color 120ms ease-out,
+      box-shadow 120ms ease-out !important;
   }
   .workspace-panes > .artifact-drawer.is-closing {
     width: 0 !important;
     min-width: 0 !important;
     margin: 0 !important;
     opacity: 0;
+    transform: translateX(20px);
     border-color: transparent !important;
     pointer-events: none;
   }
@@ -1387,6 +1405,7 @@
     height: auto !important;
     min-width: 0;
     min-height: 0;
+    animation: workspace-panel-content-in 180ms var(--ease-workspace) both;
   }
   .workspace-panes > .artifact-drawer.is-open .artifact-rail {
     flex: 1 1 auto;
@@ -1804,6 +1823,11 @@
   }
 }
 
+@keyframes workspace-panel-content-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
 /* The bezel is a desktop/tablet affordance. On phones the conversation owns
    the entire viewport, so preserve the edge-to-edge reading surface. */
 @media (max-width: 767.98px) {
@@ -2079,6 +2103,32 @@
     width: 100% !important;
     max-width: 54rem !important;
   }
+
+  /* The composer has a fixed rectangle, but it need not feel inert. This
+     micro-response is purely visual: no left, width, or layout properties
+     participate, so opening a panel cannot restart the old drift animation. */
+  .composer-dock-host.is-workspace-settling .composer-shell {
+    animation: composer-workspace-settle 180ms var(--ease-workspace) both;
+  }
+}
+
+@keyframes composer-workspace-settle {
+  0%, 100% {
+    transform: translateY(0);
+    border-color: var(--edge);
+    box-shadow: none;
+  }
+  45% {
+    transform: translateY(-3px);
+    border-color: rgb(var(--accent-rgb) / 0.52);
+    box-shadow: 0 8px 20px rgb(0 0 0 / 0.12);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-dock-host.is-workspace-settling .composer-shell {
+    animation: none !important;
+  }
 }
 /* A modal owns the screen while it is open. Keep the persistent composer from
    showing through the dimmed layer as a distracting dark rectangle beneath the
@@ -2108,8 +2158,11 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body { width: 100%; }
   .chat-context-strip,
   .workspace-panes:has(.artifact-drawer.is-open) .chat-context-strip { padding-inline: 24px; }
+  /* Outputs is a docked part of the workspace, not a darker card placed over
+     it. Matching the chat surface removes the false vertical seam along their
+     shared edge while the drawer keeps its outline on the exposed edges. */
   :root[data-theme='dark'] .workspace-panes > .artifact-drawer,
-  :root[data-theme='dark'] .artifact-rail:not(.is-bar) { background: rgb(28 27 23) !important; }
+  :root[data-theme='dark'] .artifact-rail:not(.is-bar) { background: var(--paper) !important; }
 }
 @media (max-width: 1023.98px) {
   .workspace-topbar .workspace-sidebar-toggle { display: none; }
@@ -2128,7 +2181,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
     gap: 10px !important;
     padding: 10px !important;
   }
-  .app-shell-frame.is-rail-collapsed { gap: 8px !important; }
+  .app-shell-frame.is-rail-collapsed { gap: 0 !important; }
   :root[data-theme] .app-rail:not(.rail-drawer),
   :root[data-theme] .app-shell-main {
     border: 1px solid var(--edge) !important;
@@ -2191,39 +2244,18 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .split-layout-content {
     border-radius: 0 21px 21px 0;
   }
-  /* Keep a compact rail visible when the full chat list is collapsed. This
-     preserves a stable spatial anchor and leaves the primary new-chat action
-     within easy reach. */
+  /* A collapsed desktop rail is fully removed from the visual layout. Keep
+     the element mounted for the width transition and state restoration, but
+     leave no strip, border, controls, or hit area behind. */
   .app-shell-frame.is-rail-collapsed > .app-rail {
-    width: 52px !important;
-    min-width: 52px !important;
-    flex-basis: 52px !important;
-    border-radius: 18px !important;
-    opacity: 1;
-    pointer-events: auto;
-  }
-  .rail-collapsed-actions {
-    width: 100%;
-  }
-  .app-shell-frame.is-rail-collapsed .rail-collapsed-actions {
-    flex: 1 1 auto !important;
-    height: 100% !important;
-    min-height: 0;
-    margin: 0;
-    padding: 8px 0;
-  }
-  .app-shell-frame.is-rail-collapsed > .app-rail .chat-workspace-add {
-    width: 36px;
-    height: 36px;
-    border: 1px solid rgb(var(--edge-strong-rgb) / 0.72);
-    border-radius: 12px;
-    background: rgb(var(--paper-raised-rgb) / 0.72);
-  }
-  .app-shell-frame.is-rail-collapsed > .app-rail .chat-workspace-add:hover,
-  .app-shell-frame.is-rail-collapsed > .app-rail .chat-workspace-add:focus-visible {
-    color: var(--accent-text);
-    background: rgb(var(--accent-tint-rgb) / 0.72);
-    outline: none;
+    width: 0 !important;
+    min-width: 0 !important;
+    flex-basis: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
   }
   :root[data-theme] .app-rail:not(.rail-drawer) {
     border-right-color: var(--edge) !important;
@@ -2295,6 +2327,15 @@ body:has(.dialog-scrim) .composer-dock-surface {
     inset: 0 !important;
     width: auto !important;
     height: auto !important;
+    /* This is the same workspace surface as the chat it docks beside. Keep
+       its elevated outline only on exposed edges so the shared edge has no
+       dark seam, while the outer silhouette remains rounded. */
+    background: var(--paper) !important;
+    border-left: 0 !important;
+    box-shadow: 10px 10px 28px -18px rgb(0 0 0 / 0.16) !important;
+  }
+  .artifact-overlay.is-composer-overlay.is-chat-docked:not(.is-overlay-fullscreen) .doc-shell {
+    background: var(--paper) !important;
   }
   .artifact-overlay.is-composer-overlay .doc-head {
     border-radius: 21px 21px 0 0;
@@ -5064,5 +5105,15 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .composer-dock-surface .mobile-composer-plan-sheet {
     position: relative;
     z-index: 1;
+  }
+}
+
+/* Desktop/tablet geometry is already measured from the transcript's padded
+   content box. Do not add a second gutter inside the portaled dock or the
+   composer will become narrower and drift away from the text margins. */
+@media (min-width: 768px) {
+  .composer-dock-surface {
+    padding-right: 0 !important;
+    padding-left: 0 !important;
   }
 }

@@ -303,7 +303,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, touchAc
    the chats list and account controls, the same core content as the desktop
    sidebar, landing where a teacher currently gets dropped straight into an
    empty chat instead. See MobileChatHome.jsx. */
-export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra, spacious, touchActions = false }) {
+export function Rail({ onNavigate, onClose, collapsed, headerExtra, spacious, touchActions = false }) {
   const { classId } = useParams()
   const location = useLocation()
   const { data: chats, isLoading } = useChats()
@@ -378,24 +378,6 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
 
   return (
     <>
-      {collapsed ? (
-        <div className="rail-collapsed-actions flex h-full min-h-0 shrink-0 flex-col items-center justify-between py-2">
-          <Link
-            to={classPath}
-            onClick={(event) => {
-              onToggleCollapse?.()
-              haptic('light')
-              onNavigate?.(event)
-            }}
-            className="chat-workspace-add"
-            aria-label="New chat"
-            title="New chat"
-          >
-            <Plus size={20} aria-hidden="true" />
-          </Link>
-          <AccountMenu classPath={classPath} collapsed />
-        </div>
-      ) : (
       <div className="rail-brand-row flex h-14 shrink-0 items-center gap-2 px-3 mt-2">
         <svg viewBox="0 0 64 64" className="w-6 h-6 shrink-0 text-[#7c3aed] drop-shadow-sm" aria-hidden="true">
           <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
@@ -431,7 +413,6 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
           </button>
         ) : null}
       </div>
-      )}
 
       {spacious && !collapsed ? (
         <div className="mobile-chat-home-actions">
@@ -618,12 +599,9 @@ export function AppShell({ children }) {
   useFocusTrap(drawerRef, { active: drawerOpen, trap: drawerOpen, onEscape: () => setDrawerOpen(false) })
 
   /* Desktop-dock only — the narrow/phone drawer above already has its own
-     open/close (drawerOpen). At >=lg the rail used to be a permanent fixture
-     with no way to reclaim its width, unlike the artifact rail on the other
-     side of the screen, which has had a collapse handle from the start.
-     Collapsing keeps a compact ~52px navigation strip so the workspace still
-     has a spatial anchor. Persist it the same way chatWidthPx is (ChatPage.jsx),
-     so it survives a reload instead of springing back open every visit. */
+     open/close (drawerOpen). Persist the desktop rail's collapsed state so a
+     workspace can reclaim the full width across reloads without leaving a
+     compact placeholder rail behind. */
   const location = useLocation()
   // The preview is mounted under `/preview.html`, while production mounts at
   // `/`. Match the class route at the end of either basename so footer
@@ -695,17 +673,17 @@ export function AppShell({ children }) {
       </a>
 
       {/* docked */}
-      {usesDockedRail ? (
+      {usesDockedRail && !effectiveRailCollapsed ? (
         <div
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
-            width: effectiveRailCollapsed ? '52px' : 'var(--sidebar-w)',
+            width: 'var(--sidebar-w)',
             transitionDuration: documentReading ? 'var(--t-reader)' : 'var(--t-base)',
             transitionTimingFunction: documentReading ? 'var(--ease-glide)' : 'var(--ease-out)',
           }}
         >
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <Rail collapsed={effectiveRailCollapsed} onToggleCollapse={toggleRailCollapsed} touchActions={isTouch} />
+            <Rail collapsed={effectiveRailCollapsed} touchActions={isTouch} />
           </div>
         </div>
       ) : null}
