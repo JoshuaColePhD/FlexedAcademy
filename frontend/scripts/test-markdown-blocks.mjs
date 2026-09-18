@@ -109,3 +109,42 @@ test('marks: $$ is never auto-closed', () => {
   // A wrong guess hands KaTeX a malformed expression instead of plain text.
   assert.equal(closeOpenMarks('math: $$x=\\frac{'), 'math: $$x=\\frac{')
 })
+
+test('smoother: releases steadily instead of in network bursts', async () => {
+  const { createSmoother } = await import('../src/lib/streamSmoother.js')
+  const frames = []
+  const queue = []
+  const smoother = createSmoother({
+    onFrame: (v) => frames.push(v),
+    raf: (cb) => { queue.push(cb); return queue.length },
+    caf: () => {},
+  })
+  const run = () => { while (queue.length) queue.shift()() }
+
+  // One large burst, the shape the network actually delivers.
+  smoother.push('x'.repeat(300))
+  run()
+  assert.ok(frames.length > 4, `expected a gradual release, got ${frames.length} frame(s)`)
+  assert.ok(frames[0].length < 300, 'the first frame must not paint the whole burst')
+  assert.equal(frames[frames.length - 1].length, 300, 'it must still arrive in full')
+  // Monotonic: text only ever grows.
+  for (let i = 1; i < frames.length; i++) {
+    assert.ok(frames[i].length > frames[i - 1].length, 'each frame must add text')
+  }
+})
+
+test('smoother: flush shows everything, cancel drops it', async () => {
+  const { createSmoother } = await import('../src/lib/streamSmoother.js')
+  const frames = []
+  const smoother = createSmoother({ onFrame: (v) => frames.push(v), raf: () => 1, caf: () => {} })
+  smoother.push('abcdefghij')
+  smoother.flush()
+  assert.equal(frames[frames.length - 1], 'abcdefghij')
+
+  const after = []
+  const s2 = createSmoother({ onFrame: (v) => after.push(v), raf: () => 1, caf: () => {} })
+  s2.push('hello')
+  s2.cancel()
+  s2.flush()
+  assert.equal(after[after.length - 1], '', 'a cancelled stream must not resurrect text')
+})

@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import test from 'node:test'
 import { recoverDumpedToolsFromText } from '../src/lib/chatToolRecovery.js'
+import { createSmoother } from '../src/lib/streamSmoother.js'
 import { optionalFollowUpProps, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, requestedOptionalNextStep, revisionDayIndices, shouldOfferOptionalFollowUp, shouldStreamPlanRevision } from '../src/lib/chatActions.js'
 
 // Run the actual hook's streaming code without a DOM. Only React state storage,
@@ -33,6 +34,9 @@ async function harness(responses, callbacks = {}) {
     '../lib/voiceMetrics': { firstToken: noop },
     '../lib/chatToolRecovery': { recoverDumpedToolsFromText },
     '../lib/performanceMetrics': { mark: noop, measure: noop },
+    // The real one, not a stub: the harness context supplies rAF, so this
+    // exercises the release buffer alongside the transport it sits on.
+    '../lib/streamSmoother': { createSmoother },
   }
   const source = await readFile(new URL('../src/hooks/useChatStream.js', import.meta.url), 'utf8')
   const module = new vm.SourceTextModule(source, { context })
