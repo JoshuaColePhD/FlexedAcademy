@@ -3616,10 +3616,6 @@ export function ChatPage() {
   // keep the exact width and screen position it had in the chat view.
   const captureComposerReaderAnchor = useCallback(() => {
     if (isPhone || isLandscapePhone || artifactFullscreen) return
-    // The desktop composer has one stable screen slot for the life of the
-    // chat. Once captured, navigation rails and inspectors must not replace
-    // it with a wider live lane.
-    if (composerReaderAnchorRef.current) return
     const dock = composerDockRef.current
     const shell = dock?.querySelector('.composer-shell')
     const anchor = composerAnchorRef.current
@@ -3648,10 +3644,8 @@ export function ChatPage() {
   // in the middle workspace instead of moving into the collapsed chat rail.
   useLayoutEffect(() => {
     if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-    if (composerReaderAnchorRef.current) return
     const capture = () => {
       if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-      if (composerReaderAnchorRef.current) return
       const dock = composerDockRef.current
       const shell = dock?.querySelector('.composer-shell')
       const anchor = composerAnchorRef.current
@@ -3670,7 +3664,7 @@ export function ChatPage() {
     capture()
     const settleTimer = window.setTimeout(capture, 450)
     return () => window.clearTimeout(settleTimer)
-  }, [artifactFullscreen, composerDockH, composerReaderSettling, desktopInspectorOpen, overlayOpen])
+  }, [artifactFullscreen, composerDockH, composerReaderSettling, desktopInspectorOpen, overlayOpen, railOpen])
   // Fullscreen: the host becomes the true viewport. Docked: the host
   // becomes exactly the box #main used to provide for free (before this
   // was always portaled, .artifact-overlay's own position:fixed picked up
@@ -3779,17 +3773,19 @@ export function ChatPage() {
       // width, the live lane briefly spans the whole chat area. Capturing
       // that transient value was the source of the close-time bounce.
       const retainingReaderAnchor = desktopInspector && composerReaderSettling
-      if (!overlayOpen && !desktopInspectorOpen && !documentReading && !artifactFullscreen && !retainingReaderAnchor && !composerReaderAnchorRef.current) {
+      if (!overlayOpen && !desktopInspectorOpen && !documentReading && !artifactFullscreen && !retainingReaderAnchor) {
         const dock = composerDockRef.current
         const shell = dock?.querySelector('.composer-shell')
         const dockRect = dock?.getBoundingClientRect()
         const shellRect = shell?.getBoundingClientRect()
-        if (dockRect && shellRect && dockRect.width >= 100 && shellRect.width >= 100) composerReaderAnchorRef.current = {
-          left: dockRect?.left ?? r.left,
-          width: dockRect?.width ?? r.width,
-          laneWidth,
-          shellLeft: shellRect?.left ?? null,
-          shellInset: shellRect && dockRect ? shellRect.left - dockRect.left : null,
+        if (dockRect && shellRect && dockRect.width >= 100 && shellRect.width >= 100) {
+          composerReaderAnchorRef.current = {
+            left: dockRect.left,
+            width: dockRect.width,
+            laneWidth,
+            shellLeft: shellRect.left,
+            shellInset: shellRect.left - dockRect.left,
+          }
         }
       }
       // Keep the composer pinned to its pre-reader geometry while the lesson
@@ -3805,7 +3801,10 @@ export function ChatPage() {
       )
       if (cachedReaderAnchor && !hasValidCachedAnchor) composerReaderAnchorRef.current = null
       const keepReaderComposer = Boolean(
+        desktopInspector &&
         hasValidCachedAnchor &&
+        desktopInspectorOpen &&
+        !artifactFullscreen &&
         !isPhone &&
         !isLandscapePhone
       )
