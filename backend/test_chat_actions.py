@@ -8,11 +8,13 @@ import pytest
 
 from backend import llm, service
 from backend.chat_policy import (
-    chat_actions_enabled,
+    chat_turn_policy,
+    pending_intent,
     references_plan_context,
     typed_chat_tools,
     validate_action_target,
     validate_plan_action,
+    wants_plan_context,
     without_quiz_tools,
 )
 from backend.errors import AppError
@@ -86,12 +88,23 @@ def test_voice_tools_unchanged_and_typed_questions_are_single():
     assert (
         typed["ask_clarifying_questions"]["parameters"]["properties"]["questions"]["maxItems"] == 1
     )
-    assert "action" in typed["generate_lesson_plan"]["parameters"]["required"]
-    assert typed["generate_lesson_plan"]["parameters"]["required"] == ["action"]
+    assert typed["generate_lesson_plan"]["parameters"]["required"] == ["preamble", "action"]
     assert "also_quiz" in typed["generate_lesson_plan"]["parameters"]["properties"]
     quiz_required = typed["generate_quiz"]["parameters"].get("required") or []
+    assert quiz_required == ["preamble"]
     assert "instruction" not in quiz_required
     assert "target_quiz_id" not in quiz_required
+    # preamble must be declared FIRST on every typed tool: models emit
+    # properties in declaration order, so this is what lets the teacher read
+    # what is happening while the rest of the arguments are still streaming.
+    for name in ("generate_lesson_plan", "generate_quiz", "update_lesson_day",
+                 "ask_clarifying_questions"):
+        props = list(typed[name]["parameters"]["properties"])
+        assert props[0] == "preamble", name
+        assert "preamble" in typed[name]["parameters"]["required"], name
+    # Voice keeps the legacy shapes, with no preamble anywhere.
+    for tool in llm.CHAT_TOOLS:
+        assert "preamble" not in (tool["function"].get("parameters") or {}).get("properties", {})
 
 
 def test_typed_tools_omit_quiz_when_beta_is_off():
@@ -103,29 +116,102 @@ def test_typed_tools_omit_quiz_when_beta_is_off():
     assert "generate_quiz" not in [t["function"]["name"] for t in without_quiz_tools(llm.CHAT_TOOLS)]
 
 
-def test_typed_policy_steers_greetings_to_the_week_not_a_product_menu():
-    from backend.chat_policy import TYPED_CHAT_POLICY
+def test_single_persona_carries_the_behavior_the_regex_gate_used_to():
+    from backend.chat_policy import CHAT_PARTNER_POLICY, PLAN_OPEN_OVERLAY
 
-    text = TYPED_CHAT_POLICY
+    # Normalized, so rewrapping the prompt does not fail this for no reason.
+    text = " ".join(CHAT_PARTNER_POLICY.split())
+    raw = CHAT_PARTNER_POLICY
+    # One voice, and the scope guard that CONVERSATIONAL_CHAT_POLICY used to own.
     assert "Do not offer assessment design, instructional coaching" in text
     assert "ask one question about what this week is about" in text
-    assert "not a list of other services" in text
-    assert "Do not pitch a standalone quiz or an assessment-design" in text
-    assert "Do not offer an optional next-step card" in text
+    assert "A visible plan is context, not permission to edit it." in text
+    # The rule the whole change exists for.
+    assert "NEVER WRITE THE ARTIFACT INTO THE CHAT" in raw
+    assert "Never type Monday through Friday" in text
+    # Continuation across turns, which had no equivalent before.
+    assert "this message answers it" in text
+    # The route asserts these strings stay absent; keep that true at the source.
+    assert "Do NOT call" not in raw
+    assert "call generate_lesson_plan (or" not in raw
+    assert "`generate_quiz`" not in raw
+    assert "interview the teacher" in " ".join(PLAN_OPEN_OVERLAY.split())
 
 
-def test_conversation_policy_keeps_exploration_out_of_artifact_tools():
-    from backend.chat_policy import CONVERSATIONAL_CHAT_POLICY
+@pytest.mark.parametrize(
+    "message",
+    [
+        # Every one of these was denied tools by the old regex gate, so the
+        # model answered a build request by typing the week into the transcript.
+        "make a lesson",
+        "build me next week",
+        "draft week 7",
+        "I need a sub plan for Friday",
+        "can you put together Tuesday",
+        "yes",
+        "sounds good, go ahead",
+        "quadratic functions",
+        "I don't have one",
+        "fix Wednesday",
+        "why does this feel too busy?",
+        "ok",
+        "",
+    ],
+)
+def test_every_typed_turn_carries_its_tools(message):
+    policy = chat_turn_policy("brainstorm", messages=[NS(role="user", content=message, kind=None)])
+    assert policy.tools_enabled is True
 
-    assert "Answer the teacher's" in CONVERSATIONAL_CHAT_POLICY
-    assert "actual question" in CONVERSATIONAL_CHAT_POLICY
-    assert "Do not manufacture a plan, quiz, card, menu" in CONVERSATIONAL_CHAT_POLICY
-    assert chat_actions_enabled("brainstorm", last_user="Why does this feel too busy?") is False
-    assert chat_actions_enabled("brainstorm", last_user="Make a quiz on inference") is True
-    assert chat_actions_enabled("brainstorm", plan_open=True, last_user="Ask questions") is True
-    assert chat_actions_enabled("brainstorm", plan_open=True, last_user="Why is Wednesday structured this way?") is False
+
+def test_pending_intent_survives_a_clarifying_exchange():
+    # The exact transcript that failed: the answer turn carries no action verb,
+    # so a last-message test can never see that the request is still open.
+    assert pending_intent([
+        NS(role="user", content="make a lesson", kind=None),
+        NS(role="assistant", content="What should this week focus on?",
+           kind="clarifying_questions"),
+        NS(role="user", content="I don't have one", kind=None),
+    ]) == "clarification_answer"
+    assert pending_intent([
+        NS(role="user", content="thinking about Gatsby", kind=None),
+        NS(role="assistant", content="Want me to build that week?", kind=None),
+        NS(role="user", content="yes", kind=None),
+    ]) == "offer_reply"
+    assert pending_intent([
+        NS(role="user", content="how long should a do-now be?", kind=None),
+    ]) is None
+    # An assistant turn that neither asked nor offered is not a pending intent.
+    assert pending_intent([
+        NS(role="user", content="hi", kind=None),
+        NS(role="assistant", content="The week is built.", kind=None),
+        NS(role="user", content="thanks", kind=None),
+    ]) is None
+
+
+def test_plan_context_reads_the_recent_exchange_not_one_message():
+    convo = [
+        NS(role="user", content="plan week 7 on quadratics", kind=None),
+        NS(role="assistant", content="Want me to build that?", kind=None),
+        NS(role="user", content="yes", kind=None),
+    ]
+    # "yes" mentions nothing, but the pacing guide is still what this turn needs.
+    assert wants_plan_context(convo, mode="brainstorm") is True
+    assert wants_plan_context(
+        [NS(role="user", content="why does the model feel less personal?", kind=None)],
+        mode="brainstorm",
+    ) is False
     assert references_plan_context("Can we rethink Wednesday's exit ticket?") is True
     assert references_plan_context("Why does the model feel less personal?") is False
+
+
+def test_command_surface_needs_both_an_open_plan_and_a_plan(monkeypatch):
+    assert chat_turn_policy("brainstorm", plan_open=True, has_plan=True).command_surface is True
+    assert chat_turn_policy("brainstorm", plan_open=True, has_plan=False).command_surface is False
+    assert chat_turn_policy("brainstorm", plan_open=False, has_plan=True).command_surface is False
+    # Voice keeps its own prompt path and never gets the typed overlay.
+    assert chat_turn_policy(
+        "brainstorm", plan_open=True, has_plan=True, voice=True
+    ).command_surface is False
 
 
 def test_conversational_stream_omits_tools_and_uses_light_reasoning(monkeypatch):
@@ -166,6 +252,41 @@ def test_conversational_stream_omits_tools_and_uses_light_reasoning(monkeypatch)
     assert calls[0]["reasoning_effort"] == "low"
     assert "tools" not in calls[0]
     assert "parallel_tool_calls" not in calls[0]
+    # No tool definitions means no tool-argument headroom.
+    assert calls[0]["max_completion_tokens"] == 2200 + llm._REASONING_HEADROOM["low"]
+
+
+def test_tool_turns_get_reasoning_room_and_budget_headroom(monkeypatch):
+    calls = []
+
+    class Stream:
+        closed = False
+
+        def __iter__(self):
+            return iter([NS(usage=None, choices=[NS(
+                delta=NS(content="Sure.", tool_calls=None, refusal=None),
+                finish_reason="stop",
+            )])])
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(llm, "client", lambda: NS(chat=NS(completions=NS(
+        create=lambda **kw: (calls.append(kw), Stream())[1]
+    ))))
+    monkeypatch.setattr(llm, "output_length_tokens_for", lambda _: 2200)
+    monkeypatch.setattr(llm, "beta_features_for", lambda _: False)
+
+    list(llm.stream_chat("u", []))
+    # Choosing a tool and building its arguments is judgment; this used to be
+    # "none" on exactly these turns and "low" on chit-chat.
+    assert calls[0]["reasoning_effort"] == "low"
+    assert calls[0]["tools"]
+    # Reasoning tokens come out of this budget, so the ceiling must rise with
+    # the effort or the model returns empty content and the turn 502s.
+    assert calls[0]["max_completion_tokens"] == (
+        2200 + llm._REASONING_HEADROOM["low"] + llm._TOOL_ARG_HEADROOM
+    )
 
 
 def fake_stream(monkeypatch, payload, *, truncated=False):
@@ -209,8 +330,112 @@ def fake_stream(monkeypatch, payload, *, truncated=False):
 def test_stream_waits_for_complete_action(monkeypatch):
     stream = fake_stream(monkeypatch, json.dumps(action()))
     events = list(llm.stream_chat("u", []))
-    assert events == [{"tool_call": "generate_lesson_plan", **action()}]
+    # These args carry no preamble, so the per-tool default fills in: the
+    # browser must never jump straight to an artifact card with no sentence.
+    assert events == [
+        {"chunk": llm._DEFAULT_PREAMBLE["generate_lesson_plan"]},
+        {"tool_call": "generate_lesson_plan", **action()},
+    ]
     assert stream.closed
+
+
+def test_preamble_streams_before_the_tool_call(monkeypatch):
+    said = "Building week 7 on quadratics."
+    stream = fake_stream(monkeypatch, json.dumps({"preamble": said, **action()}))
+    events = list(llm.stream_chat("u", []))
+
+    tool_at = next(i for i, e in enumerate(events) if "tool_call" in e)
+    assert tool_at == len(events) - 1, "the tool call must be last"
+    assert "".join(e["chunk"] for e in events[:tool_at]) == said
+    # preamble is a transport detail; it must not leak into the dispatched event.
+    assert "preamble" not in events[tool_at]
+    assert events[tool_at] == {"tool_call": "generate_lesson_plan", **action()}
+
+
+def test_combined_final_chunk_dispatches(monkeypatch):
+    """One chunk carrying the last argument fragment AND finish_reason.
+
+    The tool branch used to `continue` past every dispatch branch, so this
+    exited the loop with a complete, valid call and raised malformed_tool_call.
+    """
+    payload = json.dumps(action())
+
+    class Stream:
+        closed = False
+
+        def __iter__(self):
+            return iter([
+                NS(usage=None, choices=[NS(
+                    delta=NS(content=None, refusal=None, tool_calls=[
+                        NS(index=0, function=NS(name="generate_lesson_plan",
+                                                arguments=payload[:20]))
+                    ]),
+                    finish_reason=None,
+                )]),
+                NS(usage=None, choices=[NS(
+                    delta=NS(content=None, refusal=None, tool_calls=[
+                        NS(index=0, function=NS(name=None, arguments=payload[20:]))
+                    ]),
+                    finish_reason="tool_calls",
+                )]),
+            ])
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(llm, "client", lambda: NS(chat=NS(completions=NS(
+        create=lambda **kw: Stream()
+    ))))
+    monkeypatch.setattr(llm, "output_length_tokens_for", lambda _: 2200)
+    monkeypatch.setattr(llm, "beta_features_for", lambda _: False)
+
+    events = list(llm.stream_chat("u", []))
+    assert events[-1] == {"tool_call": "generate_lesson_plan", **action()}
+
+
+def _prose_stream(monkeypatch, text, *, chunk=200):
+    pieces = [text[i:i + chunk] for i in range(0, len(text), chunk)]
+
+    class Stream:
+        closed = False
+
+        def __iter__(self):
+            return iter([
+                NS(usage=None, choices=[NS(
+                    delta=NS(content=p, tool_calls=None, refusal=None),
+                    finish_reason=None,
+                )]) for p in pieces
+            ])
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(llm, "client", lambda: NS(chat=NS(completions=NS(
+        create=lambda **kw: Stream()
+    ))))
+    monkeypatch.setattr(llm, "output_length_tokens_for", lambda _: 2200)
+    monkeypatch.setattr(llm, "beta_features_for", lambda _: False)
+
+
+def test_prose_dump_is_cut_off_when_a_tool_was_available(monkeypatch):
+    """The deterministic backstop against the original failure.
+
+    A five-day plan typed as prose runs 6,000-10,000 characters. Everything
+    else keeping it out of the transcript is probabilistic; this is not.
+    """
+    _prose_stream(monkeypatch, "Monday: do the thing. " * 300)
+    events = list(llm.stream_chat("u", []))
+    assert events[-1] == {"chunk": llm._PROSE_CUTOFF_NOTE}
+    streamed = sum(len(e["chunk"]) for e in events[:-1])
+    assert streamed < 10_000
+
+
+def test_prose_backstop_leaves_a_toolless_turn_alone(monkeypatch):
+    # With no tools in the array there is no artifact to divert to, so a long
+    # answer is just a long answer.
+    _prose_stream(monkeypatch, "Monday: do the thing. " * 300)
+    events = list(llm.stream_chat("u", [], actions_enabled=False))
+    assert llm._PROSE_CUTOFF_NOTE not in [e.get("chunk") for e in events]
 
 
 @pytest.mark.parametrize(
@@ -376,7 +601,7 @@ def test_route_uses_active_plan_and_prior_answers_without_forcing_build(chat_cli
     assert captured[0][1:] == messages
 
 
-def test_route_uses_conversational_policy_without_action_tools(chat_client):
+def test_route_uses_one_persona_and_always_sends_tools(chat_client):
     client, captured, _ = chat_client
     response = client.post(
         "/api/chat_stream",
@@ -389,9 +614,61 @@ def test_route_uses_conversational_policy_without_action_tools(chat_client):
     )
     assert response.status_code == 200
     system = captured[0][0]["content"]
-    assert "CONVERSATIONAL MODE" in system
-    assert "TYPED_CHAT_POLICY" not in system
-    assert captured.kwargs[0]["actions_enabled"] is False
+    # The assistant's voice no longer changes between turns based on a regex.
+    assert "You are the teacher's planning partner" in system
+    assert "CONVERSATIONAL MODE" not in system
+    # Availability is the contract; whether to call one is the model's judgment,
+    # which is why this turn still answers in prose.
+    assert captured.kwargs[0]["actions_enabled"] is True
+
+
+def test_route_answers_a_plain_question_without_an_artifact(chat_client):
+    client, _, emitted = chat_client
+    response = client.post(
+        "/api/chat_stream",
+        json={
+            "messages": [{"role": "user", "content": "Why does this feel too busy?"}],
+            "chat_id": "chat1",
+            "class_id": "c1",
+            "mode": "brainstorm",
+        },
+    )
+    assert response.status_code == 200
+    assert "tool_call" not in response.text
+
+
+def test_route_carries_the_pending_intent_after_a_clarifying_question(chat_client):
+    """The turn the old gate could never act on.
+
+    "I don't have one" has no action verb and names no artifact, so the regex
+    denied it tools and the model wrote the week into the transcript instead.
+    """
+    client, captured, _ = chat_client
+    response = client.post(
+        "/api/chat_stream",
+        json={
+            "messages": [
+                {"role": "user", "content": "make a lesson"},
+                {
+                    "role": "assistant",
+                    "content": "What should this week focus on?",
+                    "kind": "clarifying_questions",
+                },
+                {"role": "user", "content": "I don't have one"},
+            ],
+            "chat_id": "chat1",
+            "class_id": "c1",
+            "mode": "brainstorm",
+        },
+    )
+    assert response.status_code == 200
+    system = captured[0][0]["content"]
+    assert captured.kwargs[0]["actions_enabled"] is True
+    assert "answers the question you just asked" in system
+    # The hint sits closest to the teacher's message, after the saved plan.
+    assert system.index("answers the question you just asked") > system.rindex(
+        "You are the teacher's planning partner"
+    )
 
 
 def test_open_plan_uses_command_surface(chat_client):

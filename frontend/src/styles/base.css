@@ -7942,14 +7942,22 @@
   .msg-markdown p:last-child {
     margin-bottom: 0;
   }
-  /* Match settled markdown paragraph metrics while tokens are still arriving
-     so the ReactMarkdown handoff does not jump line-box spacing. */
-  .msg-markdown .msg-stream-text {
-    margin: 0;
-    line-height: inherit;
-  }
   .msg-markdown.is-streaming {
     min-height: 1.4em;
+  }
+  /* The caret used to be a sibling <span> of the content. Now that the content
+     is block-level markdown, a sibling would drop onto its own line beneath the
+     last block; as a ::after on the last child it rides the end of the last
+     line, including inside a table cell or a code block. */
+  .msg-markdown.is-streaming > :last-child::after {
+    content: '';
+    display: inline-block;
+    width: 0.45ch;
+    height: 1em;
+    margin-left: 0.15em;
+    vertical-align: text-bottom;
+    background: var(--accent);
+    animation: fa-cursor-blink 900ms var(--ease) infinite;
   }
   .msg-markdown ul,
   .msg-markdown ol {
@@ -7981,6 +7989,159 @@
     margin-top: 0;
     padding-top: 0;
     border-top: none;
+  }
+
+  /* Headings, tables, code and math had NO styles at all before GFM and KaTeX
+     were added — h1 rendered at the browser's 2em default and a table rendered
+     as raw pipes. Styling lives here rather than in a components map so class
+     names stay out of JSX and check:classes stays meaningful. */
+  .msg-markdown h1,
+  .msg-markdown h2,
+  .msg-markdown h3,
+  .msg-markdown h4,
+  .msg-markdown h5,
+  .msg-markdown h6 {
+    margin: var(--sp-5) 0 var(--sp-2);
+    font-weight: var(--fw-semibold);
+    line-height: var(--lh-snug);
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .msg-markdown h1 { font-size: var(--fs-lg); }
+  .msg-markdown h2 { font-size: var(--fs-base); }
+  .msg-markdown h3,
+  .msg-markdown h4,
+  .msg-markdown h5,
+  .msg-markdown h6 { font-size: var(--fs-sm); }
+  .msg-markdown :is(h1, h2, h3, h4, h5, h6):first-child {
+    margin-top: 0;
+  }
+
+  .msg-markdown blockquote {
+    margin: var(--sp-3) 0;
+    padding-left: var(--sp-3);
+    /* Deliberately --edge-strong, not --mark: --mark reads as "this failed". */
+    border-left: 3px solid var(--edge-strong);
+    color: var(--ink-soft);
+  }
+  .msg-markdown hr {
+    margin: var(--sp-5) 0;
+    border: 0;
+    border-top: 1px solid var(--edge);
+  }
+
+  /* The assistant column is capped at 48rem, so a five-column week table has to
+     scroll inside it rather than widen the transcript. */
+  .msg-table-wrap {
+    margin: var(--sp-3) 0;
+    overflow-x: auto;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+  }
+  .msg-table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fs-sm);
+  }
+  .msg-table-wrap :is(th, td) {
+    padding: var(--sp-2) var(--sp-3);
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--edge);
+  }
+  .msg-table-wrap th {
+    background: var(--paper-sunken);
+    font-weight: var(--fw-semibold);
+    white-space: nowrap;
+  }
+  .msg-table-wrap tr:last-child :is(th, td) {
+    border-bottom: 0;
+  }
+
+  /* Docked surfaces, so no shadow — see the Floating-Only Rule in DESIGN.md. */
+  .msg-markdown code {
+    padding: 0.12em 0.34em;
+    border-radius: var(--r-sm);
+    background: var(--paper-sunken);
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+  .msg-code {
+    position: relative;
+    margin: var(--sp-3) 0;
+    border: 1px solid var(--edge);
+    border-radius: var(--r-sm);
+    background: var(--paper-sunken);
+  }
+  .msg-code pre {
+    margin: 0;
+    padding: var(--sp-3);
+    overflow-x: auto;
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    line-height: var(--lh-normal);
+  }
+  /* react-markdown v10 dropped the `inline` prop and the usual
+     /language-/ workaround misreads an unlabelled fence as inline. Rendering
+     inline chrome unconditionally and resetting it inside <pre> is correct for
+     every case with no node inspection. */
+  .msg-code pre code {
+    padding: 0;
+    background: none;
+    border-radius: 0;
+    font-size: inherit;
+  }
+  .msg-code-copy {
+    position: absolute;
+    top: var(--sp-1);
+    right: var(--sp-1);
+    display: inline-flex;
+    align-items: center;
+    padding: var(--sp-1);
+    border-radius: var(--r-sm);
+    color: var(--ink-muted);
+    opacity: 0;
+    transition: opacity 120ms var(--ease), color 120ms var(--ease);
+  }
+  .msg-code:hover .msg-code-copy,
+  .msg-code-copy:focus-visible {
+    opacity: 1;
+  }
+  .msg-code-copy:hover {
+    color: var(--ink);
+  }
+
+  .msg-link {
+    display: inline;
+    color: var(--accent-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .msg-link svg {
+    display: inline;
+    margin-left: 1px;
+    vertical-align: -1px;
+  }
+
+  .msg-markdown :is(sup, sub) {
+    font-size: var(--fs-2xs);
+  }
+  .msg-markdown li > input[type='checkbox'] {
+    margin-right: var(--sp-1);
+    accent-color: var(--accent);
+  }
+
+  /* KaTeX's own stylesheet lives in node_modules, so check:tokens cannot see
+     its hardcoded #cc0000 — override it onto the palette here. A wide equation
+     scrolls for the same reason a wide table does. */
+  .msg-markdown .katex-error {
+    color: var(--mark);
+  }
+  .msg-markdown .katex-display {
+    margin: var(--sp-3) 0;
+    padding: var(--sp-1) 0;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 
   .grounding-line {

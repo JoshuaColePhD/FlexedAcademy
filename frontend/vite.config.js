@@ -50,7 +50,20 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
-          if (id.includes('react-markdown') || id.includes('remark') || id.includes('micromark')) {
+          // KaTeX FIRST: `rehype-katex` contains the substring "katex", and the
+          // plugin belongs in the same chunk as the runtime it drives rather
+          // than split across two. Kept separate from vendor-markdown so a
+          // teacher whose classes never involve math caches the ~78KB once and
+          // never re-downloads it when the markdown pipeline changes.
+          if (id.includes('katex')) return 'vendor-katex'
+          // GFM and math pull in a long tail of mdast/hast/unist utilities that
+          // would otherwise scatter into the default vendor chunk and be
+          // invalidated by unrelated changes.
+          if (
+            /[\\/]node_modules[\\/](react-markdown|remark|rehype|micromark|mdast|hast|unist|unified|vfile|property-information|space-separated-tokens|comma-separated-tokens|decode-named-character-reference|character-entities|markdown-table|longest-streak|ccount|zwitch|devlop|trough|bail|extend|is-plain-obj|trim-lines|html-url-attributes|estree-util-is-identifier-name)/.test(
+              id
+            )
+          ) {
             return 'vendor-markdown'
           }
           if (id.includes('framer-motion')) return 'vendor-motion'

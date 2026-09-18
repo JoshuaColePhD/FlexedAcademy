@@ -1,8 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUpRight, Check, ChevronDown, Copy, Pencil, RotateCcw } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import { StreamingMarkdown } from './StreamingMarkdown'
 import { scanGrounding } from '../lib/grounding'
+import { useCopy } from '../lib/useCopy'
 import { dayTitle, orderedDays, DAYS } from '../lib/planShape'
 import { Cite } from './Citation'
 import { ThinkingIndicator } from './ThinkingIndicator'
@@ -30,20 +31,6 @@ function copyableText(message, grounded, ungrounded) {
     ))
   }
   return parts.join('\n')
-}
-
-function useCopy() {
-  const [copied, setCopied] = useState(false)
-  const copy = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1600)
-    } catch {
-      // Clipboard blocked (insecure context) — the button just won't confirm.
-    }
-  }
-  return { copied, copy }
 }
 
 function focusDuring(plan) {
@@ -264,22 +251,15 @@ function MessageImpl({
                   <p className="m-0 whitespace-pre-wrap">{message.youSaid ? `You said: ${message.youSaid}` : message.content}</p>
                 ) : (
                   <div className={`msg-markdown${message.streaming ? ' is-streaming' : ''}`}>
-                    {/* Partial markdown is expensive and unstable while the
-                        model is emitting tokens. Stream as pre-wrapped text
-                        inside the same markdown surface (matching paragraph
-                        metrics) so settling into ReactMarkdown does not snap
-                        line height or padding. */}
-                    {message.streaming ? (
-                      <p className="msg-stream-text m-0 whitespace-pre-wrap">{message.content}</p>
-                    ) : (
-                      <ReactMarkdown>{message.content}</ReactMarkdown>
-                    )}
-                    {message.streaming ? (
-                      <span
-                        className="fa-cursor ml-1 inline-block h-4 w-1.5 bg-accent align-middle"
-                        aria-hidden="true"
-                      />
-                    ) : null}
+                    {/* Same component before and after settle. Rendering raw
+                        text while streaming and only then swapping to markdown
+                        meant the reader watched ## and ** and table pipes
+                        scroll past, then snap. Identical DOM on both sides of
+                        the boundary removes the snap rather than softening it.
+                        The caret is a ::after on the last block (base.css), so
+                        it rides the end of the last line instead of dropping
+                        onto its own line under a block-level element. */}
+                    <StreamingMarkdown text={message.content} />
                   </div>
                 )}
                 {message.hint ? (
@@ -466,7 +446,7 @@ function MessageImpl({
               type="button"
               className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
               onClick={onRetry}
-              aria-label="Try again"
+              aria-label={message.isError ? 'Try again' : 'Regenerate this reply'}
             >
               <RotateCcw size={14} aria-hidden="true" />
             </button>

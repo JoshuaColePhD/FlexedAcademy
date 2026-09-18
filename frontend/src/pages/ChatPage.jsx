@@ -1,5 +1,4 @@
 import { chatMessageText, optionalFollowUpProps, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, requestedOptionalNextStep, revisionDayIndices, shouldStreamPlanRevision } from '../lib/chatActions'
-import { isClearlySpecifiedPlanRequest } from '../lib/planIntent'
 import { chatAvatarColor } from '../lib/chatPresentation'
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -394,6 +393,14 @@ const ATTACHMENT_CHAR_CAP = 12000
 // Spoken (and captioned) the instant voice mode opens on an empty chat —
 // short on purpose, since it's heard once per conversation, not read.
 const VOICE_GREETING = 'Hey — what are we doing with this week?'
+/* Which work card a chat tool call opens. ask_clarifying_questions is absent
+   on purpose: a question is not work in progress. */
+const ACTIVITY_KIND_BY_TOOL = {
+  generate_lesson_plan: 'plan',
+  generate_quiz: 'quiz',
+  update_lesson_day: 'revision',
+}
+
 const VOICE_BUILDING = 'Alright, writing the week — give me a bit.'
 const VOICE_REVISING = 'On it — one moment.'
 
@@ -1652,7 +1659,12 @@ export function ChatPage() {
   const stream = useLessonStream({
     onStart: ({ requestId }) => {
       const kind = pendingActivityKindRef.current || 'plan'
-      startWorkActivity(requestId, kind)
+      // Anchored to the assistant turn, not the teacher's message. The model
+      // now streams a sentence of preamble before it calls the tool, and the
+      // default anchor is the teacher's turn — which rendered the work card
+      // ABOVE the prose it is supposed to follow. Same expression the
+      // revision path has always used.
+      startWorkActivity(requestId, kind, liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current)
       pendingActivityKindRef.current = null
     },
     onStatus: (event) => updateActiveWorkActivity(event),
@@ -1847,9 +1859,15 @@ export function ChatPage() {
           updateActiveWorkActivity(event)
           return
         }
-        // The week or quiz starts after this reply lands. Starting the
-        // activity card here put a generation checklist on the first
-        // conversational turn while the model was still talking.
+        // This used to return without starting the card, because a checklist
+        // appearing "while the model was still talking" looked wrong. That
+        // reason expired: the model now says what it is about to do first, so
+        // the card sliding in beneath that sentence is the point, and it
+        // closes the dead gap between the prose settling and the artifact
+        // stream opening its own connection. startWorkActivity inherits an
+        // already-active card on the same anchor, so this cannot duplicate.
+        const kind = ACTIVITY_KIND_BY_TOOL[event.tool]
+        if (kind) startWorkActivity(event.requestId, kind, liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current)
         return
       }
       // The chat stream's "complete" means the model finished talking, not
@@ -2170,6 +2188,9 @@ export function ChatPage() {
     if (!liveId || !content) return
     setMessages((prev) => prev.map((m) => {
       if (m.id !== liveId || String(m.content || '').trim()) return m
+      // Never re-open a turn onDone already settled: a whitespace-only preamble
+      // would otherwise put the blinking caret back on a finished message.
+      if (m.streaming === false) return m
       return { ...m, content, streaming: true }
     }))
   }
@@ -2183,7 +2204,7 @@ export function ChatPage() {
     const voiceOpen = ctx.voiceOpen
     const revisingQuizId = quizRevisionId(requested, viewingQuiz)
     const canStandalone = Boolean(classId)
-    startWorkActivity(result.requestId, 'quiz')
+    startWorkActivity(result.requestId, 'quiz', liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current)
     if (!artifact?.planId && !revisingQuizId && !canStandalone) {
       setMessages((prev) => [
         ...prev,
@@ -2745,12 +2766,12 @@ export function ChatPage() {
         }
       }
 
-      /* No plan in this chat yet -> build one. A clearly specified request
-         goes straight to the grounded generator; a genuinely vague message
-         still takes the chat_stream path so the model can ask its focused
-         clarifying questions. The direct check is deliberately conservative
-         (see isClearlySpecifiedPlanRequest above), so this removes a full
-         routing round-trip without changing the answer for uncertain input. */
+      /* No plan in this chat yet. Every request takes the chat_stream path and
+         the model decides what to do with it, the same way it decides on every
+         other turn. There used to be a shortcut here that pattern-matched a
+         "clearly specified" request and jumped straight to the generator; it
+         saved a round-trip but skipped the conversational turn entirely, so
+         the teacher got no sentence explaining what was being built. */
       if (!artifact?.planId) {
         /* The paywall, asked before the wait rather than after it. The
            server enforces the same rule (entitlement.require_entitlement,
@@ -2786,25 +2807,6 @@ export function ChatPage() {
           ...historyMessages.map(chatPayloadFromMessage),
           { role: 'user', content: selectedStandard ? modelQuery : chatUserContent },
         ]
-
-        if (!planning && chatMode !== 'research' && isClearlySpecifiedPlanRequest(promptText)) {
-          finishPreparing()
-          pendingActivityKindRef.current = 'plan'
-          planBuildInFlightRef.current = true
-          if (voiceOpen) voice.speak(VOICE_BUILDING)
-          // No chat placeholder is needed here: the activity line attached to
-          // the teacher's message is the live response surface, and the
-          // completed-plan callback adds the assistant handoff when ready.
-          stream.start(modelQuery, {
-            chatId: activeChatId,
-            weekNumber: effectiveWeek,
-            classId,
-            conversationContext: priorConversation,
-            referenceContext,
-            requestId: options.requestId,
-          }).catch(() => {})
-          return
-        }
 
         finishPreparing()
         if (chatMode === 'research') pendingActivityKindRef.current = 'research'
@@ -2919,7 +2921,7 @@ export function ChatPage() {
       if (chatResult.questions?.length) return
       actionHandlerRef.current?.(chatResult)
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, viewKind, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass, betaFeaturesEnabled]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, viewKind, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass, betaFeaturesEnabled]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -4401,7 +4403,14 @@ export function ChatPage() {
                       subject={activeClass?.subject}
                       state={activeClass?.state}
                       isLast={i === messages.length - 1}
-                      onRetry={m.isError && !busy ? retryLast : undefined}
+                      /* Regenerate, not just retry-after-error. A reply that
+                         succeeded but missed the point had no affordance at
+                         all — the teacher had to retype the message. */
+                      onRetry={
+                        !busy && (m.isError || (m.role === 'assistant' && i === messages.length - 1))
+                          ? retryLast
+                          : undefined
+                      }
                       /* The pencil rendered unguarded while this was never passed, so
                          clicking it opened a working editor whose "Send again" threw
                          and silently reverted the text.

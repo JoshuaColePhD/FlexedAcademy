@@ -91,7 +91,7 @@ def main() -> int:
         captured["map_context_class_id"] = class_id
         return "Unit 2, Week 2: irony and diction in short fiction." if captured.get("has_map") else ""
 
-    def fake_stream_chat(user_id, messages, *, voice=False):
+    def fake_stream_chat(user_id, messages, **kwargs):
         captured["system_prompt"] = messages[0]["content"]
         yield {"chunk": "ok"}
         yield {"done": True}

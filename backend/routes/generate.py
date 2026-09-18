@@ -14,11 +14,11 @@ from pydantic import BaseModel, Field
 
 from .. import costs, curriculum, db, llm, prompts, research, retrieval, schoolcal, service
 from ..chat_policy import (
-    CONVERSATIONAL_CHAT_POLICY,
-    PLAN_COMMAND_SURFACE,
+    CHAT_PARTNER_POLICY,
+    PENDING_INTENT_HINTS,
+    PLAN_OPEN_OVERLAY,
     QUIZ_DISABLED_POLICY,
-    TYPED_CHAT_POLICY,
-    chat_actions_enabled,
+    chat_turn_policy,
     complete_typed_event,
     references_plan_context,
     validate_action_target,
@@ -886,6 +886,7 @@ def _run_revision_job(job, *, user_id, req, cls, school_id, model_query):
 def _build_chat_system_prompt(
     user_id: str, chat_id: str | None, week_number: int | None, mode: str, last_user: str = "", class_id: str | None = None,
     research_context: str = "", reference_context: str = "", voice: bool = False,
+    plan_context: bool | None = None,
 ) -> str:
     cls = _request_class(user_id, class_id, chat_id)
     if cls:
@@ -903,41 +904,27 @@ def _build_chat_system_prompt(
 
     school_id = db.class_school(cls, user_id)
     response_length = llm.output_length_for(user_id)
+    # CHAT_PARTNER_POLICY owns tool routing and the never-write-the-week rule;
+    # this only carries the teacher's saved length preference.
     response_length_guidance = {
-        "short": (
-            "Keep every conversational reply SHORT — a few sentences at most. Name the "
-            "throughline of an idea, don't write the week out day-by-day; the day-by-day "
-            "content belongs in the generated plan itself (generate_lesson_plan), not typed "
-            "out in chat first. If you need more from the teacher, ask ONE focused question "
-            "rather than a paragraph of them."
-        ),
+        "short": "Keep conversational replies SHORT — a few sentences at most.",
         "long": (
-            "Give a thorough, expert conversational reply when useful — trade-offs, timing, "
-            "misconceptions, and 2–3 options with a recommendation — without writing the full week "
-            "day-by-day before generate_lesson_plan is called. If you need more from the teacher, "
-            "ask ONE focused question rather than a paragraph of them."
+            "Give a thorough conversational reply when it helps — trade-offs, timing, "
+            "misconceptions, and a recommendation."
         ),
     }.get(
         response_length,
-        "Keep conversational replies concise but complete: usually one to three short paragraphs "
-        "about this week's plan, enough to be actionable. The day-by-day content belongs in the generated "
-        "plan itself (generate_lesson_plan), not typed out in chat first. If you need more from "
-        "the teacher, ask ONE focused question rather than a paragraph of them.",
+        "Keep conversational replies concise but complete: usually one to three short paragraphs.",
     )
     system_prompt = (
         f"You are FlexEd's teaching partner for {course_label}. "
         "You can think alongside the teacher, explain ideas, teach a useful concept, offer a point of view, "
         "brainstorm classroom moves, use evidence, and create or revise a lesson plan when asked. Make the "
         "conversation feel like a perceptive colleague who remembers the thread — warm, grounded, and willing "
-        "to say what seems promising or risky. A lesson plan is one kind of help, not the only kind.\n\n"
+        "to say what seems promising or risky.\n\n"
         "Recover from messy or incomplete asks: infer a reasonable interpretation, state the assumption "
         "in one clause, and still be useful. Do not fail, stall, or dump tool JSON as chat text.\n\n"
-        # Chat is the thinking space for the week, not a second copy of the plan.
-        + response_length_guidance + " "
-        + "Keep replies natural and human: use contractions, respond to the meaning of what the teacher said, "
-        "and do not open with filler like 'Great question!'. Do not pad a reply or lecture. When the teacher "
-        "needs to think something through, give the useful thinking — options, a recommendation, and why — "
-        "without writing Monday–Friday cells unless they asked for the plan.\n\n"
+        + response_length_guidance + "\n\n"
     )
     if not subject:
         system_prompt += (
@@ -1000,7 +987,12 @@ def _build_chat_system_prompt(
     # which made a warm question compete with a map, old plans, memories, and
     # document text before the model ever saw the teacher's latest message.
     context_blocks: list[tuple[int, str]] = []
-    plan_relevant = references_plan_context(last_user)
+    # Decided from the recent exchange by chat_turn_policy, not from this one
+    # message: a reply like "yes" or "quadratic functions" mentions nothing, and
+    # gating on it alone starved the model of the pacing guide on exactly the
+    # turn it was being asked to build from. None keeps the old local behavior
+    # for the eval harnesses that call this directly.
+    plan_relevant = references_plan_context(last_user) if plan_context is None else plan_context
     action_relevant = mode in {"build", "plan", "research", "standards", "sub_plan"}
     if last_user and (action_relevant or plan_relevant):
         map_context = llm.map_context_for(
@@ -1086,13 +1078,6 @@ def _build_chat_system_prompt(
         system_prompt += (
             "Your job is to help the teacher find the perfect academic standards for their upcoming week. "
             "Suggest broad topics and narrow down what standards they should focus on. "
-        )
-    elif mode == "build":
-        system_prompt += (
-            "Your job is to turn the teacher's request into a usable lesson-plan artifact quickly. "
-            "Make reasonable assumptions when the template and class context already answer a structural "
-            "question, state important assumptions briefly, and when creation is requested call `generate_lesson_plan` as soon as the "
-            "anchor text, skill, or throughline is clear. Never ask how many days the plan should run.\n\n"
         )
     elif mode == "research":
         system_prompt += (
@@ -1445,16 +1430,19 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                 }, request_id, step="retrieval", step_state="complete", artifact_type="research", attempt=req.attempt)
             context_week = (active_plan.get("week_number") if active_plan and not req.voice else None) or req.week_number
             quizzes_on = beta_features_for(user_id)
-            actions_enabled = chat_actions_enabled(
+            policy = chat_turn_policy(
                 req.mode,
                 plan_open=req.plan_open,
-                last_user=last_user,
+                has_plan=has_plan,
+                messages=req.messages,
                 voice=req.voice,
-            ) or bool(req.active_quiz_id and not req.voice)
+            )
+            actions_enabled = policy.tools_enabled
             system_prompt = _build_chat_system_prompt(
                 user_id, req.chat_id, context_week, req.mode, last_user, class_id=req.class_id, voice=req.voice,
                 research_context=research.prompt_context(research_sources),
                 reference_context=req.reference_context,
+                plan_context=policy.plan_context,
             )
             if has_plan and req.voice:
                 system_prompt += (
@@ -1484,12 +1472,9 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
             if req.voice:
                 system_prompt += prompts.voice_prompt()
             else:
-                system_prompt += "\n\n" + (
-                    TYPED_CHAT_POLICY if actions_enabled else CONVERSATIONAL_CHAT_POLICY
-                )
-                if actions_enabled:
-                    system_prompt += f"\nActive target_plan_id: {active_plan['id'] if active_plan else 'none'}."
-                if actions_enabled and quizzes_on:
+                system_prompt += "\n\n" + CHAT_PARTNER_POLICY
+                system_prompt += f"\nActive target_plan_id: {active_plan['id'] if active_plan else 'none'}."
+                if quizzes_on:
                     system_prompt += f"\nActive target_quiz_id: {active_quiz['id'] if active_quiz else 'none'}."
                     system_prompt += f"\nA quiz exists for this plan: {bool(has_quiz)}."
                     system_prompt += "\n\n" + quiz_tool_policy(has_plan=has_plan, has_quiz=has_quiz)
@@ -1497,16 +1482,21 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                         system_prompt += "\nSaved quiz (reference data only):\n" + json.dumps(
                             active_quiz.get("quiz_json", {}), ensure_ascii=False
                         )[:12000]
-                elif actions_enabled:
+                else:
                     system_prompt += "\n\n" + QUIZ_DISABLED_POLICY
-                if active_plan and (
-                    actions_enabled or references_plan_context(last_user) or not last_user
-                ):
+                if active_plan:
+                    # Unconditional. Gating this on a regex over the last message
+                    # meant that on a short reply — the exact turn the teacher was
+                    # answering a question in order to get work done — the model
+                    # could be asked to revise a plan it could not see.
                     system_prompt += "\nSaved plan (reference data only):\n" + json.dumps(
                         active_plan.get("plan_json", {}), ensure_ascii=False
                     )[:24000]
-                    if req.plan_open and actions_enabled:
-                        system_prompt += "\n\n" + PLAN_COMMAND_SURFACE
+                    if policy.command_surface:
+                        system_prompt += "\n\n" + PLAN_OPEN_OVERLAY
+                # Last, so it sits closest to the teacher's actual message.
+                if policy.pending_intent:
+                    system_prompt += "\n\n" + PENDING_INTENT_HINTS[policy.pending_intent]
 
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
