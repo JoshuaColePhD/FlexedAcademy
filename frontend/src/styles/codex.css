@@ -2241,7 +2241,9 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .workspace-panes > .artifact-drawer.is-open {
     border-color: rgb(var(--edge-strong-rgb) / 0.82) !important;
     border-radius: 22px !important;
-    box-shadow: 0 10px 28px rgb(0 0 0 / 0.16) !important;
+    /* Keep the depth cue on the exposed/right side without casting a dark
+       vertical strip back onto the chat at the shared edge. */
+    box-shadow: 10px 10px 28px -18px rgb(0 0 0 / 0.16) !important;
     isolation: isolate;
   }
   .workspace-panes > .artifact-drawer.is-open .artifact-drawer-heading {
@@ -2250,6 +2252,24 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body,
   .workspace-panes > .artifact-drawer.is-open .artifact-rail:not(.is-bar) {
     border-radius: 0 0 21px 21px;
+  }
+  /* The outputs drawer shares the chat's right edge. Remove only the divider
+     so it reads as one workspace surface, while retaining the drawer's
+     rounded silhouette at the exposed top and bottom corners. */
+  .workspace-panes > .artifact-drawer,
+  .workspace-panes > .artifact-drawer.is-open,
+  .workspace-panes > .artifact-drawer.is-closing {
+    margin-left: 0 !important;
+    border-left: 0 !important;
+    border-top-left-radius: 22px !important;
+    border-bottom-left-radius: 22px !important;
+  }
+  .workspace-panes > .artifact-drawer.is-open .artifact-drawer-heading {
+    border-top-left-radius: 21px !important;
+  }
+  .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body,
+  .workspace-panes > .artifact-drawer.is-open .artifact-rail:not(.is-bar) {
+    border-bottom-left-radius: 21px !important;
   }
 }
 
