@@ -247,7 +247,7 @@ export function LessonQuestions({ questions, onSubmit, purpose = 'clarify' }) {
                 // choosable right up to the instant the next question replaced
                 // them, so the tap read as having done nothing.
                 style={{ animationDelay: `${Math.min(i, 4) * 32 + 55}ms` }}
-                className={`lesson-question-option fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-all ${
+                className={`lesson-question-option fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium leading-snug transition-all ${
                   picked
                     ? 'neo-inset text-accent-text'
                     : advancePending
@@ -270,7 +270,7 @@ export function LessonQuestions({ questions, onSubmit, purpose = 'clarify' }) {
             onClick={() => setTypingOther(true)}
             disabled={Boolean(advancePending)}
             style={{ animationDelay: `${Math.min(options.length, 4) * 32 + 55}ms` }}
-            className={`lesson-question-option fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken ${
+            className={`lesson-question-option fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium leading-snug text-ink-muted transition-all ${
               advancePending ? 'opacity-40' : ''
             }`}
           >

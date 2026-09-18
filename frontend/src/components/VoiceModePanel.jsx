@@ -58,7 +58,7 @@ function QuestionCards({ questions, onAnswer, muted }) {
       <p key={question.id} className="fa-context-pop text-sm font-medium leading-snug text-ink">{question.text}</p>
       <div key={`opts-${question.id}`} className="fa-context-pop flex flex-wrap gap-2">
         {(question.options || []).filter((option) => !isBareOther(option)).map((option) => (
-          <button key={option} type="button" onClick={() => choose(option)} className="tap-target neo-raised rounded-full px-3 py-1.5 text-xs font-medium text-ink-soft">
+          <button key={option} type="button" onClick={() => choose(option)} className="lesson-question-option tap-target neo-raised rounded-full px-3 py-1.5 text-xs font-medium text-ink-soft">
             {option}
           </button>
         ))}
