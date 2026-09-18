@@ -4800,6 +4800,19 @@
       grid-template-columns: 1fr;
     }
   }
+  /* Pointer hover only — sticky :hover on touch would leave the last tap
+     highlighted. The selected option (aria-pressed) and the fade-out
+     siblings during the tap pause stay put. */
+  @media (hover: hover) {
+    .lesson-question-option:hover:not([aria-pressed='true']):not(:disabled):not(.opacity-40) {
+      background: rgb(var(--accent-rgb) / 0.14);
+      color: var(--accent-text);
+    }
+    .lesson-question-option:hover:not([aria-pressed='true']):not(:disabled):not(.opacity-40) > span[aria-hidden] {
+      background: rgb(var(--accent-rgb) / 0.22);
+      color: var(--accent-text);
+    }
+  }
 
   /* A clarification round is a conversation turn, not a form sliding into
      view. Give it one readable order: prompt, choices, then the small footer
