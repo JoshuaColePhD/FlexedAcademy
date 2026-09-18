@@ -618,9 +618,12 @@ export function AppShell({ children }) {
   useFocusTrap(drawerRef, { active: drawerOpen, trap: drawerOpen, onEscape: () => setDrawerOpen(false) })
 
   /* Desktop-dock only — the narrow/phone drawer above already has its own
-     open/close (drawerOpen). At >=lg this is a true hide/show control, not a
-     compact navigation strip: collapsing returns every pixel to the workspace.
-     Persist it so the teacher's preferred layout survives reloads. */
+     open/close (drawerOpen). At >=lg the rail used to be a permanent fixture
+     with no way to reclaim its width, unlike the artifact rail on the other
+     side of the screen, which has had a collapse handle from the start.
+     Collapsing keeps a compact ~52px navigation strip so the workspace still
+     has a spatial anchor. Persist it the same way chatWidthPx is (ChatPage.jsx),
+     so it survives a reload instead of springing back open every visit. */
   const location = useLocation()
   // The preview is mounted under `/preview.html`, while production mounts at
   // `/`. Match the class route at the end of either basename so footer
@@ -696,7 +699,7 @@ export function AppShell({ children }) {
         <div
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
-            width: effectiveRailCollapsed ? '0px' : 'var(--sidebar-w)',
+            width: effectiveRailCollapsed ? '52px' : 'var(--sidebar-w)',
             transitionDuration: documentReading ? 'var(--t-reader)' : 'var(--t-base)',
             transitionTimingFunction: documentReading ? 'var(--ease-glide)' : 'var(--ease-out)',
           }}
