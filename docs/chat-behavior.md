@@ -15,6 +15,7 @@ Flexed typed chat treats advice, clarification, separate plan creation, whole-we
 - Typed `stream_chat` sends function tools on every turn. `gpt-5.6-luna` on Chat Completions rejects that unless `reasoning_effort` is `none`; any other value 400s the turn before a token is produced. Tool-less calls may still use `low`.
 - The saved plan is supplied whenever one is open, unconditionally.
 - `map_context_for` retrieves the open class's documents plus account-wide `other` references (department policies, generic rubrics). Global pacing guides, syllabi, and curriculum maps are excluded so another prep's texts cannot enter this class's chat. The system prompt also locks the conversation to the open class's subject.
+- When the teacher asks for ideas, or the model has 2–5 concrete directions for this class and week, `ask_clarifying_questions` with `purpose: "suggest"` renders those options in the existing choice box immediately above the composer. Suggestions are not written as a chat paragraph.
 - Original teacher requests and selected standards remain the generation query. Conversation history, question-card wording, and the model's summary carry supporting constraints. Completion messages follow successful saves, including single-day revisions.
 
 ## Teaching behavior
@@ -49,7 +50,7 @@ Before publishing, use an approved live-model evaluation to review these convers
 | What does research say about this strategy? No retrieved sources | Distinguish professional suggestions from research; invent no citations. |
 | Create a separate plan for another week, then revise its Wednesday task | Use the new active plan and week; preserve the previous plan and unrelated fields. |
 | "hello" in an empty chat | Named prose invitation to say what this week needs. No question card, no plan. |
-| "make a lesson" in an empty chat | One clarifying question through the tool, as tappable options — never a lesson plan written out as prose. |
+| "I want to work on my lesson plan. Any ideas?" | Choice box above the composer with 2–5 directions for this class and week. No mashed prose paragraph. |
 | ...then "quadratic functions" | Build the plan. The answer completes the request that prompted the question. |
 | ...or "I don't have one" | Either build from the pacing guide, stating the assumption, or ask once more. Never a day-by-day week in the transcript. |
 | "build me next week" / "draft week 7" / "can you put together Tuesday" | Treated as build requests, whether or not the words "lesson plan" appear. |

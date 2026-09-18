@@ -2194,20 +2194,30 @@ CHAT_TOOLS = [
             # choice questions"), has enough to build from immediately.
             # Quiz type and count are never consequential; default them.
             "description": (
-                "Call this INSTEAD of generate_lesson_plan or generate_quiz when a missing goal, "
-                "text/passage, or revision target would materially change the result. Ask ONE short "
-                "question with a few clickable options. Do not ask quiz type or count — default those. "
-                "Don't ask again about something they already answered. A first-turn opener like "
-                "'let's build a plan' is missing the focus — ask for the text, skill, or throughline; "
-                "do not treat a pacing-guide unit as already confirmed. Never use this for a greeting, "
-                "thanks, or social opener with no build or revise request. For a new weekly lesson plan, "
-                "the week is already a complete structure from the selected school's template, so never "
-                "ask how many days or what duration; use the question to narrow the topic, text, skill, "
-                "or student task instead."
+                "Call this INSTEAD of generate_lesson_plan or generate_quiz to show tappable choices "
+                "in the box above the composer. Use purpose 'clarify' when a missing goal, text/passage, "
+                "or revision target would materially change the result. Use purpose 'suggest' when they "
+                "ask for ideas, options, or what to teach, or when you want to offer 2-5 concrete "
+                "directions for this class and week — each direction is one short option, never a chat "
+                "paragraph and never two courses mashed together. Ask ONE short question with a few "
+                "clickable options. Do not ask quiz type or count — default those. Don't ask again about "
+                "something they already answered. A first-turn opener like 'let's build a plan' is "
+                "missing the focus — ask for the text, skill, or throughline; do not treat a pacing-guide "
+                "unit as already confirmed. Never use this for a greeting, thanks, or social opener with "
+                "no task. For a new weekly lesson plan, the week is already a complete structure from the "
+                "selected school's template, so never ask how many days or what duration."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "purpose": {
+                        "type": "string",
+                        "enum": ["clarify", "suggest"],
+                        "description": (
+                            "clarify = one missing detail. suggest = concrete directions to pick from "
+                            "when they asked for ideas."
+                        ),
+                    },
                     "questions": {
                         "type": "array",
                         "minItems": 1,
@@ -2342,6 +2352,12 @@ _DEFAULT_PREAMBLE = {
     "update_lesson_day": "Updating that now.",
     "ask_clarifying_questions": "One detail will help me get this right:",
 }
+_SUGGEST_PREAMBLE = "A few directions for this week:"
+
+
+def clarifying_purpose(args) -> str:
+    purpose = args.get("purpose") if isinstance(args, dict) else None
+    return purpose if purpose in ("clarify", "suggest") else "clarify"
 
 _PREAMBLE_HEAD = re.compile(r'"preamble"\s*:\s*"')
 
@@ -2387,6 +2403,8 @@ def _preamble_fallback(tool_name: str, args, preamble_sent: int, prose_chars: in
         text = args["preamble"].strip()
         if text:
             return text
+    if tool_name == "ask_clarifying_questions" and clarifying_purpose(args) == "suggest":
+        return _SUGGEST_PREAMBLE
     return _DEFAULT_PREAMBLE.get(tool_name, "")
 
 
@@ -2552,6 +2570,7 @@ def stream_chat(
                 questions = sanitize_clarifying_questions(questions)
                 if not voice:
                     questions = questions[:1]
+                purpose = clarifying_purpose(args)
                 if not voice:
                     lead = _preamble_fallback(tool_name, args, preamble_sent, prose_chars)
                     if lead:
@@ -2559,7 +2578,11 @@ def stream_chat(
                         yield {"chunk": lead}
                 yielded_anything = True
                 tool_completed = True
-                yield {"tool_call": "ask_clarifying_questions", "questions": questions}
+                yield {
+                    "tool_call": "ask_clarifying_questions",
+                    "questions": questions,
+                    "purpose": purpose,
+                }
                 break
 
             # generate_quiz needs its own arguments before there is anything

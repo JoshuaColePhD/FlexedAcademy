@@ -108,9 +108,24 @@ def test_voice_tools_unchanged_and_typed_questions_are_single():
         props = list(typed[name]["parameters"]["properties"])
         assert props[0] == "preamble", name
         assert "preamble" in typed[name]["parameters"]["required"], name
+    purpose = typed["ask_clarifying_questions"]["parameters"]["properties"]["purpose"]
+    assert purpose["enum"] == ["clarify", "suggest"]
+    assert "choice box above the composer" in typed["ask_clarifying_questions"]["description"]
     # Voice keeps the legacy shapes, with no preamble anywhere.
     for tool in llm.CHAT_TOOLS:
         assert "preamble" not in (tool["function"].get("parameters") or {}).get("properties", {})
+
+
+def test_suggest_purpose_uses_the_choice_box_preamble():
+    assert llm.clarifying_purpose({"purpose": "suggest"}) == "suggest"
+    assert llm.clarifying_purpose({"purpose": "clarify"}) == "clarify"
+    assert llm.clarifying_purpose({}) == "clarify"
+    assert llm._preamble_fallback(
+        "ask_clarifying_questions", {"purpose": "suggest"}, 0, 0
+    ) == "A few directions for this week:"
+    assert llm._preamble_fallback(
+        "ask_clarifying_questions", {"purpose": "clarify"}, 0, 0
+    ) == "One detail will help me get this right:"
 
 
 def test_typed_tools_omit_quiz_when_beta_is_off():
@@ -160,6 +175,8 @@ def test_single_persona_carries_the_behavior_the_regex_gate_used_to():
     assert "no question card on that turn" in text
     assert "A visible plan is context, not permission to edit it." in text
     assert "Do not import texts, authors, skills, or units from another course" in text
+    assert "choice box above the composer" in text
+    assert "any ideas" in text
     # The rule the whole change exists for.
     assert "NEVER WRITE THE ARTIFACT INTO THE CHAT" in raw
     assert "Never type Monday through Friday" in text

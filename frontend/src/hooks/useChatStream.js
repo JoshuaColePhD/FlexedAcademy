@@ -332,6 +332,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
     let toolCalled = false
     let planAction = null
     let questions = null
+    let questionPurpose = null
     let researchSources = null
     // The generate_quiz alternative — see backend/llm.py's tool declaration.
     // A SEPARATE field from `toolCalled`/`questions`, not folded into either:
@@ -474,6 +475,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
           if (event.tool_call === 'ask_clarifying_questions') {
             toolCalled = true
             questions = event.questions || []
+            questionPurpose = event.purpose === 'suggest' ? 'suggest' : 'clarify'
           }
 
           if (event.tool_call) {
@@ -591,6 +593,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
       toolCalled,
       planAction,
       questions,
+      questionPurpose,
       quizRequested,
       dayRevisionRequested,
       researchSources,

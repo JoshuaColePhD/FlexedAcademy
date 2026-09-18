@@ -136,6 +136,38 @@ test('an opening plan request talks first and does not start writing the week', 
   await expect(page.getByText('Building your lesson plan')).toHaveCount(0)
 })
 
+test('idea suggestions appear as a choice box above the composer', async ({ page }) => {
+  await openChat(page, true)
+  await events(page, [{
+    tool_call: 'ask_clarifying_questions',
+    purpose: 'suggest',
+    questions: [{
+      id: 'direction',
+      text: 'Which of these should we take this week?',
+      options: [
+        'Quadratic functions in vertex form',
+        'Completing the square',
+        'Modeling with quadratic functions',
+      ],
+    }],
+  }, done])
+  await send(page, 'I want to work on my lesson plan. Any ideas?')
+  const dock = page.locator('.questions-dock')
+  await expect(dock).toBeVisible()
+  await expect(dock.getByText('Which of these should we take this week?', { exact: true })).toBeVisible()
+  await expect(dock.getByRole('button', { name: 'Quadratic functions in vertex form' })).toBeVisible()
+  await expect(dock.getByRole('button', { name: 'None of these' })).toBeVisible()
+  const dockBox = await dock.boundingBox()
+  const composerBox = await page.locator('#composer-input').boundingBox()
+  expect(dockBox).toBeTruthy()
+  expect(composerBox).toBeTruthy()
+  expect(dockBox.y + dockBox.height).toBeLessThanOrEqual(composerBox.y + 8)
+  await dock.getByRole('button', { name: 'Quadratic functions in vertex form' }).click()
+  await expect.poll(() => page.evaluate(() => window.chatCalls.length)).toBe(2)
+  const second = await page.evaluate(() => window.chatCalls[1].body.messages.at(-1).content)
+  expect(second).toMatch(/Quadratic functions in vertex form/)
+})
+
 test('a greeting does not start writing the week', async ({ page }) => {
   await openChat(page, true)
   await events(page, [{ chunk: 'Hey — what are we working on this week?' }, done])
