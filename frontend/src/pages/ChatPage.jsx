@@ -1,5 +1,4 @@
 import { chatMessageText, optionalFollowUpProps, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, requestedOptionalNextStep, revisionDayIndices, shouldStreamPlanRevision } from '../lib/chatActions'
-import { isClearlySpecifiedPlanRequest } from '../lib/planIntent'
 import { chatAvatarColor } from '../lib/chatPresentation'
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -50,6 +49,7 @@ import { ArtifactRail, ArtifactDrawer } from '../components/ArtifactRail'
 import { WorkActivityCard } from '../components/WorkActivityCard'
 import { Greeting } from '../components/Greeting'
 import { MobileChatHome } from '../components/MobileChatHome'
+import { useChatScroll } from '../hooks/useChatScroll'
 import { ChatHeaderSheet } from '../components/ChatHeaderSheet'
 import { WorkspaceRailContext } from '../lib/workspaceRailContext'
 
@@ -394,6 +394,14 @@ const ATTACHMENT_CHAR_CAP = 12000
 // Spoken (and captioned) the instant voice mode opens on an empty chat —
 // short on purpose, since it's heard once per conversation, not read.
 const VOICE_GREETING = 'Hey — what are we doing with this week?'
+/* Which work card a chat tool call opens. ask_clarifying_questions is absent
+   on purpose: a question is not work in progress. */
+const ACTIVITY_KIND_BY_TOOL = {
+  generate_lesson_plan: 'plan',
+  generate_quiz: 'quiz',
+  update_lesson_day: 'revision',
+}
+
 const VOICE_BUILDING = 'Alright, writing the week — give me a bit.'
 const VOICE_REVISING = 'On it — one moment.'
 
@@ -774,7 +782,6 @@ export function ChatPage() {
   // from a moment ago is still finishing), and ArtifactRail needs to show
   // "Building quiz…" independent of whatever the plan itself is doing.
   const [quizBuilding, setQuizBuilding] = useState(false)
-  const [atBottom, setAtBottom] = useState(true)
   /* True from the instant submit() is called until either stream/chatStream
      picks up the busy flag on its own (both flip isStreaming synchronously
      the moment they're invoked) or submit bails out. This exists because
@@ -1036,44 +1043,6 @@ export function ChatPage() {
     }
   }, [])
 
-  const scrollRef = useRef(null)
-  const endRef = useRef(null)
-  const scrollRestoreKeyRef = useRef(null)
-  const scrollSaveTimerRef = useRef(null)
-  /* Set when a new turn's user message is pushed (see submit()). The scroll
-     effect reads it once, follows the transcript's end, then clears it. This
-     makes the response visible immediately and keeps streaming replies in
-     view until the teacher deliberately scrolls upward. */
-  const followLatestIdRef = useRef(null)
-  /* While the teacher is actively dragging/wheeling the transcript, ignore
-     follow-scroll for a beat after the gesture ends. Instant programmatic
-     jumps mid-gesture are what made the list feel slippery — native momentum
-     would start, then get yanked to the bottom every streamed frame. */
-  const userScrollLockRef = useRef(false)
-  const userScrollUnlockTimerRef = useRef(null)
-  const lockUserScroll = useCallback((ms = 420) => {
-    userScrollLockRef.current = true
-    window.clearTimeout(userScrollUnlockTimerRef.current)
-    userScrollUnlockTimerRef.current = window.setTimeout(() => {
-      userScrollLockRef.current = false
-    }, ms)
-  }, [])
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return undefined
-    const onPointer = () => lockUserScroll(520)
-    const onWheel = () => lockUserScroll(380)
-    const onTouch = () => lockUserScroll(520)
-    el.addEventListener('pointerdown', onPointer, { passive: true })
-    el.addEventListener('wheel', onWheel, { passive: true })
-    el.addEventListener('touchstart', onTouch, { passive: true })
-    return () => {
-      el.removeEventListener('pointerdown', onPointer)
-      el.removeEventListener('wheel', onWheel)
-      el.removeEventListener('touchstart', onTouch)
-      window.clearTimeout(userScrollUnlockTimerRef.current)
-    }
-  }, [lockUserScroll, chatId])
   const activeChat = chats.find((c) => c.id === chatId)
   useDocumentTitle(activeChat?.title || (chatId ? 'New plan' : null))
 
@@ -1238,6 +1207,7 @@ export function ChatPage() {
      same DOM node throughout: it settles (Message.jsx's own fa-settle) when
      `streaming` flips false instead of disappearing and reappearing. */
   const liveMessageIdRef = useRef(null)
+  const liveTextRef = useRef('')
 
   /* Turns whatever's mid-flight into its resting state instead of leaving it
      stuck at streaming:true forever — the interruption paths (Stop button,
@@ -1248,10 +1218,14 @@ export function ChatPage() {
     const id = liveMessageIdRef.current
     liveMessageIdRef.current = null
     if (!id) return
+    // The streamed text lived in a ref rather than on the message, so this is
+    // where it lands. Still dropped rather than left as an empty bubble.
+    const text = liveTextRef.current || ''
+    liveTextRef.current = ''
     setMessages((prev) =>
       prev
-        .map((m) => (m.id === id ? { ...m, streaming: false } : m))
-        .filter((m) => m.id !== id || m.content.trim())
+        .map((m) => (m.id === id ? { ...m, content: m.content || text, streaming: false } : m))
+        .filter((m) => m.id !== id || (m.content || text).trim())
     )
   }, [])
 
@@ -1652,7 +1626,12 @@ export function ChatPage() {
   const stream = useLessonStream({
     onStart: ({ requestId }) => {
       const kind = pendingActivityKindRef.current || 'plan'
-      startWorkActivity(requestId, kind)
+      // Anchored to the assistant turn, not the teacher's message. The model
+      // now streams a sentence of preamble before it calls the tool, and the
+      // default anchor is the teacher's turn — which rendered the work card
+      // ABOVE the prose it is supposed to follow. Same expression the
+      // revision path has always used.
+      startWorkActivity(requestId, kind, liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current)
       pendingActivityKindRef.current = null
     },
     onStatus: (event) => updateActiveWorkActivity(event),
@@ -1847,9 +1826,15 @@ export function ChatPage() {
           updateActiveWorkActivity(event)
           return
         }
-        // The week or quiz starts after this reply lands. Starting the
-        // activity card here put a generation checklist on the first
-        // conversational turn while the model was still talking.
+        // This used to return without starting the card, because a checklist
+        // appearing "while the model was still talking" looked wrong. That
+        // reason expired: the model now says what it is about to do first, so
+        // the card sliding in beneath that sentence is the point, and it
+        // closes the dead gap between the prose settling and the artifact
+        // stream opening its own connection. startWorkActivity inherits an
+        // already-active card on the same anchor, so this cannot duplicate.
+        const kind = ACTIVITY_KIND_BY_TOOL[event.tool]
+        if (kind) startWorkActivity(event.requestId, kind, liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current)
         return
       }
       // The chat stream's "complete" means the model finished talking, not
@@ -1858,6 +1843,16 @@ export function ChatPage() {
       // reply bubble was still landing. Real completion is finishWorkActivity
       // from the lesson/quiz/revision callbacks.
       if (event.code === 'complete' || event.status === 'complete' || event.done) return
+      // Put the phase on the live turn as well. These codes previously reached
+      // only updateActiveWorkActivity, which is a no-op on a plain
+      // conversational turn, so a long wait showed one unchanging label and no
+      // sign of progress. ThinkingIndicator ignores the codes that say nothing.
+      const liveId = liveMessageIdRef.current
+      if (liveId) {
+        setMessages((prev) => prev.map((m) => (
+          m.id === liveId && m.streaming ? { ...m, statusCode: event.code } : m
+        )))
+      }
       updateActiveWorkActivity(event)
     },
     onRetry: () => {
@@ -2040,6 +2035,24 @@ export function ChatPage() {
     },
   })
 
+  /* ── scroll ───────────────────────────────────────────────────────────── */
+  const {
+    scrollRef,
+    endRef,
+    spacerRef,
+    atBottom,
+    onScroll,
+    followLatest,
+    followLatestOnly,
+    snapToBottom,
+    scrollToBottom,
+  } = useChatScroll({
+    chatId,
+    userId: user?.id,
+    messageCount: messages.length,
+    streamText: chatStream.text,
+  })
+
   const busy = stream.isStreaming || revising || quizBuilding || chatStream.isStreaming || preparing
   const generationBusy = preparing || stream.isStreaming || chatStream.isStreaming || quizBuilding || revising
   // A conversational reply (including "hello") uses chat_stream. That is a
@@ -2168,8 +2181,13 @@ export function ChatPage() {
   const fillLiveIfEmpty = (content) => {
     const liveId = liveMessageIdRef.current
     if (!liveId || !content) return
+    // "Empty" now means nothing has streamed, which only the ref knows.
+    if (String(liveTextRef.current || '').trim()) return
     setMessages((prev) => prev.map((m) => {
       if (m.id !== liveId || String(m.content || '').trim()) return m
+      // Never re-open a turn onDone already settled: a whitespace-only preamble
+      // would otherwise put the blinking caret back on a finished message.
+      if (m.streaming === false) return m
       return { ...m, content, streaming: true }
     }))
   }
@@ -2183,7 +2201,7 @@ export function ChatPage() {
     const voiceOpen = ctx.voiceOpen
     const revisingQuizId = quizRevisionId(requested, viewingQuiz)
     const canStandalone = Boolean(classId)
-    startWorkActivity(result.requestId, 'quiz')
+    startWorkActivity(result.requestId, 'quiz', liveMessageIdRef.current || lastAssistantTurnIdRef.current || activityAnchorRef.current)
     if (!artifact?.planId && !revisingQuizId && !canStandalone) {
       setMessages((prev) => [
         ...prev,
@@ -2594,7 +2612,7 @@ export function ChatPage() {
       // content instead of leaving the new turn above the visible area.
       // and clears it, so the reply that's about to arrive doesn't drag the
       // view any further than this turn's own opening line.
-      followLatestIdRef.current = newUserMessage.id
+      followLatest(newUserMessage.id)
       activityAnchorRef.current = newUserMessage.id
       pendingActivityKindRef.current = null
 
@@ -2745,12 +2763,12 @@ export function ChatPage() {
         }
       }
 
-      /* No plan in this chat yet -> build one. A clearly specified request
-         goes straight to the grounded generator; a genuinely vague message
-         still takes the chat_stream path so the model can ask its focused
-         clarifying questions. The direct check is deliberately conservative
-         (see isClearlySpecifiedPlanRequest above), so this removes a full
-         routing round-trip without changing the answer for uncertain input. */
+      /* No plan in this chat yet. Every request takes the chat_stream path and
+         the model decides what to do with it, the same way it decides on every
+         other turn. There used to be a shortcut here that pattern-matched a
+         "clearly specified" request and jumped straight to the generator; it
+         saved a round-trip but skipped the conversational turn entirely, so
+         the teacher got no sentence explaining what was being built. */
       if (!artifact?.planId) {
         /* The paywall, asked before the wait rather than after it. The
            server enforces the same rule (entitlement.require_entitlement,
@@ -2787,32 +2805,19 @@ export function ChatPage() {
           { role: 'user', content: selectedStandard ? modelQuery : chatUserContent },
         ]
 
-        if (!planning && chatMode !== 'research' && isClearlySpecifiedPlanRequest(promptText)) {
-          finishPreparing()
-          pendingActivityKindRef.current = 'plan'
-          planBuildInFlightRef.current = true
-          if (voiceOpen) voice.speak(VOICE_BUILDING)
-          // No chat placeholder is needed here: the activity line attached to
-          // the teacher's message is the live response surface, and the
-          // completed-plan callback adds the assistant handoff when ready.
-          stream.start(modelQuery, {
-            chatId: activeChatId,
-            weekNumber: effectiveWeek,
-            classId,
-            conversationContext: priorConversation,
-            referenceContext,
-            requestId: options.requestId,
-          }).catch(() => {})
-          return
-        }
-
         finishPreparing()
         if (chatMode === 'research') pendingActivityKindRef.current = 'research'
-        liveMessageIdRef.current = nextId()
+        // Captured, not read inside the updater below: React runs that later,
+        // and a fast stream can finish and null the ref first — which produced
+        // a placeholder with no id, no key, and no match in settle(), left
+        // behind as a second permanently-streaming bubble.
+        const liveId = nextId()
+        liveMessageIdRef.current = liveId
+        liveTextRef.current = ''
         const firstThinking = chatThinkingLabel(chatMode, { planning, prompt: promptText })
         setMessages((prev) => [
           ...prev,
-          { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: firstThinking },
+          { id: liveId, role: 'assistant', content: '', streaming: true, thinkingLabel: firstThinking },
         ])
         if (voiceOpen) voice.speak(`${firstThinking}.`)
         startedActionRef.current = null
@@ -2878,11 +2883,14 @@ export function ChatPage() {
          again — so the model spent the rest of every conversation (typed or
          spoken) with no idea which week it was on. The chat's pinned week
          doesn't drift, so it's safe to keep sending. */
-      liveMessageIdRef.current = nextId()
+      // Same capture-before-update rule as the first placeholder above.
+      const laterLiveId = nextId()
+      liveMessageIdRef.current = laterLiveId
+      liveTextRef.current = ''
       const laterThinking = chatThinkingLabel(chatMode, { planning, prompt: promptText })
       setMessages((prev) => [
         ...prev,
-        { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: laterThinking },
+        { id: laterLiveId, role: 'assistant', content: '', streaming: true, thinkingLabel: laterThinking },
       ])
       if (voiceOpen) voice.speak(`${laterThinking}.`)
       startedActionRef.current = null
@@ -2919,7 +2927,7 @@ export function ChatPage() {
       if (chatResult.questions?.length) return
       actionHandlerRef.current?.(chatResult)
     },
-    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, stream, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, viewKind, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass, betaFeaturesEnabled]
+    [attachments, busy, chatId, classId, draftKey, user?.id, artifact, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, viewKind, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass, betaFeaturesEnabled, followLatest]
   )
 
   /* Composer's actual onSubmit — typing a follow-up and hitting Enter while
@@ -2985,7 +2993,7 @@ export function ChatPage() {
       const label = field ? `${day.name}’s ${FIELD_LABELS[field] || field}` : day.name
       const ask = `Revise ${label}: ${feedback}`
       const askId = nextId()
-      followLatestIdRef.current = askId
+      followLatestOnly(askId)
       setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       // Persisted for the same reason as the composer's own messages: a cell
       // tweak is a real edit to the week, and the transcript is meant to be a
@@ -3050,7 +3058,7 @@ export function ChatPage() {
         setRevisionWorkingCells(new Set())
       }
     },
-    [artifact, toast, flash, persistMessage, recordRevision]
+    [artifact, toast, flash, persistMessage, recordRevision, followLatestOnly]
   )
   // See reviseDayRef's own declaration, above submit(), for why this is a
   // plain assignment rather than a dependency-array entry.
@@ -3143,7 +3151,7 @@ export function ChatPage() {
       const label = `${FIELD_LABELS[field] || field} across ${dayIndices.length} days`
       const ask = `Revise ${label}: ${feedback}`
       const askId = nextId()
-      followLatestIdRef.current = askId
+      followLatestOnly(askId)
       setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       const saveTo = localFor.current
       if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
@@ -3196,7 +3204,7 @@ export function ChatPage() {
         setRevisionWorkingCells(new Set())
       }
     },
-    [artifact, toast, flash, persistMessage, recordRevision]
+    [artifact, toast, flash, persistMessage, recordRevision, followLatestOnly]
   )
 
   /* The standard picker's own write, from clicking one of the retrieved
@@ -3212,7 +3220,7 @@ export function ChatPage() {
       const label = `${day.name}’s ${FIELD_LABELS[field] || field}`
       const ask = `Set ${label} to ${code}.`
       const askId = nextId()
-      followLatestIdRef.current = askId
+      followLatestOnly(askId)
       setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       const saveTo = localFor.current
       if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
@@ -3263,7 +3271,7 @@ export function ChatPage() {
         setRevising(false)
       }
     },
-    [artifact, toast, flash, persistMessage, recordRevision]
+    [artifact, toast, flash, persistMessage, recordRevision, followLatestOnly]
   )
 
   /* Stopping used to say nothing at all: useLessonStream returns null on an
@@ -3401,11 +3409,11 @@ export function ChatPage() {
       // conversation" as typing a reply and hitting send, so it force-snaps
       // back to the bottom rather than trusting a scroll position measured
       // against a dock that's mid-close.
-      setAtBottom(true)
+      snapToBottom()
       if (meta.skipped && message.questionPurpose === 'optional') return
       submit(text, { youSaid: meta.youSaid })
     },
-    [submit]
+    [submit, snapToBottom]
   )
 
   const onPlanRevised = useCallback((row) => {
@@ -3418,79 +3426,17 @@ export function ChatPage() {
     }))
   }, [])
 
-  /* Mirrors chatStream's own growing text into the placeholder message
-     pushed right before chatStream.start() (see the two call sites in
-     submit(), and liveMessageIdRef's own comment above) — this is what lets
-     that message grow in place instead of living outside `messages` until
-     it's finished. */
+  /* The growing reply is handed to its Message as a prop (see `streamText` in
+     the transcript below) instead of being copied into `messages` every frame.
+     The old mirror cost a second full ChatPage render and an O(n) map per rAF
+     tick on top of the one setText already caused. This ref exists because a
+     few callers still need the latest text without re-rendering for it —
+     finalizeLiveMessage, fillLiveIfEmpty, and voice auto-speak. */
   useEffect(() => {
     if (!chatStream.isStreaming) return
-    const id = liveMessageIdRef.current
-    if (!id) return
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: chatStream.text } : m)))
+    liveTextRef.current = chatStream.text
   }, [chatStream.text, chatStream.isStreaming])
 
-  /* ── scroll ───────────────────────────────────────────────────────────── */
-  const onScroll = () => {
-    const el = scrollRef.current
-    if (!el) return
-    const nextAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
-    setAtBottom(nextAtBottom)
-    if (chatId && user?.id) {
-      window.clearTimeout(scrollSaveTimerRef.current)
-      scrollSaveTimerRef.current = window.setTimeout(() => {
-        writeAccountStorage(
-          'chat-scroll',
-          user.id,
-          encodeURIComponent(chatId),
-          JSON.stringify({ top: el.scrollTop, atBottom: nextAtBottom })
-        )
-      }, 120)
-    }
-  }
-  /* Restore a teacher's reading position per chat. This is intentionally a
-     scroll offset, not a focus jump: reopening a long plan should return to
-     the paragraph they were reading while still allowing the normal
-     follow-latest behavior once they send a new turn. */
-  useEffect(() => {
-    const restoreKey = `${user?.id || ''}:${chatId || ''}`
-    if (!chatId || !user?.id || scrollRestoreKeyRef.current === restoreKey || !messages.length) return
-    const raw = readAccountStorage('chat-scroll', user.id, encodeURIComponent(chatId))
-    scrollRestoreKeyRef.current = restoreKey
-    if (!raw) return
-    try {
-      const saved = JSON.parse(raw)
-      requestAnimationFrame(() => {
-        const el = scrollRef.current
-        if (!el || typeof saved.top !== 'number') return
-        el.scrollTop = Math.max(0, Math.min(saved.top, el.scrollHeight - el.clientHeight))
-        setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < 120)
-      })
-    } catch {
-      /* A malformed position is disposable UI state; the transcript is not. */
-    }
-  }, [chatId, messages.length, user?.id])
-  useEffect(() => () => window.clearTimeout(scrollSaveTimerRef.current), [])
-  // Follow the latest content while the teacher remains at the bottom. A
-  // deliberate upward scroll flips atBottom false, so streaming does not
-  // wrestle the viewport back under the teacher's cursor.
-  // Coalesce streamed chunks into one update per frame. Only move this
-  // scroller: scrollIntoView also moves ancestor panes. A queued frame runs
-  // when a background tab becomes visible again, using the latest height.
-  useEffect(() => {
-    if (!followLatestIdRef.current && !atBottom) return undefined
-    if (userScrollLockRef.current && !followLatestIdRef.current) return undefined
-    const frame = requestAnimationFrame(() => {
-      followLatestIdRef.current = null
-      const scroller = scrollRef.current
-      if (!scroller) return
-      // Direct scrollTop assignment keeps follow-scroll in lockstep with the
-      // growing bubble without invoking smooth/instant scrollTo behavior that
-      // can cancel native inertia mid-flick on some browsers.
-      scroller.scrollTop = scroller.scrollHeight
-    })
-    return () => cancelAnimationFrame(frame)
-  }, [messages, atBottom, chatStream.text])
 
   /* Voice mode's other half — see VoiceProvider for the mic button's. One
      effect watching `messages` catches every assistant reply this component
@@ -4389,7 +4335,7 @@ export function ChatPage() {
                 ? groupEnd ? 'last' : 'middle'
                 : groupEnd ? 'single' : 'first'
               return (
-                <div key={m.id}>
+                <div key={m.id} data-message-id={m.id}>
                   {daySep ? (
                     <div className={i === 0 ? 'pb-4' : 'pb-4 pt-3'}>
                       <DaySeparator label={dayLabel(m.created_at)} />
@@ -4398,10 +4344,18 @@ export function ChatPage() {
                   <div className={i === 0 || daySep ? '' : grouped ? 'mt-2' : 'mt-7'}>
                     <Message
                       message={m}
+                      streamText={m.id === liveMessageIdRef.current ? chatStream.text : undefined}
                       subject={activeClass?.subject}
                       state={activeClass?.state}
                       isLast={i === messages.length - 1}
-                      onRetry={m.isError && !busy ? retryLast : undefined}
+                      /* Regenerate, not just retry-after-error. A reply that
+                         succeeded but missed the point had no affordance at
+                         all — the teacher had to retype the message. */
+                      onRetry={
+                        !busy && (m.isError || (m.role === 'assistant' && i === messages.length - 1))
+                          ? retryLast
+                          : undefined
+                      }
                       /* The pencil rendered unguarded while this was never passed, so
                          clicking it opened a working editor whose "Send again" threw
                          and silently reverted the text.
@@ -4494,6 +4448,8 @@ export function ChatPage() {
                 not scrolling away with the transcript — so this keeps only
                 the eyebrow label here; isPhone still gets the full list,
                 since phone has no rail to carry it. */}
+            {/* Sized imperatively by the scroll hook; see useChatScroll. */}
+            <div ref={spacerRef} aria-hidden="true" />
             <div ref={endRef} />
           </div>
         </div>
@@ -4667,10 +4623,7 @@ export function ChatPage() {
               <button
                 type="button"
                 className={`fa-rise fa-press flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
-                onClick={() => {
-                  const scroller = scrollRef.current
-                  if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
-                }}
+                onClick={scrollToBottom}
               >
                 <ArrowDown size={13} aria-hidden="true" /> Latest
               </button>

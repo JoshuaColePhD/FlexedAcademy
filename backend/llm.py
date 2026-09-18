@@ -2297,6 +2297,77 @@ def _chat_tools_for(
     return typed_chat_tools(CHAT_TOOLS, quizzes_enabled=quizzes_on)
 
 
+# Reasoning tokens are drawn from max_completion_tokens, so raising the effort
+# without raising the ceiling makes the model spend its budget thinking and
+# return empty content — which surfaces as an empty_reply 502 and reads to the
+# teacher as "the chat is broken". These two settings move together or not at all.
+_REASONING_HEADROOM = {"none": 0, "low": 1_200, "medium": 3_000}
+_TOOL_ARG_HEADROOM = 600  # instruction is capped at 4,000 chars
+
+# A five-day plan typed as prose runs 6,000–10,000 characters; a genuinely long
+# conversational answer is well under 3,000. Past this, with an artifact tool
+# sitting unused in the array, the model is writing the artifact into the
+# transcript. Everything else guarding against that is probabilistic; this is not.
+_PROSE_SOFT_LIMIT_CHARS = 3_000
+_PROSE_CUTOFF_NOTE = (
+    "\n\n— I'm writing this out here instead of building it. "
+    "Want me to make it the actual plan?"
+)
+
+_DEFAULT_PREAMBLE = {
+    "generate_lesson_plan": "Okay — putting that week together now.",
+    "generate_quiz": "Okay — building that quiz now.",
+    "update_lesson_day": "Updating that now.",
+    "ask_clarifying_questions": "One detail will help me get this right:",
+}
+
+_PREAMBLE_HEAD = re.compile(r'"preamble"\s*:\s*"')
+
+
+def _partial_preamble(buf: str) -> str:
+    """Decode as much of the preamble string as has fully arrived.
+
+    Tool arguments stream as raw JSON text, so without this the teacher waits
+    for the entire call — instruction, days, field — before seeing a word.
+    `preamble` is declared first in the schema, so it completes long before the
+    rest and can be shown while the arguments are still being written.
+    """
+
+    head = _PREAMBLE_HEAD.search(buf)
+    if not head:
+        return ""
+    out, i = [], head.end()
+    while i < len(buf):
+        c = buf[i]
+        if c == '"':
+            break
+        if c == "\\":
+            span = 6 if buf[i + 1 : i + 2] == "u" else 2
+            if i + span > len(buf):
+                break  # escape still arriving; stop on a clean boundary
+            try:
+                out.append(json.loads(f'"{buf[i : i + span]}"'))
+            except ValueError:
+                break
+            i += span
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _preamble_fallback(tool_name: str, args, preamble_sent: int, prose_chars: int) -> str:
+    """Guarantee a sentence reaches the browser before the artifact card."""
+
+    if preamble_sent or prose_chars:
+        return ""
+    if isinstance(args, dict) and isinstance(args.get("preamble"), str):
+        text = args["preamble"].strip()
+        if text:
+            return text
+    return _DEFAULT_PREAMBLE.get(tool_name, "")
+
+
 def stream_chat(
     user_id: str,
     messages: list[dict],
@@ -2322,17 +2393,24 @@ def stream_chat(
         actions_enabled=actions_enabled,
         quizzes_on=quizzes_on,
     )
+    effort = "low"
     request_kwargs = {
         "model": settings.openai_model,
-        # Tool turns stay on the compatibility path. Conversational turns
-        # have no schema to satisfy, so low reasoning can help Luna track the
-        # teacher's meaning and respond with judgment instead of merely
-        # pattern-matching against a command surface.
-        "reasoning_effort": "low" if (voice or not actions_enabled) else "none",
+        # Choosing whether to call a tool, which one, and what arguments to give
+        # it is judgment. This used to be "none" on exactly those turns and
+        # "low" on chit-chat, which is backwards: with no reasoning room the
+        # model pattern-matches the prompt's surface forms, and a build request
+        # phrased any way the prompt did not literally show became prose.
+        "reasoning_effort": effort,
         # Voice replies stay deliberately short. Written chat follows the
         # same persisted preference as lesson-plan generation, so this setting
-        # is no longer a prompt-only suggestion on either surface.
-        "max_completion_tokens": 700 if voice else output_length_tokens_for(user_id),
+        # is no longer a prompt-only suggestion on either surface. The headroom
+        # is what keeps the reasoning bump above from eating the reply itself.
+        "max_completion_tokens": (
+            (700 if voice else output_length_tokens_for(user_id))
+            + _REASONING_HEADROOM.get(effort, 0)
+            + (_TOOL_ARG_HEADROOM if tool_defs else 0)
+        ),
         "messages": messages,
         "stream": True,
         # See stream_plan's identical option — without it this call, which
@@ -2359,6 +2437,9 @@ def stream_chat(
     # time" with no error to explain it.
     yielded_anything = False
     tool_completed = False
+    preamble_sent = 0
+    prose_chars = 0
+    args = None
     try:
         for chunk in stream:
             if getattr(chunk, "usage", None):
@@ -2371,6 +2452,20 @@ def stream_chat(
                 raise AppError(
                     "model_refusal", f"The model declined this request: {delta.refusal}", status=422
                 )
+
+            # Content is handled FIRST and is never skipped by the tool branch
+            # below, because one chunk can legitimately carry both a sentence of
+            # preamble and the opening of the tool call.
+            if getattr(delta, "content", None):
+                prose_chars += len(delta.content)
+                yielded_anything = True
+                yield {"chunk": delta.content}
+                if tool_defs and not tool_name and prose_chars > _PROSE_SOFT_LIMIT_CHARS:
+                    log.warning(
+                        "chat reply exceeded prose limit user=%s chars=%d", user_id, prose_chars
+                    )
+                    yield {"chunk": _PROSE_CUTOFF_NOTE}
+                    break
 
             if getattr(delta, "tool_calls", None):
                 if len(delta.tool_calls) != 1 or getattr(delta.tool_calls[0], "index", 0) != 0:
@@ -2386,9 +2481,17 @@ def stream_chat(
                     tool_completed = True
                     yield {"tool_call": "generate_lesson_plan"}
                     break
-                continue
+                grown = _partial_preamble(tool_args)
+                if len(grown) > preamble_sent:
+                    yielded_anything = True
+                    yield {"chunk": grown[preamble_sent:]}
+                    preamble_sent = len(grown)
+                # No `continue` here: a chunk carrying the final argument
+                # fragment AND finish_reason="tool_calls" used to skip every
+                # dispatch branch below and then raise malformed_tool_call on a
+                # perfectly valid call.
 
-            if choice.finish_reason == "tool_calls" and tool_name == "generate_lesson_plan":
+            if choice.finish_reason and tool_name == "generate_lesson_plan":
                 try:
                     args = json.loads(tool_args)
                 except ValueError:
@@ -2396,16 +2499,22 @@ def stream_chat(
                 action = validate_plan_action(args)
                 if not quizzes_on:
                     action["also_quiz"] = False
+                if not voice:
+                    lead = _preamble_fallback(tool_name, args, preamble_sent, prose_chars)
+                    if lead:
+                        yielded_anything = True
+                        yield {"chunk": lead}
                 yielded_anything = True
                 tool_completed = True
                 yield {"tool_call": "generate_lesson_plan", **action}
                 break
 
-            if choice.finish_reason == "tool_calls" and tool_name == "ask_clarifying_questions":
+            if choice.finish_reason and tool_name == "ask_clarifying_questions":
                 try:
-                    questions = json.loads(tool_args).get("questions") or []
+                    args = json.loads(tool_args)
+                    questions = args.get("questions") or []
                 except ValueError:
-                    questions = []
+                    args, questions = None, []
                 if not questions:
                     # The model committed to asking a question and then sent
                     # back either unparseable JSON or an empty list — there is
@@ -2423,6 +2532,11 @@ def stream_chat(
                 questions = sanitize_clarifying_questions(questions)
                 if not voice:
                     questions = questions[:1]
+                if not voice:
+                    lead = _preamble_fallback(tool_name, args, preamble_sent, prose_chars)
+                    if lead:
+                        yielded_anything = True
+                        yield {"chunk": lead}
                 yielded_anything = True
                 tool_completed = True
                 yield {"tool_call": "ask_clarifying_questions", "questions": questions}
@@ -2432,7 +2546,7 @@ def stream_chat(
             # buildable — same reason ask_clarifying_questions above waits
             # for finish_reason rather than firing on first sighting like
             # generate_lesson_plan does.
-            if choice.finish_reason == "tool_calls" and tool_name == "generate_quiz":
+            if choice.finish_reason and tool_name == "generate_quiz":
                 if not quizzes_on:
                     break
                 try:
@@ -2442,6 +2556,11 @@ def stream_chat(
                 payload = generate_quiz_tool_payload(args)
                 if not voice:
                     payload.update(validate_quiz_action({**args, **payload}))
+                if not voice:
+                    lead = _preamble_fallback(tool_name, args, preamble_sent, prose_chars)
+                    if lead:
+                        yielded_anything = True
+                        yield {"chunk": lead}
                 yielded_anything = True
                 tool_completed = True
                 yield payload
@@ -2449,7 +2568,7 @@ def stream_chat(
 
             # Same reasoning as generate_quiz just above — day/field/feedback
             # ARE the payload, so this waits for finish_reason too.
-            if choice.finish_reason == "tool_calls" and tool_name == "update_lesson_day":
+            if choice.finish_reason and tool_name == "update_lesson_day":
                 try:
                     args = json.loads(tool_args)
                 except ValueError:
@@ -2466,6 +2585,11 @@ def stream_chat(
                         day, field,
                     )
                     break
+                if not voice:
+                    lead = _preamble_fallback(tool_name, args, preamble_sent, prose_chars)
+                    if lead:
+                        yielded_anything = True
+                        yield {"chunk": lead}
                 yielded_anything = True
                 tool_completed = True
                 yield {
@@ -2477,14 +2601,21 @@ def stream_chat(
                 }
                 break
 
-            if delta.content:
-                yielded_anything = True
-                yield {"chunk": delta.content}
+            if choice.finish_reason == "length":
+                # Silent truncation with no signal is how a budget regression
+                # hides. The text so far is still useful, so emit nothing extra.
+                log.warning("chat reply hit the completion ceiling user=%s", user_id)
     finally:
         stream.close()
 
     if tool_name and not tool_completed:
-        raise AppError("malformed_tool_call", "The action was interrupted before it was complete. Please try again.", status=502)
+        # Turning a turn that already streamed useful prose into an error frame
+        # threw away the part that worked. Only a turn with nothing to show is
+        # a real failure the teacher needs to retry.
+        if yielded_anything:
+            log.warning("chat turn dropped an incomplete %s after streaming text", tool_name)
+        else:
+            raise AppError("malformed_tool_call", "The action was interrupted before it was complete. Please try again.", status=502)
 
     if not yielded_anything:
         raise AppError(

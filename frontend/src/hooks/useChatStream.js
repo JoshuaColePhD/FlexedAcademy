@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ApiError, api, apiErrorFromBody } from '../lib/api'
 import * as metrics from '../lib/voiceMetrics'
+import { createSmoother } from '../lib/streamSmoother'
 import * as perf from '../lib/performanceMetrics'
 import { recoverDumpedToolsFromText } from '../lib/chatToolRecovery'
 
@@ -160,6 +161,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
   const pendingTextRef = useRef(null)
   const rafRef = useRef(null)
   const flushText = useCallback(() => {
+    smootherRef.current?.flush()
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current)
       rafRef.current = null
@@ -169,7 +171,45 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
       pendingTextRef.current = null
     }
   }, [])
-  const queueText = useCallback((value) => {
+  /* Above the frame cap sits a release buffer, so text leaves at a steady rate
+     instead of in the shape the network delivered it — a 200-character burst in
+     one frame then three empty ones reads as stuttering. `accumulated` is never
+     buffered: voice's sentence cutter, the first-token perf mark, and the
+     end-of-stream recovery logic all need it the instant it arrives. Voice
+     bypasses this entirely, since its transcript trails speech already. */
+  const smootherRef = useRef(null)
+  const paintedRef = useRef(false)
+  if (!smootherRef.current) {
+    smootherRef.current = createSmoother({
+      // Injected rather than defaulted inside the module so the frame clock is
+      // whatever this environment provides — the node transport harness runs
+      // the hook in a vm context with its own rAF.
+      raf: (cb) => requestAnimationFrame(cb),
+      caf: (id) => cancelAnimationFrame(id),
+      onFrame: (value) => {
+        if (!paintedRef.current) {
+          paintedRef.current = true
+          // Separate from chat-stream:first-token, which stays a true network
+          // TTFT; the delta between them is the smoother's cost.
+          perf.mark('chat-stream:first-painted-token')
+        }
+        pendingTextRef.current = value
+        if (rafRef.current != null) return
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null
+          if (pendingTextRef.current == null) return
+          setText(pendingTextRef.current)
+          pendingTextRef.current = null
+        })
+      },
+    })
+  }
+
+  const queueText = useCallback((value, { smooth = true } = {}) => {
+    if (smooth) {
+      smootherRef.current.push(value)
+      return
+    }
     pendingTextRef.current = value
     if (rafRef.current != null) return
     rafRef.current = requestAnimationFrame(() => {
@@ -182,6 +222,8 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
   // A stream aborted mid-flight (stop(), or unmount) must not land a queued
   // frame afterwards and resurrect text the caller just cleared.
   const cancelQueuedText = useCallback(() => {
+    smootherRef.current?.cancel()
+    paintedRef.current = false
     if (rafRef.current != null) {
       cancelAnimationFrame(rafRef.current)
       rafRef.current = null
@@ -478,7 +520,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
               perf.measure('chat-stream:time-to-first-token', 'chat-stream:start', 'chat-stream:first-token')
             }
             accumulated += event.chunk
-            queueText(accumulated)
+            queueText(accumulated, { smooth: !voice })
             emitSentences(false)
           }
 

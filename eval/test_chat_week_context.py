@@ -74,7 +74,7 @@ def main() -> int:
         else []
     )
 
-    def fake_stream_chat(user_id, messages, *, voice=False):
+    def fake_stream_chat(user_id, messages, **kwargs):
         captured["system_prompt"] = messages[0]["content"]
         yield {"chunk": "ok"}
         yield {"done": True}

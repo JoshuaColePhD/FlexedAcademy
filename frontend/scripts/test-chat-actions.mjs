@@ -3,8 +3,8 @@ import { readFile } from 'node:fs/promises'
 import vm from 'node:vm'
 import test from 'node:test'
 import { recoverDumpedToolsFromText } from '../src/lib/chatToolRecovery.js'
+import { createSmoother } from '../src/lib/streamSmoother.js'
 import { optionalFollowUpProps, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, requestedOptionalNextStep, revisionDayIndices, shouldOfferOptionalFollowUp, shouldStreamPlanRevision } from '../src/lib/chatActions.js'
-import { isClearlySpecifiedPlanRequest } from '../src/lib/planIntent.js'
 
 // Run the actual hook's streaming code without a DOM. Only React state storage,
 // timing instrumentation, and the API URL are stubbed; fetch uses real Responses.
@@ -34,6 +34,9 @@ async function harness(responses, callbacks = {}) {
     '../lib/voiceMetrics': { firstToken: noop },
     '../lib/chatToolRecovery': { recoverDumpedToolsFromText },
     '../lib/performanceMetrics': { mark: noop, measure: noop },
+    // The real one, not a stub: the harness context supplies rAF, so this
+    // exercises the release buffer alongside the transport it sits on.
+    '../lib/streamSmoother': { createSmoother },
   }
   const source = await readFile(new URL('../src/hooks/useChatStream.js', import.meta.url), 'utf8')
   const module = new vm.SourceTextModule(source, { context })
@@ -66,13 +69,6 @@ test('optional next-step cards stay off unless asked and nothing else is queued'
   assert.deepEqual(optionalFollowUpProps('plan', {}, { asked: false }), {})
   assert.equal(optionalFollowUpProps('plan', {}, { asked: true }).questionPurpose, 'optional')
   assert.equal(optionalFollowUpProps('plan', {}, { asked: true }).questions[0].text, 'Optional next step for this lesson plan')
-})
-
-test('clear first requests skip the routing hop', () => {
-  assert.equal(isClearlySpecifiedPlanRequest('make a lesson plan'), false)
-  assert.equal(isClearlySpecifiedPlanRequest('Plan Week 03 around voice, tone, and rhetorical devices using The Cask.'), true)
-  assert.equal(isClearlySpecifiedPlanRequest('Build a lesson plan about quadratic vertex form for graphing practice'), true)
-  assert.equal(isClearlySpecifiedPlanRequest('Help me plan this week.'), false)
 })
 
 test('advice does not dispatch an artifact; explicit creation wins over open plan', () => {

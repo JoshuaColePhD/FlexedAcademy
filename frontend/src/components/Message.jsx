@@ -1,8 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowUpRight, Check, ChevronDown, Copy, Pencil, RotateCcw } from 'lucide-react'
-import ReactMarkdown from 'react-markdown'
+import { StreamingMarkdown } from './StreamingMarkdown'
 import { scanGrounding } from '../lib/grounding'
+import { useCopy } from '../lib/useCopy'
 import { dayTitle, orderedDays, DAYS } from '../lib/planShape'
 import { Cite } from './Citation'
 import { ThinkingIndicator } from './ThinkingIndicator'
@@ -32,20 +33,6 @@ function copyableText(message, grounded, ungrounded) {
   return parts.join('\n')
 }
 
-function useCopy() {
-  const [copied, setCopied] = useState(false)
-  const copy = async (text) => {
-    try {
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1600)
-    } catch {
-      // Clipboard blocked (insecure context) — the button just won't confirm.
-    }
-  }
-  return { copied, copy }
-}
-
 function focusDuring(plan) {
   const days = orderedDays(plan)
   const day = days.find((item) => item.name === 'Wednesday' && !item.no_school)
@@ -61,6 +48,7 @@ function focusDuring(plan) {
  * that makes it look like another speaker bubble. */
 function MessageImpl({
   message,
+  streamText,
   subject,
   state,
   onRetry,
@@ -182,7 +170,12 @@ function MessageImpl({
      bubble so AnimatePresence can cross-fade thinking → content in place.
      An early return here used to remount the row on the first token and kill
      that handoff. Action runs still get WorkActivityCard from ChatPage. */
-  const isThinking = !isUser && message.streaming && !message.content?.trim()
+  /* While a reply streams, its text arrives as a prop rather than through
+     `messages`. Mirroring it into state cost a second full ChatPage render
+     plus an O(n) map on every frame, which is the budget a smooth output
+     cadence needs back. A settled turn carries its text on the message. */
+  const body = streamText ?? message.content
+  const isThinking = !isUser && message.streaming && !body?.trim()
 
   /* fa-rise was written for exactly this and then never attached to anything,
      so every message simply appeared — which is most of why the transcript felt
@@ -227,7 +220,7 @@ function MessageImpl({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.14 }}
             >
-              <ThinkingIndicator label={message.thinkingLabel} />
+              <ThinkingIndicator label={message.thinkingLabel} code={message.statusCode} />
             </motion.div>
           ) : (
             <motion.div
@@ -261,25 +254,18 @@ function MessageImpl({
                 style={isUser ? { color: 'var(--ink)' } : undefined}
               >
                 {isUser ? (
-                  <p className="m-0 whitespace-pre-wrap">{message.youSaid ? `You said: ${message.youSaid}` : message.content}</p>
+                  <p className="m-0 whitespace-pre-wrap">{message.youSaid ? `You said: ${message.youSaid}` : body}</p>
                 ) : (
                   <div className={`msg-markdown${message.streaming ? ' is-streaming' : ''}`}>
-                    {/* Partial markdown is expensive and unstable while the
-                        model is emitting tokens. Stream as pre-wrapped text
-                        inside the same markdown surface (matching paragraph
-                        metrics) so settling into ReactMarkdown does not snap
-                        line height or padding. */}
-                    {message.streaming ? (
-                      <p className="msg-stream-text m-0 whitespace-pre-wrap">{message.content}</p>
-                    ) : (
-                      <ReactMarkdown>{message.content}</ReactMarkdown>
-                    )}
-                    {message.streaming ? (
-                      <span
-                        className="fa-cursor ml-1 inline-block h-4 w-1.5 bg-accent align-middle"
-                        aria-hidden="true"
-                      />
-                    ) : null}
+                    {/* Same component before and after settle. Rendering raw
+                        text while streaming and only then swapping to markdown
+                        meant the reader watched ## and ** and table pipes
+                        scroll past, then snap. Identical DOM on both sides of
+                        the boundary removes the snap rather than softening it.
+                        The caret is a ::after on the last block (base.css), so
+                        it rides the end of the last line instead of dropping
+                        onto its own line under a block-level element. */}
+                    <StreamingMarkdown text={body} />
                   </div>
                 )}
                 {message.hint ? (
@@ -332,7 +318,7 @@ function MessageImpl({
             ) : null}
           </div>
         ) : null}
-        {!isUser && assistantSettled && onApplyAdvice && !message.researchSources?.length && message.content?.trim() ? (
+        {!isUser && assistantSettled && onApplyAdvice && !message.researchSources?.length && body?.trim() ? (
           <button
             type="button"
             className="fa-press mt-2 rounded-lg px-2 py-1.5 text-xs font-medium text-accent transition-colors hover:bg-accent-tint"
@@ -466,7 +452,7 @@ function MessageImpl({
               type="button"
               className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
               onClick={onRetry}
-              aria-label="Try again"
+              aria-label={message.isError ? 'Try again' : 'Regenerate this reply'}
             >
               <RotateCcw size={14} aria-hidden="true" />
             </button>
