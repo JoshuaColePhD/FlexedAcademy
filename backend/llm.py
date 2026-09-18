@@ -2322,23 +2322,23 @@ def stream_chat(
         actions_enabled=actions_enabled,
         quizzes_on=quizzes_on,
     )
-    request_kwargs = dict(
-        model=settings.openai_model,
+    request_kwargs = {
+        "model": settings.openai_model,
         # Tool turns stay on the compatibility path. Conversational turns
         # have no schema to satisfy, so low reasoning can help Luna track the
         # teacher's meaning and respond with judgment instead of merely
         # pattern-matching against a command surface.
-        reasoning_effort="low" if (voice or not actions_enabled) else "none",
+        "reasoning_effort": "low" if (voice or not actions_enabled) else "none",
         # Voice replies stay deliberately short. Written chat follows the
         # same persisted preference as lesson-plan generation, so this setting
         # is no longer a prompt-only suggestion on either surface.
-        max_completion_tokens=700 if voice else output_length_tokens_for(user_id),
-        messages=messages,
-        stream=True,
+        "max_completion_tokens": 700 if voice else output_length_tokens_for(user_id),
+        "messages": messages,
+        "stream": True,
         # See stream_plan's identical option — without it this call, which
         # runs on every non-generating chat turn too, went unmetered.
-        stream_options={"include_usage": True},
-    )
+        "stream_options": {"include_usage": True},
+    }
     if tool_defs:
         request_kwargs["tools"] = tool_defs
         request_kwargs["parallel_tool_calls"] = False

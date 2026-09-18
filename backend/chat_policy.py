@@ -1,7 +1,7 @@
 """Typed-chat teaching policy and validated artifact actions; voice stays legacy."""
 
-from copy import deepcopy
 import re
+from copy import deepcopy
 
 from .errors import AppError
 from .schema import DAY_NAMES, REVISABLE_FIELDS
