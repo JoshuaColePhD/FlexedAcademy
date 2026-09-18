@@ -1001,7 +1001,6 @@ export function ChatPage() {
   const composerAnchorRef = useRef(null)
   const composerDockRef = useRef(null)
   const composerReaderAnchorRef = useRef(null)
-  const transcriptColumnRef = useRef(null)
   const [composerDockH, setComposerDockH] = useState(0)
   // The portaled dock's OWN rendered height, fed back to the anchor (below)
   // so the anchor reserves exactly the space the floating dock actually
@@ -3671,17 +3670,12 @@ export function ChatPage() {
       const anchor = composerAnchorRef.current
       if (!dock || !shell || !anchor) return
       const anchorRect = anchor.getBoundingClientRect()
-      const workspace = anchor.closest('.workspace-panes')
-      const drawer = workspace?.querySelector(':scope > .artifact-drawer')
-      const drawerOpen = drawer && (drawer.classList.contains('is-open') || drawer.classList.contains('is-closing'))
-      const drawerRect = drawerOpen ? drawer.getBoundingClientRect() : null
-      const right = drawerRect ? Math.min(anchorRect.right, drawerRect.left) : anchorRect.right
       const dockRect = dock.getBoundingClientRect()
       const shellRect = shell.getBoundingClientRect()
       composerReaderAnchorRef.current = {
         left: dockRect.left,
         width: dockRect.width,
-        laneWidth: Math.max(0, right - anchorRect.left),
+        laneWidth: Math.max(0, anchorRect.width),
         shellLeft: shellRect.left,
         shellInset: shellRect.left - dockRect.left,
       }
@@ -3778,11 +3772,20 @@ export function ChatPage() {
     const getDrawer = () => workspace?.querySelector(':scope > .artifact-drawer')
     const sync = () => {
       const r = anchor.getBoundingClientRect()
+      // Outputs is an in-flow inspector column. Size the command lane to the
+      // chat canvas rather than stretching it to the drawer edge, which would
+      // hide the gutter the composer is supposed to keep between the rails.
       const drawer = getDrawer()
-      const drawerOpen = drawer && (drawer.classList.contains('is-open') || drawer.classList.contains('is-closing'))
-      const drawerRect = drawerOpen ? drawer.getBoundingClientRect() : null
-      const right = drawerRect ? Math.min(r.right, drawerRect.left) : r.right
-      const laneWidth = Math.max(0, right - r.left)
+      const drawerOpen = Boolean(
+        !document.documentElement.classList.contains('is-document-reading') &&
+        drawer?.classList.contains('is-open') &&
+        !drawer.classList.contains('is-closing')
+      )
+      const drawerLeft = drawerOpen ? drawer.getBoundingClientRect().left : null
+      const laneWidth = Math.max(
+        0,
+        Math.min(r.width, drawerLeft == null ? r.width : drawerLeft - 24 - r.left),
+      )
       const documentReading = document.documentElement.classList.contains('is-document-reading')
       // Do not overwrite the pre-reader anchor during the return journey.
       // Between the document unmounting and Outputs reaching its resting
@@ -3802,17 +3805,18 @@ export function ChatPage() {
           shellInset: shellRect && dockRect ? shellRect.left - dockRect.left : null,
         }
       }
-      // Keep the composer pinned to its pre-reader geometry for the complete
-      // reader lifecycle. `overlayOpen` turns false at the *start* of the
-      // closing animation, while `desktopInspectorOpen` remains true until
-      // the reader has actually left. Releasing it early made the composer
-      // briefly re-measure the changing chat lane and glide/jump on close.
+      // Keep the composer pinned to its pre-reader geometry while the lesson
+      // plan is actually mounted. Once the reader has left, size the command
+      // lane to the live chat column so it does not sit over the in-flow
+      // Outputs inspector.
       const cachedReaderAnchor = composerReaderAnchorRef.current
-      const keepReaderComposer = desktopInspector && cachedReaderAnchor && (
-        desktopInspectorOpen ||
-        composerReaderSettling
+      const keepReaderComposer = Boolean(
+        desktopInspector &&
+        cachedReaderAnchor &&
+        desktopInspectorOpen &&
+        !artifactFullscreen
       )
-      const readerAnchor = keepReaderComposer && !artifactFullscreen && cachedReaderAnchor
+      const readerAnchor = keepReaderComposer ? cachedReaderAnchor : null
       const hostLeft = (readerAnchor?.shellLeft != null && readerAnchor.shellInset != null
         ? readerAnchor.shellLeft - readerAnchor.shellInset
         : readerAnchor?.left ?? r.left)
@@ -3832,24 +3836,6 @@ export function ChatPage() {
         composerDockRef.current.style.width = `${visibleLaneWidth}px`
         composerDockRef.current.style.maxWidth = 'none'
       }
-      // Outputs overlays the right side of the chat rather than shrinking the
-      // whole workspace. Match the transcript's readable lane to the
-      // composer lane while it is visible, so words wrap at the same right
-      // edge instead of running underneath the panel.
-      const transcript = transcriptColumnRef.current
-      const alignTranscriptToComposer = Boolean(
-        drawerOpen && !desktopInspectorOpen && !artifactFullscreen && !isPhone
-      )
-      transcript?.classList.toggle('is-composer-lane', alignTranscriptToComposer)
-      if (transcript) {
-        if (alignTranscriptToComposer) {
-          transcript.style.setProperty('width', `${visibleLaneWidth}px`, 'important')
-          transcript.style.setProperty('max-width', `${visibleLaneWidth}px`, 'important')
-        } else {
-          transcript.style.removeProperty('width')
-          transcript.style.removeProperty('max-width')
-        }
-      }
     }
     sync()
     const ro = new ResizeObserver(sync)
@@ -3859,10 +3845,6 @@ export function ChatPage() {
     if (workspace && workspace !== pane) ro.observe(workspace)
     const drawer = getDrawer()
     if (drawer) ro.observe(drawer)
-    // The drawer is mounted after this effect's first sync and its open/close
-    // state is expressed through class changes. ResizeObserver alone misses
-    // both transitions, which can leave the portaled composer full-width
-    // underneath the newly opened overlay.
     const mo = workspace ? new MutationObserver(sync) : null
     mo?.observe(workspace, {
       childList: true,
@@ -3878,7 +3860,7 @@ export function ChatPage() {
       window.removeEventListener('resize', sync)
       window.visualViewport?.removeEventListener('resize', sync)
     }
-  }, [artifactFullscreen, composerDockH, overlayOpen, overlayPortalHost, portalHost, isPhone, railOpen, desktopInspector, desktopInspectorOpen, composerReaderSettling, tabletPortraitReaderOpen])
+  }, [artifactFullscreen, composerDockH, overlayOpen, overlayPortalHost, portalHost, railOpen, desktopInspector, desktopInspectorOpen, composerReaderSettling, tabletPortraitReaderOpen])
   // Keep the composer above the document in both docked and fullscreen
   // reading modes. Fullscreen expands the lesson plan's reading surface, but
   // it should not take away the command surface the teacher is actively using.
@@ -4377,7 +4359,7 @@ export function ChatPage() {
         />
       ) : (
         <div className="min-h-0 flex-1 scroll-y chat-transcript-scroll" ref={scrollRef} onScroll={onScroll}>
-          <div ref={transcriptColumnRef} className={`chat-transcript-column chat-column mx-auto flex w-full flex-col px-gutter py-8 transition-all duration-500 ease-out ${
+          <div className={`chat-transcript-column chat-column mx-auto flex w-full flex-col px-gutter py-8 transition-all duration-500 ease-out ${
             voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
           }`}>
             {messages.map((m, i) => {

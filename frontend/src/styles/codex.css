@@ -901,9 +901,6 @@
     flex: 1 1 auto;
     flex-direction: column;
     justify-content: flex-end;
-    position: relative;
-    z-index: 30;
-    margin-left: -22px;
   }
   /* The open week is the canvas. Collapse Outputs the same way
      is-document-reading collapses the nav, so the stage can take the
@@ -1353,9 +1350,9 @@
     border: 1px solid transparent;
     border-radius: var(--r-md) !important;
   }
-  /* The materials rail establishes the overlay anchor. The final desktop
-     positioning rule below takes it out of the flex row so opening Outputs
-     does not collapse the conversation or its composer. */
+  /* The materials rail is a real inspector column, like the reference app.
+     Keeping it in the grid gives the conversation an honest width and keeps
+     the greeting/composer from hiding underneath the panel. */
   .workspace-panes {
     position: relative;
     align-items: stretch !important;
@@ -1817,59 +1814,6 @@
   }
 }
 
-/* Outputs is a side panel, not a second column. Keep the center conversation
-   at its full width while the panel grows over its right edge. The composer
-   is portaled above this layer, so its footer remains a continuous command
-   surface during the drawer animation instead of being squeezed by it. */
-@media (min-width: 768px) {
-  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer {
-    position: absolute !important;
-    top: 10px !important;
-    right: 10px !important;
-    bottom: 10px !important;
-    left: auto !important;
-    z-index: 40 !important;
-    display: flex !important;
-    flex: 0 0 auto !important;
-    width: 18px !important;
-    height: auto !important;
-    min-width: 0 !important;
-    margin: 0 !important;
-    overflow: hidden;
-    border: 1px solid var(--edge) !important;
-    border-radius: 22px !important;
-    background: var(--paper-raised) !important;
-    box-shadow: 0 10px 28px rgb(0 0 0 / 0.16) !important;
-    transition:
-      width var(--t-panel) var(--ease-out),
-      opacity var(--t-panel) var(--ease-out),
-      box-shadow var(--t-fast) var(--ease-out),
-      border-color var(--t-fast) var(--ease-out) !important;
-  }
-
-  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-open {
-    width: clamp(280px, 25vw, 340px) !important;
-    border-color: rgb(var(--edge-strong-rgb) / 0.82) !important;
-    isolation: isolate;
-  }
-
-  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-closing {
-    width: 0 !important;
-    margin: 0 !important;
-    opacity: 0;
-    border-color: transparent !important;
-    pointer-events: none;
-  }
-
-  .workspace-panes:not(:has(.document-stage)):has(.artifact-drawer.is-open) .chat-context-strip {
-    padding-right: 16px !important;
-  }
-
-  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer .artifact-drawer-body {
-    min-width: 0;
-  }
-}
-
 /* Shared floating primitives now use compact desktop chrome. */
 .dialog,
 .popover,
@@ -2116,16 +2060,6 @@
   width: 100%;
   max-width: 54rem;
   margin-inline: auto;
-}
-/* Outputs floats above the workspace, so the transcript needs its own
-   readable boundary. ChatPage supplies the same measured lane used by the
-   composer; keeping it start-aligned makes both inner gutters coincide. */
-@media (min-width: 768px) {
-  .workspace-panes:has(.artifact-drawer.is-open) .chat-transcript-column.is-composer-lane,
-  .workspace-panes:has(.artifact-drawer.is-closing) .chat-transcript-column.is-composer-lane {
-    margin-right: 0 !important;
-    margin-left: 0 !important;
-  }
 }
 /* A modal owns the screen while it is open. Keep the persistent composer from
    showing through the dimmed layer as a distracting dark rectangle beneath the
@@ -5020,28 +4954,6 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .mobile-composer-plan-sheet.has-plan .plan-peek.is-open .plan-peek-body-inner > .doc-shell {
     animation: none;
   }
-}
-
-/* A collapsed rail should not become a narrow dead strip. Remove its layout
-   footprint entirely so the main workspace slides into the freed space. */
-@media (min-width: 768px) {
-  .app-shell-frame.is-rail-collapsed {
-    gap: 0 !important;
-  }
-
-  .app-shell-frame.is-rail-collapsed > .app-rail {
-    width: 0 !important;
-    min-width: 0 !important;
-    flex-basis: 0 !important;
-    border-width: 0 !important;
-    opacity: 0;
-    pointer-events: none;
-    transition-property: width, opacity;
-  }
-}
-
-@media (min-width: 900px) {
-
 }
 
 @media (max-width: 767.98px) and (prefers-reduced-motion: reduce) {
