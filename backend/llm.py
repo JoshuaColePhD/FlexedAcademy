@@ -2281,7 +2281,15 @@ def realtime_tool_defs(*, quizzes_enabled: bool = False) -> list[dict]:
     ]
 
 
-def _chat_tools_for(user_id: str, *, voice: bool, quizzes_on: bool | None = None) -> list[dict]:
+def _chat_tools_for(
+    user_id: str,
+    *,
+    voice: bool,
+    actions_enabled: bool = True,
+    quizzes_on: bool | None = None,
+) -> list[dict]:
+    if not actions_enabled and not voice:
+        return []
     if quizzes_on is None:
         quizzes_on = beta_features_for(user_id)
     if voice:
@@ -2289,43 +2297,52 @@ def _chat_tools_for(user_id: str, *, voice: bool, quizzes_on: bool | None = None
     return typed_chat_tools(CHAT_TOOLS, quizzes_enabled=quizzes_on)
 
 
-def stream_chat(user_id: str, messages: list[dict], *, voice: bool = False) -> Iterator[dict]:
+def stream_chat(
+    user_id: str,
+    messages: list[dict],
+    *,
+    voice: bool = False,
+    actions_enabled: bool = True,
+) -> Iterator[dict]:
     """Conversational streaming. Yields dicts with 'chunk' or 'tool_call'.
 
     The first message should be the system prompt.
 
-    `voice` only tightens the token ceiling — the actual "talk like a person,
-    one question at a time" instruction is in the system prompt the route
-    builds. This is the backstop for when the model drifts back toward
-    written-chat length anyway, which a prompt alone does not reliably
-    prevent over a long conversation.
+    `actions_enabled=False` is the ordinary conversational path. It removes
+    artifact tools and gives Luna a small amount of reasoning room for
+    interpretation. Action turns retain the no-reasoning compatibility path
+    used by the existing function-call workflow.
     """
 
     started_at = time.perf_counter()
     quizzes_on = beta_features_for(user_id)
-    stream = client().chat.completions.create(
+    tool_defs = _chat_tools_for(
+        user_id,
+        voice=voice,
+        actions_enabled=actions_enabled,
+        quizzes_on=quizzes_on,
+    )
+    request_kwargs = dict(
         model=settings.openai_model,
-        # Required, not tuning: the configured model rejects function tools
-        # outright in /v1/chat/completions unless reasoning is off —
-        # "Function tools with reasoning_effort are not supported ... set
-        # reasoning_effort to 'none'". Both tools below are the entire
-        # mechanism of this conversation (build the plan / ask instead), so
-        # without this every chat turn, typed or spoken, 400s.
-        # Voice turns use the same Luna model as every other text turn; the
-        # low reasoning setting keeps spoken responses quick and concise.
-        reasoning_effort="low" if voice else "none",
+        # Tool turns stay on the compatibility path. Conversational turns
+        # have no schema to satisfy, so low reasoning can help Luna track the
+        # teacher's meaning and respond with judgment instead of merely
+        # pattern-matching against a command surface.
+        reasoning_effort="low" if (voice or not actions_enabled) else "none",
         # Voice replies stay deliberately short. Written chat follows the
         # same persisted preference as lesson-plan generation, so this setting
         # is no longer a prompt-only suggestion on either surface.
         max_completion_tokens=700 if voice else output_length_tokens_for(user_id),
         messages=messages,
         stream=True,
-        tools=_chat_tools_for(user_id, voice=voice, quizzes_on=quizzes_on),
-        parallel_tool_calls=False,
         # See stream_plan's identical option — without it this call, which
         # runs on every non-generating chat turn too, went unmetered.
         stream_options={"include_usage": True},
     )
+    if tool_defs:
+        request_kwargs["tools"] = tool_defs
+        request_kwargs["parallel_tool_calls"] = False
+    stream = client().chat.completions.create(**request_kwargs)
     # Typed actions wait for complete arguments; legacy voice emits its signal early.
     tool_name = None
     tool_args = ""

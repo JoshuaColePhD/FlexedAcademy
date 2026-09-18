@@ -1,6 +1,7 @@
 """Typed-chat teaching policy and validated artifact actions; voice stays legacy."""
 
 from copy import deepcopy
+import re
 
 from .errors import AppError
 from .schema import DAY_NAMES, REVISABLE_FIELDS
@@ -14,6 +15,72 @@ reteaching respond to that evidence. Fit tasks, transitions, and checks into the
 actual class period and available resources. Preserve the teacher's constraints.
 Use concrete classroom actions rather than generic instructional filler. During
 revision apply this judgment only to requested days or fields; do not expand scope.
+"""
+
+
+# Typed action tools are deliberately opt-in. A teaching partner should be able
+# to answer a question, react to an idea, or help the teacher think without the
+# model having a plan/quiz command surface in front of it on every turn.
+ACTION_MODES = frozenset({"build", "plan", "sub_plan", "standard"})
+_ACTION_LANGUAGE = re.compile(
+    r"\b(?:build|create|draft|generate|make|plan|revise|rewrite|update|change|replace|"
+    r"add|remove|fix|turn|switch|use|center|rework|edit)\b|"
+    r"\bask\s+(?:questions|prompts|checks)\b",
+    re.IGNORECASE,
+)
+_ARTIFACT_ACTION_LANGUAGE = re.compile(
+    r"\b(?:quiz|test|lesson\s+plan|weekly\s+plan|plan\s+the\s+week|week\s+plan)\b",
+    re.IGNORECASE,
+)
+_PLAN_REFERENCE_LANGUAGE = re.compile(
+    r"\b(?:plan|week|lesson|unit|pacing|calendar|standard|text|chapter|day|monday|"
+    r"tuesday|wednesday|thursday|friday|do now|bell ringer|during|exit ticket|"
+    r"assessment|learning target|previous|earlier|last week|revisit|reuse)\b",
+    re.IGNORECASE,
+)
+
+
+def references_plan_context(text: str) -> bool:
+    """Return whether a conversational turn benefits from plan/RAG context."""
+
+    return bool(_PLAN_REFERENCE_LANGUAGE.search(text or ""))
+
+
+def chat_actions_enabled(
+    mode: str,
+    *,
+    plan_open: bool = False,
+    last_user: str = "",
+    voice: bool = False,
+) -> bool:
+    """Decide whether this turn should expose artifact tools.
+
+    Voice keeps its established tool path. Typed chat only gets tools for an
+    explicitly action-oriented mode, or when an open plan command clearly asks
+    for a change. This lets ordinary questions stay ordinary prose even while a
+    plan is visible in the workspace.
+    """
+
+    if voice or mode in ACTION_MODES:
+        return True
+    action_request = bool(_ACTION_LANGUAGE.search(last_user or ""))
+    return bool(action_request and (plan_open or _ARTIFACT_ACTION_LANGUAGE.search(last_user or "")))
+
+
+CONVERSATIONAL_CHAT_POLICY = """
+CONVERSATIONAL MODE: Be a warm, thoughtful teaching partner. Answer the teacher's
+actual question before steering back to a lesson plan. Listen for both the literal
+request and the concern underneath it; briefly name that subtext when it helps.
+Offer a point of view, useful trade-offs, or a concrete next step instead of merely
+paraphrasing. Teach when teaching is useful, explain your reasoning in plain language,
+and gently challenge a choice when it conflicts with the teacher's goal.
+
+Keep the exchange natural: vary sentence length, use contractions, and do not begin
+every reply with praise or a canned acknowledgement. Usually write one to three short
+paragraphs. Ask at most one question, and only when its answer would materially change
+what you can help with. Do not manufacture a plan, quiz, card, menu, or follow-up task
+from an exploratory message. A visible plan is context, not permission to edit it.
+When the teacher is thinking aloud, stay with the idea before proposing an action.
 """
 
 

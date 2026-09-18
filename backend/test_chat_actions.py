@@ -8,6 +8,8 @@ import pytest
 
 from backend import llm, service
 from backend.chat_policy import (
+    chat_actions_enabled,
+    references_plan_context,
     typed_chat_tools,
     validate_action_target,
     validate_plan_action,
@@ -110,6 +112,60 @@ def test_typed_policy_steers_greetings_to_the_week_not_a_product_menu():
     assert "not a list of other services" in text
     assert "Do not pitch a standalone quiz or an assessment-design" in text
     assert "Do not offer an optional next-step card" in text
+
+
+def test_conversation_policy_keeps_exploration_out_of_artifact_tools():
+    from backend.chat_policy import CONVERSATIONAL_CHAT_POLICY
+
+    assert "Answer the teacher's" in CONVERSATIONAL_CHAT_POLICY
+    assert "actual question" in CONVERSATIONAL_CHAT_POLICY
+    assert "Do not manufacture a plan, quiz, card, menu" in CONVERSATIONAL_CHAT_POLICY
+    assert chat_actions_enabled("brainstorm", last_user="Why does this feel too busy?") is False
+    assert chat_actions_enabled("brainstorm", last_user="Make a quiz on inference") is True
+    assert chat_actions_enabled("brainstorm", plan_open=True, last_user="Ask questions") is True
+    assert chat_actions_enabled("brainstorm", plan_open=True, last_user="Why is Wednesday structured this way?") is False
+    assert references_plan_context("Can we rethink Wednesday's exit ticket?") is True
+    assert references_plan_context("Why does the model feel less personal?") is False
+
+
+def test_conversational_stream_omits_tools_and_uses_light_reasoning(monkeypatch):
+    calls = []
+
+    class Stream:
+        closed = False
+
+        def __iter__(self):
+            return iter([
+                NS(
+                    usage=None,
+                    choices=[NS(
+                        delta=NS(content="That makes sense.", tool_calls=None, refusal=None),
+                        finish_reason="stop",
+                    )],
+                )
+            ])
+
+        def close(self):
+            self.closed = True
+
+    stream = Stream()
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        return stream
+
+    monkeypatch.setattr(
+        llm,
+        "client",
+        lambda: NS(chat=NS(completions=NS(create=create))),
+    )
+    monkeypatch.setattr(llm, "output_length_tokens_for", lambda _: 2200)
+    monkeypatch.setattr(llm, "beta_features_for", lambda _: False)
+
+    assert list(llm.stream_chat("u", [], actions_enabled=False)) == [{"chunk": "That makes sense."}]
+    assert calls[0]["reasoning_effort"] == "low"
+    assert "tools" not in calls[0]
+    assert "parallel_tool_calls" not in calls[0]
 
 
 def fake_stream(monkeypatch, payload, *, truncated=False):
@@ -254,7 +310,11 @@ def chat_client(monkeypatch):
 
     from backend.routes import generate
 
-    captured = []
+    class Captured(list):
+        pass
+
+    captured = Captured()
+    captured.kwargs = []
     emitted = []
     plan = {
         "id": "p1",
@@ -275,6 +335,7 @@ def chat_client(monkeypatch):
 
     def stream(user, messages, **kw):
         captured.append(messages)
+        captured.kwargs.append(kw)
         yield from emitted or [{"chunk": "Try modeling one example."}]
 
     monkeypatch.setattr(generate.llm, "stream_chat", stream)
@@ -313,6 +374,24 @@ def test_route_uses_active_plan_and_prior_answers_without_forcing_build(chat_cli
     assert "Do NOT call" not in system
     assert "call generate_lesson_plan (or" not in system
     assert captured[0][1:] == messages
+
+
+def test_route_uses_conversational_policy_without_action_tools(chat_client):
+    client, captured, _ = chat_client
+    response = client.post(
+        "/api/chat_stream",
+        json={
+            "messages": [{"role": "user", "content": "Why does this feel too busy?"}],
+            "chat_id": "chat1",
+            "class_id": "c1",
+            "mode": "brainstorm",
+        },
+    )
+    assert response.status_code == 200
+    system = captured[0][0]["content"]
+    assert "CONVERSATIONAL MODE" in system
+    assert "TYPED_CHAT_POLICY" not in system
+    assert captured.kwargs[0]["actions_enabled"] is False
 
 
 def test_open_plan_uses_command_surface(chat_client):
