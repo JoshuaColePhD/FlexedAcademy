@@ -158,6 +158,15 @@ test('the new question pins to the top and the reply fills in beneath it', async
     return Math.round(mine.getBoundingClientRect().top - scroller.getBoundingClientRect().top)
   })
 
+  // Wait for the anchor scroll to have been applied — measuring straight after
+  // send can catch the frame before it, which is a race, not a regression.
+  await expect(reply(page)).toContainText('First paragraph.')
+  await page.waitForFunction(() => {
+    const rows = [...document.querySelectorAll('[data-message-id]')]
+    const mine = rows.reverse().find((r) => r.textContent.includes('a question I should still'))
+    return mine && mine.getBoundingClientRect().top < 300
+  }, null, { timeout: 5000 })
+
   const before = await topOf()
   expect(before).not.toBeNull()
   // Pinned near the top of the scroller, not pushed up off the viewport.
