@@ -1,9 +1,10 @@
 """Typed-chat teaching policy and validated artifact actions; voice stays legacy."""
 
 import re
+from collections.abc import Sequence
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 from .errors import AppError
 from .schema import DAY_NAMES, REVISABLE_FIELDS

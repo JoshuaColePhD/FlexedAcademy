@@ -341,7 +341,7 @@ def test_stream_waits_for_complete_action(monkeypatch):
 
 def test_preamble_streams_before_the_tool_call(monkeypatch):
     said = "Building week 7 on quadratics."
-    stream = fake_stream(monkeypatch, json.dumps({"preamble": said, **action()}))
+    fake_stream(monkeypatch, json.dumps({"preamble": said, **action()}))
     events = list(llm.stream_chat("u", []))
 
     tool_at = next(i for i, e in enumerate(events) if "tool_call" in e)
@@ -623,7 +623,7 @@ def test_route_uses_one_persona_and_always_sends_tools(chat_client):
 
 
 def test_route_answers_a_plain_question_without_an_artifact(chat_client):
-    client, _, emitted = chat_client
+    client, _, _ = chat_client
     response = client.post(
         "/api/chat_stream",
         json={
