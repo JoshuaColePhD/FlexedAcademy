@@ -8,7 +8,9 @@ import pytest
 
 from backend import llm, service
 from backend.chat_policy import (
+    CASUAL_OPENER_HINT,
     chat_turn_policy,
+    is_casual_opener,
     pending_intent,
     references_plan_context,
     typed_chat_tools,
@@ -89,6 +91,10 @@ def test_voice_tools_unchanged_and_typed_questions_are_single():
         typed["ask_clarifying_questions"]["parameters"]["properties"]["questions"]["maxItems"] == 1
     )
     assert typed["generate_lesson_plan"]["parameters"]["required"] == ["preamble", "action"]
+    field = typed["generate_lesson_plan"]["parameters"]["properties"]["field"]
+    assert field["type"] == ["string", "null"]
+    assert None not in field["enum"]
+    assert list(field["enum"]) == list(llm.REVISABLE_FIELDS)
     assert "also_quiz" in typed["generate_lesson_plan"]["parameters"]["properties"]
     quiz_required = typed["generate_quiz"]["parameters"].get("required") or []
     assert quiz_required == ["preamble"]
@@ -116,6 +122,32 @@ def test_typed_tools_omit_quiz_when_beta_is_off():
     assert "generate_quiz" not in [t["function"]["name"] for t in without_quiz_tools(llm.CHAT_TOOLS)]
 
 
+def test_typed_tool_enums_do_not_include_null():
+    """OpenAI function tools 400 if an enum array contains null.
+
+    After PR 87 every typed turn sends these tools, including 'hello', so a
+    null in `field.enum` took the whole chat down before the model saw the
+    message.
+    """
+
+    payload = json.loads(json.dumps(typed_chat_tools(llm.CHAT_TOOLS)))
+    bad = []
+
+    def walk(node, path):
+        if isinstance(node, dict):
+            enum = node.get("enum")
+            if isinstance(enum, list) and any(value is None for value in enum):
+                bad.append(path)
+            for key, value in node.items():
+                walk(value, f"{path}.{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                walk(value, f"{path}[{index}]")
+
+    walk(payload, "$")
+    assert bad == [], bad
+
+
 def test_single_persona_carries_the_behavior_the_regex_gate_used_to():
     from backend.chat_policy import CHAT_PARTNER_POLICY, PLAN_OPEN_OVERLAY
 
@@ -124,7 +156,8 @@ def test_single_persona_carries_the_behavior_the_regex_gate_used_to():
     raw = CHAT_PARTNER_POLICY
     # One voice, and the scope guard that CONVERSATIONAL_CHAT_POLICY used to own.
     assert "Do not offer assessment design, instructional coaching" in text
-    assert "ask one question about what this week is about" in text
+    assert "invite them to say what they need" in text
+    assert "no question card on that turn" in text
     assert "A visible plan is context, not permission to edit it." in text
     # The rule the whole change exists for.
     assert "NEVER WRITE THE ARTIFACT INTO THE CHAT" in raw
@@ -163,6 +196,16 @@ def test_every_typed_turn_carries_its_tools(message):
     assert policy.tools_enabled is True
 
 
+def test_hello_is_a_casual_opener_and_still_has_tools():
+    policy = chat_turn_policy("brainstorm", messages=[NS(role="user", content="hello", kind=None)])
+    assert policy.tools_enabled is True
+    assert policy.casual_opener is True
+    assert policy.pending_intent is None
+    assert is_casual_opener("hello") is True
+    assert is_casual_opener("thanks!") is True
+    assert is_casual_opener("make a lesson") is False
+
+
 def test_pending_intent_survives_a_clarifying_exchange():
     # The exact transcript that failed: the answer turn carries no action verb,
     # so a last-message test can never see that the request is still open.
@@ -186,6 +229,17 @@ def test_pending_intent_survives_a_clarifying_exchange():
         NS(role="assistant", content="The week is built.", kind=None),
         NS(role="user", content="thanks", kind=None),
     ]) is None
+    # A short "yes" after an offer is the go-ahead, not small talk, even though
+    # "ok"/"yes" would look casual if we only read the last message.
+    yes_after_offer = [
+        NS(role="user", content="thinking about Gatsby", kind=None),
+        NS(role="assistant", content="Want me to build that week?", kind=None),
+        NS(role="user", content="yes", kind=None),
+    ]
+    assert pending_intent(yes_after_offer) == "offer_reply"
+    offer_policy = chat_turn_policy("brainstorm", messages=yes_after_offer)
+    assert offer_policy.pending_intent == "offer_reply"
+    assert offer_policy.casual_opener is False
 
 
 def test_plan_context_reads_the_recent_exchange_not_one_message():
@@ -669,6 +723,52 @@ def test_route_carries_the_pending_intent_after_a_clarifying_question(chat_clien
     assert system.index("answers the question you just asked") > system.rindex(
         "You are the teacher's planning partner"
     )
+
+
+def test_route_marks_hello_as_a_casual_opener_without_stripping_tools(chat_client):
+    client, captured, _ = chat_client
+    response = client.post(
+        "/api/chat_stream",
+        json={
+            "messages": [{"role": "user", "content": "hello"}],
+            "chat_id": "chat1",
+            "class_id": "c1",
+            "mode": "brainstorm",
+        },
+    )
+    assert response.status_code == 200
+    system = captured[0][0]["content"]
+    assert captured.kwargs[0]["actions_enabled"] is True
+    assert "greeting or social opener" in system
+    assert CASUAL_OPENER_HINT.strip() in system
+    assert "answers the question you just asked" not in system
+
+
+def test_teacher_first_name_uses_the_account_name(monkeypatch):
+    from backend.routes import generate
+
+    monkeypatch.setattr(
+        generate.db, "get_user_by_id", lambda uid: {"name": "Joshua Cole"} if uid == "u" else None
+    )
+    assert generate._teacher_first_name("u") == "Joshua"
+    assert generate._teacher_first_name("missing") == ""
+
+
+def test_openai_status_error_logs_the_provider_body(caplog):
+    import httpx
+    import openai
+
+    from backend.routes.generate import _openai_error_event
+
+    body = {"error": {"message": "Invalid schema for function generate_lesson_plan."}}
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    response = httpx.Response(400, json=body, request=request)
+    err = openai.APIStatusError("Bad request", response=response, body=body)
+    with caplog.at_level("WARNING"):
+        mapped = _openai_error_event(err)
+    assert mapped["code"] == "upstream_error"
+    assert "Invalid schema" in caplog.text
+    assert "400" in caplog.text
 
 
 def test_open_plan_uses_command_surface(chat_client):

@@ -47,6 +47,12 @@ _OFFER = re.compile(
     r"i can (?:build|draft|make|write|put together)|say the word|ready to build)\b",
     re.IGNORECASE,
 )
+# Keep in lockstep with frontend/src/lib/chatThinking.js isCasualTurn.
+_CASUAL_OPENER = re.compile(
+    r"^(?:hi+|hello|hey there|hey|yo|sup|good (?:morning|afternoon|evening)|"
+    r"thanks|thank you|thx|ok|okay|cool)[\s!?.]*$",
+    re.IGNORECASE,
+)
 
 
 def references_plan_context(text: str) -> bool:
@@ -74,6 +80,12 @@ def _kind(m: Any) -> str:
     if value is None and isinstance(m, dict):
         value = m.get("kind")
     return str(value or "").strip().lower()
+
+
+def is_casual_opener(text: str) -> bool:
+    """True for a greeting or social opener with no planning task attached."""
+
+    return bool(_CASUAL_OPENER.match((text or "").strip()))
 
 
 def pending_intent(messages: Sequence[Any]) -> str | None:
@@ -129,6 +141,7 @@ class ChatTurnPolicy:
     command_surface: bool
     pending_intent: str | None
     plan_context: bool
+    casual_opener: bool
 
 
 def chat_turn_policy(
@@ -150,11 +163,14 @@ def chat_turn_policy(
     typing the week into the transcript.
     """
 
+    intent = None if voice else pending_intent(messages)
+    last_user = next((_text(m) for m in reversed(messages) if _role(m) == "user"), "")
     return ChatTurnPolicy(
         tools_enabled=True,
         command_surface=bool(plan_open and has_plan and not voice),
-        pending_intent=None if voice else pending_intent(messages),
+        pending_intent=intent,
         plan_context=wants_plan_context(messages, mode=mode, plan_open=plan_open),
+        casual_opener=bool(not voice and intent is None and is_casual_opener(last_user)),
     )
 
 
@@ -177,8 +193,10 @@ Building and revising this week's lesson plan for this class, and thinking
 through the teaching around it. Answer the question in front of you before
 steering anywhere else. Do not offer assessment design, instructional coaching,
 research services, or a menu of products as separate jobs. If they open with a
-greeting and no topic, greet them and ask one question about what this week is
-about -- a text, a skill, or a throughline.
+greeting, thanks, or other social opener and no task, greet them in prose --
+use their first name when you know it -- name that you are here to plan this
+week for this class, invite them to say what they need, and wait. No tool and
+no question card on that turn.
 
 YOU HAVE YOUR TOOLS ON EVERY TURN. USE YOUR JUDGMENT.
 Nothing forces a tool and nothing forbids one. Decide the way a colleague would:
@@ -195,10 +213,12 @@ Nothing forces a tool and nothing forbids one. Decide the way a colleague would:
 - You offered to do something and they said yes, sure, go ahead, sounds good, or
   named the detail you were missing: that is the go-ahead. Do exactly what you
   offered, no wider.
-- One consequential detail is genuinely missing and would change the result: ask
-  exactly one question, through the clarifying-question tool and never as prose.
-  The tool renders tappable options; prose does not. Never ask how many days a
-  week runs; the school template already sets that.
+- They asked to make, build, draft, plan, write, revise, fix, or change
+  something, and one consequential detail is genuinely missing and would change
+  the result: ask exactly one question, through the clarifying-question tool and
+  never as prose. The tool renders tappable options; prose does not. Never ask
+  how many days a week runs; the school template already sets that. A greeting
+  or thanks is not a missing detail.
 - They are thinking out loud, asking why, asking for advice, or reacting to
   something already on the page: answer in prose, with no tool. A visible plan is
   context, not permission to edit it. Options you volunteer are not
@@ -265,6 +285,14 @@ PENDING_INTENT_HINTS = {
         "it, do not ask a fresh question, and do not widen the scope."
     ),
 }
+
+CASUAL_OPENER_HINT = (
+    "THIS TURN: the teacher's message is a greeting or social opener, not a "
+    "request to build or revise. Reply in prose. Use their first name if you "
+    "know it. Name that you help plan this week's lessons for this class, "
+    "invite them to say what they need, and wait. Do not interview them and "
+    "do not start a plan, quiz, or revision."
+)
 
 
 QUIZ_DISABLED_POLICY = """
@@ -350,7 +378,7 @@ def typed_chat_tools(legacy_tools, *, quizzes_enabled=True):
                         "uniqueItems": True,
                         "maxItems": 5,
                     },
-                    "field": {"type": ["string", "null"], "enum": [*REVISABLE_FIELDS, None]},
+                    "field": {"type": ["string", "null"], "enum": list(REVISABLE_FIELDS)},
                     "week_number": {"type": ["integer", "null"], "minimum": 1},
                     "also_quiz": {"type": "boolean"},
                 },
@@ -359,7 +387,9 @@ def typed_chat_tools(legacy_tools, *, quizzes_enabled=True):
             _with_preamble(fn, required_after=("action",))
         elif fn["name"] == "ask_clarifying_questions":
             fn["description"] = (
-                "Ask one consequential unanswered question. Use known class and conversation context first. Never ask the duration of a new weekly plan."
+                "Ask one consequential unanswered question on an actual request to build or revise. "
+                "Use known class and conversation context first. Never ask the duration of a new weekly plan. "
+                "Never use this for a greeting, thanks, or social opener with no build or revise request."
             )
             fn["parameters"]["properties"]["questions"]["maxItems"] = 1
             _with_preamble(fn, required_after=("questions",))

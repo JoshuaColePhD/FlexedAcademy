@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from .. import costs, curriculum, db, llm, prompts, research, retrieval, schoolcal, service
 from ..chat_policy import (
+    CASUAL_OPENER_HINT,
     CHAT_PARTNER_POLICY,
     PENDING_INTENT_HINTS,
     PLAN_OPEN_OVERLAY,
@@ -445,6 +446,19 @@ def _openai_error_event(e: Exception) -> dict:
             "retryable": True,
         }
     if isinstance(e, openai.APIStatusError):
+        body = getattr(e, "body", None)
+        if body is None:
+            resp = getattr(e, "response", None)
+            if resp is not None:
+                try:
+                    body = resp.json()
+                except Exception:  # noqa: BLE001 — logging fallback only
+                    body = getattr(resp, "text", None)
+        log.warning(
+            "openai APIStatusError status=%s body=%s",
+            getattr(e, "status_code", None),
+            body,
+        )
         return {
             "code": "upstream_error",
             "message": "The model provider returned an error.",
@@ -883,6 +897,17 @@ def _run_revision_job(job, *, user_id, req, cls, school_id, model_query):
             lease.release()
 
 
+def _teacher_first_name(user_id: str) -> str:
+    """Account name for greetings. Empty when the teacher has not set one."""
+
+    try:
+        user = db.get_user_by_id(user_id) or {}
+    except Exception:  # noqa: BLE001 — a greeting must never fail the chat turn
+        return ""
+    raw = str(user.get("name") or "").strip()
+    return raw.split()[0] if raw else ""
+
+
 def _build_chat_system_prompt(
     user_id: str, chat_id: str | None, week_number: int | None, mode: str, last_user: str = "", class_id: str | None = None,
     research_context: str = "", reference_context: str = "", voice: bool = False,
@@ -926,6 +951,12 @@ def _build_chat_system_prompt(
         "in one clause, and still be useful. Do not fail, stall, or dump tool JSON as chat text.\n\n"
         + response_length_guidance + "\n\n"
     )
+    first_name = _teacher_first_name(user_id)
+    if first_name:
+        system_prompt += (
+            f"The teacher's first name is {first_name}. Use it naturally when you greet them; "
+            "do not overuse it.\n\n"
+        )
     if not subject:
         system_prompt += (
             "This class has no subject set. Do not assume AP Language or any other course. "
@@ -1497,6 +1528,8 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                 # Last, so it sits closest to the teacher's actual message.
                 if policy.pending_intent:
                     system_prompt += "\n\n" + PENDING_INTENT_HINTS[policy.pending_intent]
+                elif policy.casual_opener:
+                    system_prompt += "\n\n" + CASUAL_OPENER_HINT
 
             messages = [{"role": "system", "content": system_prompt}]
             messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
