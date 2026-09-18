@@ -173,6 +173,23 @@ def _record(user_id: str, kind: str, usage, *, model: str, started_at: float | N
     )
 
 
+# Pacing guides, syllabi, and curriculum maps are course-shaped even when
+# uploaded as account-wide (class_id NULL, subject GLOBAL). Mixing them into
+# every class's retrieval is how AP Lang week 24 (Cask of Amontillado) lands
+# in a Pre-AP Algebra 2 planning chat. Kind "other" (department policies,
+# generic rubrics) can still apply across classes.
+_COURSE_SHAPED_DOCUMENT_KINDS = frozenset({"pacing_guide", "syllabus", "curriculum_map"})
+
+
+def _account_reference_documents(user_id: str) -> list[dict]:
+    """Account-wide docs that can sit next to a class's own materials."""
+    return [
+        doc
+        for doc in db.list_global_documents(user_id)
+        if (doc.get("kind") or "other") not in _COURSE_SHAPED_DOCUMENT_KINDS
+    ]
+
+
 def map_context_for(
     user_id: str,
     subject: str,
@@ -180,10 +197,15 @@ def map_context_for(
     class_id: str | None = None,
     query_vector_future: Future | None = None,
 ) -> str:
-    """Snippets from the teacher's own active pacing guides and global documents, relevant to `query`.
+    """Snippets from this class's materials plus account-wide references, relevant to `query`.
 
     Public (not `_`-prefixed) because the conversational chat model needs this
     exact same lookup.
+
+    Course-shaped global documents (pacing guides, syllabi, curriculum maps)
+    are excluded on the subject path. When a class_id is set, only that class's
+    own documents are retrieved — account-wide files stay out so another prep
+    cannot enter this chat.
 
     `query_vector_future`, when given (service.prepare passes its own
     base-query embedding future here when it's already embedding the exact
@@ -196,12 +218,15 @@ def map_context_for(
     docs = []
     if class_id:
         docs.extend(db.list_class_documents(user_id, class_id))
+        # Class chats stay on this class's own materials. Account-wide pacing
+        # guides already leak other preps; even kind "other" can be a mixed
+        # year-long packet. Global references still apply on the legacy
+        # subject path below, where there is no class to prefer.
     else:
         active = db.get_active_curriculum_map(user_id, subject)
         if active:
             docs.append(active)
-            
-    docs.extend(db.list_global_documents(user_id))
+        docs.extend(_account_reference_documents(user_id))
 
     if not docs:
         return ""
@@ -281,15 +306,76 @@ def custom_instructions_for(user_id: str, ctx: RequestContext | None = None) -> 
     return user.get("custom_instructions") if user else None
 
 
-def coaching_context_for(user_id: str) -> str:
+_LITERARY_CONTENT = re.compile(
+    r"\b(?:amontillado|gatsby|faulkner|poe\b|shakespeare|rhetorical analysis|"
+    r"space cat|close reading|anchor text|poem|poetry|short story|novel|"
+    r"ap language|ap lang)\b",
+    re.IGNORECASE,
+)
+_MATH_CONTENT = re.compile(
+    r"\b(?:algebra|quadratic|geometry|calculus|precalculus|vertex form|"
+    r"completing the square)\b",
+    re.IGNORECASE,
+)
+_MATH_SUBJECT = re.compile(
+    r"algebra|geometry|calculus|precalculus|pre-calculus|statistics|\bmath(?:ematics)?\b",
+    re.IGNORECASE,
+)
+_ELA_SUBJECT = re.compile(
+    r"language|english|literature|\bela\b|composition|rhetoric",
+    re.IGNORECASE,
+)
+
+
+def _other_class_subjects(user_id: str, subject: str | None) -> list[str]:
+    if not subject:
+        return []
+    current = subject.casefold()
+    names = []
+    try:
+        rows = db.list_classes(user_id)
+    except Exception:  # noqa: BLE001 — coaching must not fail a chat turn
+        return []
+    for row in rows:
+        name = str(row.get("subject") or "").strip()
+        if name and name.casefold() != current:
+            names.append(name)
+    return names
+
+
+def _foreign_to_subject(text: str, subject: str | None, other_subjects: list[str]) -> bool:
+    """True when a memory is about another prep, not this class."""
+
+    if not subject or not text:
+        return False
+    lower = text.casefold()
+    current = subject.casefold()
+    for other in other_subjects:
+        name = other.strip()
+        if len(name) < 4:
+            continue
+        if name.casefold() in lower and current not in lower:
+            return True
+    if _MATH_SUBJECT.search(subject) and _LITERARY_CONTENT.search(text):
+        return True
+    return bool(
+        _ELA_SUBJECT.search(subject)
+        and _MATH_CONTENT.search(text)
+        and not _ELA_SUBJECT.search(text)
+    )
+
+
+def coaching_context_for(user_id: str, subject: str | None = None) -> str:
     """Bounded teacher-owned context for the conversational coach.
 
     These are preferences and teaching goals, not hidden instructions.  The
     prompt labels them that way so a memory can personalize a reply without
-    becoming a prompt-injection channel.
+    becoming a prompt-injection channel. Memories about another prep are
+    dropped when `subject` is set so AP Lang texts cannot steer Algebra 2.
     """
     profile = db.get_coaching_profile(user_id)
     memories = db.list_coaching_memories(user_id, 12)
+    other_subjects = _other_class_subjects(user_id, subject)
     lines = []
     labels = {
         "teaching_context": "Teaching context",
@@ -304,8 +390,11 @@ def coaching_context_for(user_id: str) -> str:
             lines.append(f"{label}: {value[:1200]}")
     for memory in memories:
         value = str(memory.get("memory") or "").strip()
-        if value:
-            lines.append(f"Remembered teacher preference ({memory.get('category', 'context')}): {value[:500]}")
+        if not value:
+            continue
+        if _foreign_to_subject(value, subject, other_subjects):
+            continue
+        lines.append(f"Remembered teacher preference ({memory.get('category', 'context')}): {value[:500]}")
     return "\n".join(lines)
 
 
@@ -2173,20 +2262,30 @@ CHAT_TOOLS = [
             # choice questions"), has enough to build from immediately.
             # Quiz type and count are never consequential; default them.
             "description": (
-                "Call this INSTEAD of generate_lesson_plan or generate_quiz when a missing goal, "
-                "text/passage, or revision target would materially change the result. Ask ONE short "
-                "question with a few clickable options. Do not ask quiz type or count — default those. "
-                "Don't ask again about something they already answered. A first-turn opener like "
-                "'let's build a plan' is missing the focus — ask for the text, skill, or throughline; "
-                "do not treat a pacing-guide unit as already confirmed. Never use this for a greeting, "
-                "thanks, or social opener with no build or revise request. For a new weekly lesson plan, "
-                "the week is already a complete structure from the selected school's template, so never "
-                "ask how many days or what duration; use the question to narrow the topic, text, skill, "
-                "or student task instead."
+                "Call this INSTEAD of generate_lesson_plan or generate_quiz to show tappable choices "
+                "in the box above the composer. Use purpose 'clarify' when a missing goal, text/passage, "
+                "or revision target would materially change the result. Use purpose 'suggest' when they "
+                "ask for ideas, options, or what to teach, or when you want to offer 2-5 concrete "
+                "directions for this class and week — each direction is one short option, never a chat "
+                "paragraph and never two courses mashed together. Ask ONE short question with a few "
+                "clickable options. Do not ask quiz type or count — default those. Don't ask again about "
+                "something they already answered. A first-turn opener like 'let's build a plan' is "
+                "missing the focus — ask for the text, skill, or throughline; do not treat a pacing-guide "
+                "unit as already confirmed. Never use this for a greeting, thanks, or social opener with "
+                "no task. For a new weekly lesson plan, the week is already a complete structure from the "
+                "selected school's template, so never ask how many days or what duration."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
+                    "purpose": {
+                        "type": "string",
+                        "enum": ["clarify", "suggest"],
+                        "description": (
+                            "clarify = one missing detail. suggest = concrete directions to pick from "
+                            "when they asked for ideas."
+                        ),
+                    },
                     "questions": {
                         "type": "array",
                         "minItems": 1,
@@ -2321,6 +2420,12 @@ _DEFAULT_PREAMBLE = {
     "update_lesson_day": "Updating that now.",
     "ask_clarifying_questions": "One detail will help me get this right:",
 }
+_SUGGEST_PREAMBLE = "A few directions for this week:"
+
+
+def clarifying_purpose(args) -> str:
+    purpose = args.get("purpose") if isinstance(args, dict) else None
+    return purpose if purpose in ("clarify", "suggest") else "clarify"
 
 _PREAMBLE_HEAD = re.compile(r'"preamble"\s*:\s*"')
 
@@ -2366,6 +2471,8 @@ def _preamble_fallback(tool_name: str, args, preamble_sent: int, prose_chars: in
         text = args["preamble"].strip()
         if text:
             return text
+    if tool_name == "ask_clarifying_questions" and clarifying_purpose(args) == "suggest":
+        return _SUGGEST_PREAMBLE
     return _DEFAULT_PREAMBLE.get(tool_name, "")
 
 
@@ -2531,6 +2638,7 @@ def stream_chat(
                 questions = sanitize_clarifying_questions(questions)
                 if not voice:
                     questions = questions[:1]
+                purpose = clarifying_purpose(args)
                 if not voice:
                     lead = _preamble_fallback(tool_name, args, preamble_sent, prose_chars)
                     if lead:
@@ -2538,7 +2646,11 @@ def stream_chat(
                         yield {"chunk": lead}
                 yielded_anything = True
                 tool_completed = True
-                yield {"tool_call": "ask_clarifying_questions", "questions": questions}
+                yield {
+                    "tool_call": "ask_clarifying_questions",
+                    "questions": questions,
+                    "purpose": purpose,
+                }
                 break
 
             # generate_quiz needs its own arguments before there is anything

@@ -108,9 +108,24 @@ def test_voice_tools_unchanged_and_typed_questions_are_single():
         props = list(typed[name]["parameters"]["properties"])
         assert props[0] == "preamble", name
         assert "preamble" in typed[name]["parameters"]["required"], name
+    purpose = typed["ask_clarifying_questions"]["parameters"]["properties"]["purpose"]
+    assert purpose["enum"] == ["clarify", "suggest"]
+    assert "choice box above the composer" in typed["ask_clarifying_questions"]["description"]
     # Voice keeps the legacy shapes, with no preamble anywhere.
     for tool in llm.CHAT_TOOLS:
         assert "preamble" not in (tool["function"].get("parameters") or {}).get("properties", {})
+
+
+def test_suggest_purpose_uses_the_choice_box_preamble():
+    assert llm.clarifying_purpose({"purpose": "suggest"}) == "suggest"
+    assert llm.clarifying_purpose({"purpose": "clarify"}) == "clarify"
+    assert llm.clarifying_purpose({}) == "clarify"
+    assert llm._preamble_fallback(
+        "ask_clarifying_questions", {"purpose": "suggest"}, 0, 0
+    ) == "A few directions for this week:"
+    assert llm._preamble_fallback(
+        "ask_clarifying_questions", {"purpose": "clarify"}, 0, 0
+    ) == "One detail will help me get this right:"
 
 
 def test_typed_tools_omit_quiz_when_beta_is_off():
@@ -159,6 +174,9 @@ def test_single_persona_carries_the_behavior_the_regex_gate_used_to():
     assert "invite them to say what they need" in text
     assert "no question card on that turn" in text
     assert "A visible plan is context, not permission to edit it." in text
+    assert "mixed another course into this class" in text
+    assert "choice box above the composer" in text
+    assert "any ideas" in text
     # The rule the whole change exists for.
     assert "NEVER WRITE THE ARTIFACT INTO THE CHAT" in raw
     assert "Never type Monday through Friday" in text
@@ -169,6 +187,16 @@ def test_single_persona_carries_the_behavior_the_regex_gate_used_to():
     assert "call generate_lesson_plan (or" not in raw
     assert "`generate_quiz`" not in raw
     assert "interview the teacher" in " ".join(PLAN_OPEN_OVERLAY.split())
+
+
+def test_math_course_lock_rejects_literary_mashups():
+    from backend.chat_policy import course_lock_block
+
+    lock = course_lock_block("Pre-AP Algebra 2", "Pre-AP Algebra 2 (Grade 11)")
+    assert "This conversation is only for Pre-AP Algebra 2 (Grade 11)." in lock
+    assert "that was an error" in lock
+    assert "This is a mathematics class." in lock
+    assert "literary texts" in lock
 
 
 @pytest.mark.parametrize(
@@ -256,6 +284,7 @@ def test_plan_context_reads_the_recent_exchange_not_one_message():
     ) is False
     assert references_plan_context("Can we rethink Wednesday's exit ticket?") is True
     assert references_plan_context("Why does the model feel less personal?") is False
+    assert references_plan_context("what are your suggestions?") is True
 
 
 def test_command_surface_needs_both_an_open_plan_and_a_plan(monkeypatch):

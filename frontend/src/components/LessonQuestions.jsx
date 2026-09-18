@@ -42,7 +42,7 @@ function realOptions(q) {
   return (q.options || []).filter((opt) => !isBareOther(opt))
 }
 
-export function LessonQuestions({ questions, onSubmit }) {
+export function LessonQuestions({ questions, onSubmit, purpose = 'clarify' }) {
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState({})
   const [submitted, setSubmitted] = useState(false)
@@ -156,7 +156,10 @@ export function LessonQuestions({ questions, onSubmit }) {
     // element's own border box no matter how tightly its container clips —
     // the same reasoning composer's own .input textarea (just below this)
     // already used its inset shadow for.
-    <div className="neo-world neo-inset flex flex-col gap-2 rounded-2xl bg-paper-raised p-3">
+    <div
+      className="neo-world neo-inset flex flex-col gap-2 rounded-2xl bg-paper-raised p-3"
+      aria-label={purpose === 'suggest' ? 'Suggested directions' : purpose === 'optional' ? 'Suggested next steps' : 'Clarifying question'}
+    >
       {/* Was literal "Question 2 of 4" — the label a form field carries, not
           something a person asking you things would ever say out loud. A
           teacher already sees the question itself right below; what this
@@ -299,7 +302,7 @@ export function LessonQuestions({ questions, onSubmit }) {
             onClick={skip}
             disabled={Boolean(advancePending)}
           >
-            Skip
+            {purpose === 'suggest' ? 'None of these' : 'Skip'}
           </button>
           {!isLast ? (
             <p className="min-w-0 truncate text-2xs text-ink-faint">Next: {questions[index + 1].text}</p>

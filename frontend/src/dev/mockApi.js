@@ -1522,6 +1522,7 @@ export function installMockApi() {
       // chapter/unit number. Real routing is the model's own judgment call
       // (backend/llm.py's system prompt); this is just enough of a stand-in
       // to drive the ask_clarifying_questions branch in the mock harness.
+      const wantsIdeas = /\bany ideas\b|\bsuggestions?\b|\bwhat should (?:we|i) (?:teach|do|plan)\b/i.test(last)
       const isVague = wantsPlan && last.trim().split(/\s+/).length <= 8 && !/\d|ch\.|chapter/i.test(last)
       return sse(
         wantsQuiz && wantsPlan
@@ -1542,6 +1543,18 @@ export function installMockApi() {
                 [{ tool_call: 'generate_lesson_plan', action: 'revise_week', target_plan_id: body.active_plan_id, instruction: last, days: [], field: null, week_number: body.week_number }, 120],
                 [{ done: true }, 60],
               ]
+          : wantsIdeas
+          ? [
+              [{ chunk: 'A few directions for this week:' }, 120],
+              [{ tool_call: 'ask_clarifying_questions', purpose: 'suggest', questions: [
+                { id: 'direction', text: 'Which of these should we take this week?', options: [
+                  'The pacing-guide focus for this week',
+                  'A skill students are still shaky on',
+                  'A short review, then a new application',
+                ] },
+              ] }, 180],
+              [{ done: true }, 60],
+            ]
           : isVague
           ? [
               [{ tool_call: 'ask_clarifying_questions', questions: [

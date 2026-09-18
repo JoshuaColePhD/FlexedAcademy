@@ -139,6 +139,23 @@ test('single-day actions retain target metadata and do not become plan creation'
   assert.equal(result.dayRevisionRequested.field, 'assessment')
 })
 
+test('idea suggestions arrive as a choice-box purpose, not a prose menu', async () => {
+  const event = {
+    tool_call: 'ask_clarifying_questions',
+    purpose: 'suggest',
+    questions: [{
+      id: 'direction',
+      text: 'Which of these should we take this week?',
+      options: ['Quadratic functions in vertex form', 'Completing the square'],
+    }],
+  }
+  const { hook } = await harness([[event, done]])
+  const result = await hook.start([{ role: 'user', content: 'Any ideas?' }])
+  assert.equal(result.questionPurpose, 'suggest')
+  assert.equal(result.questions[0].id, 'direction')
+  assert.equal(result.toolCalled, true)
+})
+
 test('frames for another request or retry attempt cannot dispatch', async () => {
   const { hook } = await harness([[{ ...action, request_id: 'old' }, { ...action, attempt: 2 }, { chunk: 'Advice.' }, done]])
   const result = await hook.start([], { requestId: 'current' })

@@ -1914,11 +1914,15 @@ export function ChatPage() {
         // that card exists for. Belt-and-suspenders, not a substitute for
         // the prompt fix: this can only shorten what shows, not improve it.
         const intro =
-          result.text?.trim().split('\n')[0]?.trim() || 'One detail will help me get this right:'
+          result.text?.trim().split('\n')[0]?.trim()
+          || (result.questionPurpose === 'suggest'
+            ? 'A few directions for this week:'
+            : 'One detail will help me get this right:')
         settle({
           role: 'assistant',
           content: intro,
           questions: result.questions,
+          questionPurpose: result.questionPurpose === 'suggest' ? 'suggest' : 'clarify',
           // What voice mode says out loud — the questions themselves, but
           // NOT their options: those render as tappable cards in the panel
           // (see VoiceModePanel's QuestionCards), and reading a list of
@@ -4757,6 +4761,7 @@ export function ChatPage() {
                     <LessonQuestions
                       key={lastQuestions.message.id}
                       questions={lastQuestions.questions}
+                      purpose={lastQuestions.message.questionPurpose}
                       onSubmit={(text, meta) => onAnswerQuestions(lastQuestions.message, text, meta)}
                     />
                   </div>
