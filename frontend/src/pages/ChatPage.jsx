@@ -3775,7 +3775,17 @@ export function ChatPage() {
       // Outputs is an in-flow inspector column. Size the command lane to the
       // chat canvas rather than stretching it to the drawer edge, which would
       // hide the gutter the composer is supposed to keep between the rails.
-      const laneWidth = Math.max(0, r.width)
+      const drawer = getDrawer()
+      const drawerOpen = Boolean(
+        !document.documentElement.classList.contains('is-document-reading') &&
+        drawer?.classList.contains('is-open') &&
+        !drawer.classList.contains('is-closing')
+      )
+      const drawerLeft = drawerOpen ? drawer.getBoundingClientRect().left : null
+      const laneWidth = Math.max(
+        0,
+        Math.min(r.width, drawerLeft == null ? r.width : drawerLeft - 24 - r.left),
+      )
       const documentReading = document.documentElement.classList.contains('is-document-reading')
       // Do not overwrite the pre-reader anchor during the return journey.
       // Between the document unmounting and Outputs reaching its resting
@@ -3795,17 +3805,18 @@ export function ChatPage() {
           shellInset: shellRect && dockRect ? shellRect.left - dockRect.left : null,
         }
       }
-      // Keep the composer pinned to its pre-reader geometry for the complete
-      // reader lifecycle. `overlayOpen` turns false at the *start* of the
-      // closing animation, while `desktopInspectorOpen` remains true until
-      // the reader has actually left. Releasing it early made the composer
-      // briefly re-measure the changing chat lane and glide/jump on close.
+      // Keep the composer pinned to its pre-reader geometry while the lesson
+      // plan is actually mounted. Once the reader has left, size the command
+      // lane to the live chat column so it does not sit over the in-flow
+      // Outputs inspector.
       const cachedReaderAnchor = composerReaderAnchorRef.current
-      const keepReaderComposer = desktopInspector && cachedReaderAnchor && (
-        desktopInspectorOpen ||
-        composerReaderSettling
+      const keepReaderComposer = Boolean(
+        desktopInspector &&
+        cachedReaderAnchor &&
+        desktopInspectorOpen &&
+        !artifactFullscreen
       )
-      const readerAnchor = keepReaderComposer && !artifactFullscreen && cachedReaderAnchor
+      const readerAnchor = keepReaderComposer ? cachedReaderAnchor : null
       const hostLeft = (readerAnchor?.shellLeft != null && readerAnchor.shellInset != null
         ? readerAnchor.shellLeft - readerAnchor.shellInset
         : readerAnchor?.left ?? r.left)
