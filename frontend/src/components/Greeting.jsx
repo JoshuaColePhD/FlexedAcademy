@@ -12,12 +12,12 @@ import { shortRange } from '../lib/dates'
  * screen waiting for whatever they type. The text stays un-prefilled — the
  * composer's own ghost text is a pair of fixed boilerplate prompts now.
  *
- * What removing them cost, and what `week` below puts back: this screen said
- * "I'll build THE week" without ever saying which one, while ChatPage had
+ * What removing them cost, and what `week` below puts back: this screen used
+ * to say "I'll build THE week" without ever saying which one, while ChatPage had
  * already silently resolved it (effectiveWeek — the next unplanned week,
  * unless a ?week= param overrode it). The teacher found that out from the
  * finished document, thirty seconds later. Naming it in the sentence that
- * was already there is not a suggestion — it's the existing copy being
+ * invites them to start is not a suggestion — it's the existing copy being
  * honest about what is about to happen.
  *
  * `hint` is the one exception to "nothing here is clickable": an
@@ -63,16 +63,17 @@ export function Greeting({ onOpenVoice, className: courseName, week, hint, onOpe
         </h1>
         
         <p className="max-w-xl text-sm sm:text-base text-ink-muted leading-relaxed">
-          Tell me what you want to cover this week, and I’ll help you build{' '}
+          What can I help you with? I can plan{' '}
           {weekLabel ? (
             <span className="whitespace-nowrap font-medium text-ink bg-paper-sunken px-2 py-0.5 rounded-md border border-ink/5 shadow-sm">
               {weekLabel}
             </span>
           ) : (
-            'the week'
+            'this week'
           )}
-          {courseName ? ` for ${courseName}` : ''}. I’ll keep it grounded in your standards
-          and format it for your district.
+          {courseName ? ` for ${courseName}` : ''} with you, or we can talk through a day
+          that isn’t working. I’ll keep it grounded in your standards and format it for
+          your district.
         </p>
 
         {/* add-pacing-guide / add-school-calendar — not a chat message, so
