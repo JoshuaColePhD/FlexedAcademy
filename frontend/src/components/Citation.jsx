@@ -4,6 +4,7 @@ import { PHONE, useMediaQuery } from '../hooks/useMediaQuery'
 import { codeRe, groundedSet, normalizeCode } from '../lib/codes'
 import { errorParts, isNotFound } from '../lib/apiError'
 import { fetchStandard, getCached } from '../lib/standardsCache'
+import { displaySourceDocument } from '../lib/displaySourceDocument'
 
 /* THE SIGNATURE ELEMENT — the grounding apparatus.
 
@@ -139,7 +140,7 @@ function Popover({ code, subject, state, anchorRef, onClose, popoverId }) {
             </p>
           ) : null}
           <div className="cite-pop-src">
-            <code>{record.source_document}</code>
+            <code>{displaySourceDocument(record.source_document)}</code>
             {record.source_page_or_section ? ` · ${record.source_page_or_section}` : ''}
             {record.verbatim_ok ? ' · verified verbatim' : ''}
           </div>

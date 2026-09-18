@@ -6,7 +6,7 @@ import { handleViewTransitionNavigation } from '../../lib/viewTransitions'
  * Used to carry a claims panel (standards quoted, the real school calendar,
  * the district's own template) as the product's one marketing surface. Cut
  * entirely: this app plans for many schools and districts, not just
- * Florence City Schools, and a door meant for any of them shouldn't lead
+ * a single district, and a door meant for any of them shouldn't lead
  * with one district's specifics — it should just get a teacher signed in.
  *
  * `auth-ground` (base.css) puts this on the landing page's fixed dark brand

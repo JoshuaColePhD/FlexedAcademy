@@ -875,10 +875,15 @@
 
 @media (min-width: 900px) {
   html.is-document-reading .app-shell-frame {
-    gap: 8px !important;
+    gap: 0 !important;
   }
   html.is-document-reading .app-rail {
-    width: 52px !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    flex-basis: 0 !important;
+    border: 0 !important;
+    opacity: 0;
+    pointer-events: none;
     transition-duration: var(--t-reader);
     transition-timing-function: var(--ease-glide);
   }
@@ -2061,6 +2066,22 @@
   max-width: 54rem;
   margin-inline: auto;
 }
+/* Desktop composer geometry is intentionally independent of rails and
+   readers. It is the one stable command location in the workspace: overlays
+   may pass behind it, but never push it sideways or stretch it. */
+@media (min-width: 900px) {
+  .composer-dock-lane {
+    transition: none !important;
+  }
+  .composer-dock-surface > div {
+    /* Match the transcript's 54rem reading measure. The dock itself remains
+       workspace-centered, but the command bar now shares the same left and
+       right margins as the chat content rather than feeling like a narrower,
+       unrelated control. */
+    width: min(54rem, calc(100vw - 48px)) !important;
+    max-width: min(54rem, calc(100vw - 48px)) !important;
+  }
+}
 /* A modal owns the screen while it is open. Keep the persistent composer from
    showing through the dimmed layer as a distracting dark rectangle beneath the
    card; it returns with its original geometry as soon as the modal closes. */
@@ -2109,7 +2130,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
     gap: 10px !important;
     padding: 10px !important;
   }
-  .app-shell-frame.is-rail-collapsed { gap: 8px !important; }
+  .app-shell-frame.is-rail-collapsed { gap: 0 !important; }
   :root[data-theme] .app-rail:not(.rail-drawer),
   :root[data-theme] .app-shell-main {
     border: 1px solid var(--edge) !important;
@@ -2172,16 +2193,17 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .split-layout-content {
     border-radius: 0 21px 21px 0;
   }
-  /* Keep a compact rail visible when the full chat list is collapsed. This
-     preserves a stable spatial anchor and leaves the primary new-chat action
-     within easy reach. */
+  /* A collapsed left rail is fully gone. The topbar toggle remains in the
+     workspace, so retaining a thin strip with duplicate actions only wastes
+     canvas and makes the transition look like a failed collapse. */
   .app-shell-frame.is-rail-collapsed > .app-rail {
-    width: 52px !important;
-    min-width: 52px !important;
-    flex-basis: 52px !important;
-    border-radius: 18px !important;
-    opacity: 1;
-    pointer-events: auto;
+    width: 0 !important;
+    min-width: 0 !important;
+    flex-basis: 0 !important;
+    border: 0 !important;
+    margin: 0 !important;
+    opacity: 0;
+    pointer-events: none;
   }
   .rail-collapsed-actions {
     width: 100%;

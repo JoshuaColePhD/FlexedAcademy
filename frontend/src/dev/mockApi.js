@@ -86,19 +86,19 @@ const previewAnonymous = previewParams.has('anon')
 const STANDARDS = {
   'ELA21.11.R2': {
     description: 'Analyze how an author develops and refines a point of view.',
-    source_document: 'Alabama Course of Study: ELA (2021)',
+    source_document: 'English Language Arts standards (2021)',
     source_page_or_section: 'Grade 11, R2',
     verbatim_ok: true,
   },
   'RHS-2': {
     description: 'Make strategic use of digital media in presentations to add interest and enhance understanding.',
-    source_document: 'Alabama Course of Study: ELA (2021)',
+    source_document: 'English Language Arts standards (2021)',
     source_page_or_section: 'Grade 11, RHS-2',
     verbatim_ok: true,
   },
   'CLE-4': {
     description: 'Analyze and select evidence to develop a claim, distinguishing it from opposing claims.',
-    source_document: 'Alabama Course of Study: ELA (2021)',
+    source_document: 'English Language Arts standards (2021)',
     source_page_or_section: 'Grade 11, CLE-4',
     verbatim_ok: true,
   },
@@ -881,7 +881,7 @@ export function installMockApi() {
       // real shape, not the `subject` name a class row carries.
       return json([
         { id: 'AP_Lang', label: 'AP English Language and Composition (2019)', grades: [10, 11, 12], chunks: 59, verbatim_ok: 59 },
-        { id: 'ELA', label: 'Alabama Course of Study: ELA (2021)', grades: [9, 10, 11, 12], chunks: 1240, verbatim_ok: 1180 },
+        { id: 'ELA', label: 'English Language Arts standards (2021)', grades: [9, 10, 11, 12], chunks: 1240, verbatim_ok: 1180 },
       ])
     if (path === '/api/classes' && method === 'POST') {
       await wait(200)
@@ -911,7 +911,7 @@ export function installMockApi() {
       if (body.subject !== undefined || body.grade !== undefined) {
         const labels = {
           AP_Lang: 'AP English Language and Composition',
-          ELA: 'Alabama Course of Study: ELA',
+          ELA: 'English Language Arts standards',
         }
         const label = (labels[cls.subject] || cls.subject || '').split(' (')[0].trim()
         const grade = String(cls.grade || '').trim()

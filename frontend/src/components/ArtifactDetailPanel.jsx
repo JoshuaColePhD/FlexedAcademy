@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Download, Loader2, Edit2, Save, X, Maximize2, Minimize2, Upload, ChevronLeft, ChevronRight, BookOpen, Library, CheckCircle2, Undo2, AlertTriangle } from 'lucide-react'
 import { api } from '../lib/api'
 import { fetchStandardsBatch } from '../lib/standardsCache'
+import { displaySourceDocument } from '../lib/displaySourceDocument'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { classColor } from '../lib/classColor'
@@ -711,7 +712,7 @@ function StandardStub({ code, record, flag, where, index = 0 }) {
             </p>
           ) : null}
           <p className="detail-card-answer">
-            {record.source_document}
+            {displaySourceDocument(record.source_document)}
             {record.source_page_or_section ? ` · ${record.source_page_or_section}` : ''}
             {record.verbatim_ok ? ' · verified verbatim' : ''}
           </p>

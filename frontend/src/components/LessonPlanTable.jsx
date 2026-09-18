@@ -317,7 +317,7 @@ function PlanTable({
     >
       <table className="plan-table">
         <caption className="visually-hidden">
-          Weekly lesson plan, Monday to Friday, in the Florence City Schools template
+          Weekly lesson plan, Monday to Friday
           {canTweak ? '. Click any cell to edit that part of the day.' : ''}
         </caption>
         <thead>

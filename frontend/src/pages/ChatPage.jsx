@@ -1007,7 +1007,6 @@ export function ChatPage() {
 
   const composerAnchorRef = useRef(null)
   const composerDockRef = useRef(null)
-  const composerReaderAnchorRef = useRef(null)
   const [composerDockH, setComposerDockH] = useState(0)
   // The portaled dock's OWN rendered height, fed back to the anchor (below)
   // so the anchor reserves exactly the space the floating dock actually
@@ -3586,19 +3585,6 @@ export function ChatPage() {
   // landscape the plan earns a stable pane beside the conversation.
   const tabletLandscapePlanOpen = isTabletLandscape && overlayOpen && viewKind === 'plan'
   const desktopInspectorOpen = desktopInspector && overlayExit.mounted
-  // The reader unmounts before Outputs has returned to its resting width.
-  // Preserve the command bar's last good geometry through that small gap so
-  // a transient, full-width chat lane is never captured as its new target.
-  const [composerReaderSettling, setComposerReaderSettling] = useState(false)
-  useEffect(() => {
-    if (desktopInspectorOpen) {
-      setComposerReaderSettling(true)
-      return undefined
-    }
-    if (!composerReaderSettling) return undefined
-    const release = window.setTimeout(() => setComposerReaderSettling(false), 600)
-    return () => window.clearTimeout(release)
-  }, [composerReaderSettling, desktopInspectorOpen])
   const setDocumentReading = workspaceRail.setDocumentReading
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('is-document-reading', Boolean(desktopInspectorOpen))
@@ -3608,32 +3594,6 @@ export function ChatPage() {
       setDocumentReading?.(false)
     }
   }, [desktopInspectorOpen, setDocumentReading])
-  // Capture the settled centered composer geometry before the reader opens.
-  // The reader narrows the available lane, but the composer remains anchored
-  // in the middle workspace instead of moving into the collapsed chat rail.
-  useLayoutEffect(() => {
-    if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-    const capture = () => {
-      if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-      const dock = composerDockRef.current
-      const shell = dock?.querySelector('.composer-shell')
-      const anchor = composerAnchorRef.current
-      if (!dock || !shell || !anchor) return
-      const anchorRect = anchor.getBoundingClientRect()
-      const dockRect = dock.getBoundingClientRect()
-      const shellRect = shell.getBoundingClientRect()
-      composerReaderAnchorRef.current = {
-        left: dockRect.left,
-        width: dockRect.width,
-        laneWidth: Math.max(0, anchorRect.width),
-        shellLeft: shellRect.left,
-        shellInset: shellRect.left - dockRect.left,
-      }
-    }
-    capture()
-    const settleTimer = window.setTimeout(capture, 450)
-    return () => window.clearTimeout(settleTimer)
-  }, [artifactFullscreen, composerDockH, composerReaderSettling, desktopInspectorOpen, overlayOpen, railOpen])
   // Fullscreen: the host becomes the true viewport. Docked: the host
   // becomes exactly the box #main used to provide for free (before this
   // was always portaled, .artifact-overlay's own position:fixed picked up
@@ -3708,82 +3668,29 @@ export function ChatPage() {
       window.removeEventListener('resize', sync)
     }
   }, [artifactFullscreen, overlayPortalHost, desktopInspectorOpen])
-  // Keep the persistent footer matched to the live anchor. When the lesson
-  // plan opens, preserve the centered composer position and narrow its lane
-  // from the right rather than moving it into the collapsed chat rail.
+  // The command bar shares the transcript's reading measure in chat mode. It
+  // is portaled so a document reader can pass over it, but its left and right
+  // edges must be exactly the chat column's edges—not a second, workspace-
+  // centered measure. A document reader is different: it intentionally covers
+  // the chat, so the composer retains its stable workspace-centered position.
   useEffect(() => {
-    const anchor = artifactFullscreen
-      ? overlayPortalHost
-      : tabletPortraitReaderOpen
-        ? overlayAnchorRef.current
-        : composerAnchorRef.current
+    const anchor = composerAnchorRef.current
     if (!anchor) return
     const workspace = anchor.closest('.workspace-panes')
-    const getDrawer = () => workspace?.querySelector(':scope > .artifact-drawer')
     const sync = () => {
-      const r = anchor.getBoundingClientRect()
-      // Outputs is an in-flow inspector column. Size the command lane to the
-      // chat canvas rather than stretching it to the drawer edge, which would
-      // hide the gutter the composer is supposed to keep between the rails.
-      const drawer = getDrawer()
-      const drawerOpen = Boolean(
-        !document.documentElement.classList.contains('is-document-reading') &&
-        drawer?.classList.contains('is-open') &&
-        !drawer.classList.contains('is-closing')
-      )
-      const drawerLeft = drawerOpen ? drawer.getBoundingClientRect().left : null
-      const laneWidth = Math.max(
-        0,
-        Math.min(r.width, drawerLeft == null ? r.width : drawerLeft - 24 - r.left),
-      )
-      const documentReading = document.documentElement.classList.contains('is-document-reading')
-      // Do not overwrite the pre-reader anchor during the return journey.
-      // Between the document unmounting and Outputs reaching its resting
-      // width, the live lane briefly spans the whole chat area. Capturing
-      // that transient value was the source of the close-time bounce.
-      const retainingReaderAnchor = desktopInspector && composerReaderSettling
-      if (!overlayOpen && !desktopInspectorOpen && !documentReading && !artifactFullscreen && !retainingReaderAnchor) {
-        const dock = composerDockRef.current
-        const shell = dock?.querySelector('.composer-shell')
-        const dockRect = dock?.getBoundingClientRect()
-        const shellRect = shell?.getBoundingClientRect()
-        composerReaderAnchorRef.current = {
-          left: dockRect?.left ?? r.left,
-          width: dockRect?.width ?? r.width,
-          laneWidth,
-          shellLeft: shellRect?.left ?? null,
-          shellInset: shellRect && dockRect ? shellRect.left - dockRect.left : null,
-        }
-      }
-      // Keep the composer pinned to its pre-reader geometry while the lesson
-      // plan is actually mounted. Once the reader has left, size the command
-      // lane to the live chat column so it does not sit over the in-flow
-      // Outputs inspector.
-      const cachedReaderAnchor = composerReaderAnchorRef.current
-      const keepReaderComposer = Boolean(
-        desktopInspector &&
-        cachedReaderAnchor &&
-        desktopInspectorOpen &&
-        !artifactFullscreen
-      )
-      const readerAnchor = keepReaderComposer ? cachedReaderAnchor : null
-      const hostLeft = (readerAnchor?.shellLeft != null && readerAnchor.shellInset != null
-        ? readerAnchor.shellLeft - readerAnchor.shellInset
-        : readerAnchor?.left ?? r.left)
-      const hostWidth = readerAnchor?.width ?? r.width
-      const visibleLaneWidth = readerAnchor
-        ? readerAnchor.laneWidth
-        : laneWidth
-      portalHost.style.transition = documentReading || desktopInspectorOpen
-        ? 'width var(--t-reader) var(--ease-glide)'
-        : 'left var(--t-reader) var(--ease-glide), width var(--t-reader) var(--ease-glide)'
-      portalHost.style.left = `${hostLeft}px`
-      portalHost.style.width = `${Math.max(0, hostWidth)}px`
+      const anchorRect = anchor.getBoundingClientRect()
+      const workspaceRect = (workspace || anchor).getBoundingClientRect()
+      const transcript = desktopInspectorOpen ? null : workspace?.querySelector('.chat-transcript-column')
+      const transcriptRect = transcript?.getBoundingClientRect()
+      const laneRect = transcriptRect?.width ? transcriptRect : workspaceRect
+      portalHost.style.transition = 'none'
+      portalHost.style.left = `${laneRect.left}px`
+      portalHost.style.width = `${Math.max(0, laneRect.width)}px`
       portalHost.style.top = 'auto'
-      portalHost.style.bottom = `${Math.max(0, window.innerHeight - r.bottom)}px`
+      portalHost.style.bottom = `${Math.max(0, window.innerHeight - anchorRect.bottom)}px`
       portalHost.style.height = 'auto'
       if (composerDockRef.current) {
-        composerDockRef.current.style.width = `${visibleLaneWidth}px`
+        composerDockRef.current.style.width = '100%'
         composerDockRef.current.style.maxWidth = 'none'
       }
     }
@@ -3793,8 +3700,6 @@ export function ChatPage() {
     const pane = anchor.parentElement
     if (pane && pane !== anchor) ro.observe(pane)
     if (workspace && workspace !== pane) ro.observe(workspace)
-    const drawer = getDrawer()
-    if (drawer) ro.observe(drawer)
     const mo = workspace ? new MutationObserver(sync) : null
     mo?.observe(workspace, {
       childList: true,
@@ -3810,17 +3715,17 @@ export function ChatPage() {
       window.removeEventListener('resize', sync)
       window.visualViewport?.removeEventListener('resize', sync)
     }
-  }, [artifactFullscreen, composerDockH, overlayOpen, overlayPortalHost, portalHost, railOpen, desktopInspector, desktopInspectorOpen, composerReaderSettling, tabletPortraitReaderOpen])
+  }, [composerDockH, desktopInspectorOpen, portalHost, railOpen])
   // Keep the composer above the document in both docked and fullscreen
   // reading modes. Fullscreen expands the lesson plan's reading surface, but
   // it should not take away the command surface the teacher is actively using.
   const desktopComposerOverlay = desktopInspectorOpen
   useEffect(() => {
-    // Keep the composer interactive above the desktop document, including the
-    // fullscreen reader. The document remains the visual canvas underneath;
-    // the composer is still the persistent command surface.
-    portalHost.style.zIndex = overlayOpen && !desktopComposerOverlay && !tabletPortraitReaderOpen ? '90' : '200'
-  }, [portalHost, overlayOpen, desktopComposerOverlay, tabletPortraitReaderOpen])
+    // The regular Outputs drawer may sit above the dock, but a lesson-plan
+    // reader — docked or fullscreen — never owns the command position. Keep
+    // the fixed composer visible and interactive above either reader mode.
+    portalHost.style.zIndex = overlayOpen && !desktopComposerOverlay && !tabletPortraitReaderOpen && !artifactFullscreen ? '90' : '200'
+  }, [portalHost, overlayOpen, desktopComposerOverlay, tabletPortraitReaderOpen, artifactFullscreen])
   // See overlayPortalHost's own creation comment: this host spans the full
   // viewport (or the docked box) at all times, so it must stop intercepting
   // clicks the instant there's nothing shown inside it, not just while it's
