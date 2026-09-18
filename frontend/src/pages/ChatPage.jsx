@@ -1269,6 +1269,7 @@ export function ChatPage() {
      same DOM node throughout: it settles (Message.jsx's own fa-settle) when
      `streaming` flips false instead of disappearing and reappearing. */
   const liveMessageIdRef = useRef(null)
+  const liveTextRef = useRef('')
 
   /* Turns whatever's mid-flight into its resting state instead of leaving it
      stuck at streaming:true forever — the interruption paths (Stop button,
@@ -1279,10 +1280,14 @@ export function ChatPage() {
     const id = liveMessageIdRef.current
     liveMessageIdRef.current = null
     if (!id) return
+    // The streamed text lived in a ref rather than on the message, so this is
+    // where it lands. Still dropped rather than left as an empty bubble.
+    const text = liveTextRef.current || ''
+    liveTextRef.current = ''
     setMessages((prev) =>
       prev
-        .map((m) => (m.id === id ? { ...m, streaming: false } : m))
-        .filter((m) => m.id !== id || m.content.trim())
+        .map((m) => (m.id === id ? { ...m, content: m.content || text, streaming: false } : m))
+        .filter((m) => m.id !== id || (m.content || text).trim())
     )
   }, [])
 
@@ -2220,6 +2225,8 @@ export function ChatPage() {
   const fillLiveIfEmpty = (content) => {
     const liveId = liveMessageIdRef.current
     if (!liveId || !content) return
+    // "Empty" now means nothing has streamed, which only the ref knows.
+    if (String(liveTextRef.current || '').trim()) return
     setMessages((prev) => prev.map((m) => {
       if (m.id !== liveId || String(m.content || '').trim()) return m
       // Never re-open a turn onDone already settled: a whitespace-only preamble
@@ -2845,11 +2852,17 @@ export function ChatPage() {
 
         finishPreparing()
         if (chatMode === 'research') pendingActivityKindRef.current = 'research'
-        liveMessageIdRef.current = nextId()
+        // Captured, not read inside the updater below: React runs that later,
+        // and a fast stream can finish and null the ref first — which produced
+        // a placeholder with no id, no key, and no match in settle(), left
+        // behind as a second permanently-streaming bubble.
+        const liveId = nextId()
+        liveMessageIdRef.current = liveId
+        liveTextRef.current = ''
         const firstThinking = chatThinkingLabel(chatMode, { planning, prompt: promptText })
         setMessages((prev) => [
           ...prev,
-          { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: firstThinking },
+          { id: liveId, role: 'assistant', content: '', streaming: true, thinkingLabel: firstThinking },
         ])
         if (voiceOpen) voice.speak(`${firstThinking}.`)
         startedActionRef.current = null
@@ -2915,11 +2928,14 @@ export function ChatPage() {
          again — so the model spent the rest of every conversation (typed or
          spoken) with no idea which week it was on. The chat's pinned week
          doesn't drift, so it's safe to keep sending. */
-      liveMessageIdRef.current = nextId()
+      // Same capture-before-update rule as the first placeholder above.
+      const laterLiveId = nextId()
+      liveMessageIdRef.current = laterLiveId
+      liveTextRef.current = ''
       const laterThinking = chatThinkingLabel(chatMode, { planning, prompt: promptText })
       setMessages((prev) => [
         ...prev,
-        { id: liveMessageIdRef.current, role: 'assistant', content: '', streaming: true, thinkingLabel: laterThinking },
+        { id: laterLiveId, role: 'assistant', content: '', streaming: true, thinkingLabel: laterThinking },
       ])
       if (voiceOpen) voice.speak(`${laterThinking}.`)
       startedActionRef.current = null
@@ -3455,16 +3471,15 @@ export function ChatPage() {
     }))
   }, [])
 
-  /* Mirrors chatStream's own growing text into the placeholder message
-     pushed right before chatStream.start() (see the two call sites in
-     submit(), and liveMessageIdRef's own comment above) — this is what lets
-     that message grow in place instead of living outside `messages` until
-     it's finished. */
+  /* The growing reply is handed to its Message as a prop (see `streamText` in
+     the transcript below) instead of being copied into `messages` every frame.
+     The old mirror cost a second full ChatPage render and an O(n) map per rAF
+     tick on top of the one setText already caused. This ref exists because a
+     few callers still need the latest text without re-rendering for it —
+     finalizeLiveMessage, fillLiveIfEmpty, and voice auto-speak. */
   useEffect(() => {
     if (!chatStream.isStreaming) return
-    const id = liveMessageIdRef.current
-    if (!id) return
-    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, content: chatStream.text } : m)))
+    liveTextRef.current = chatStream.text
   }, [chatStream.text, chatStream.isStreaming])
 
   /* ── scroll ───────────────────────────────────────────────────────────── */
@@ -3535,8 +3550,12 @@ export function ChatPage() {
     const currentSpacer = spacer ? spacer.offsetHeight : 0
     const contentHeight = scroller.scrollHeight - currentSpacer
     const needed = Math.max(0, anchorTop + scroller.clientHeight - contentHeight)
-    if (spacer) spacer.style.height = `${needed}px`
-    scroller.scrollTop = anchorTop
+    // Only write when it actually changes. Rewriting the same height still
+    // resizes the transcript column, which re-fires the ResizeObserver below,
+    // which calls back in here — "ResizeObserver loop completed with
+    // undelivered notifications".
+    if (spacer && Math.abs(currentSpacer - needed) > 1) spacer.style.height = `${needed}px`
+    if (Math.abs(scroller.scrollTop - anchorTop) > 1) scroller.scrollTop = anchorTop
   }, [])
 
   useEffect(() => {
@@ -3563,13 +3582,23 @@ export function ChatPage() {
   useEffect(() => {
     const scroller = scrollRef.current
     if (!scroller || typeof ResizeObserver === 'undefined') return undefined
+    let frame = 0
     const observer = new ResizeObserver(() => {
       if (!followAnchorIdRef.current) return
       if (userScrollLockRef.current || !atBottom) return
-      applyFollow()
+      // Deferred to the next frame so the callback never mutates layout inside
+      // the observation it was delivered for.
+      if (frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        applyFollow()
+      })
     })
     for (const child of scroller.children) observer.observe(child)
-    return () => observer.disconnect()
+    return () => {
+      if (frame) cancelAnimationFrame(frame)
+      observer.disconnect()
+    }
   }, [atBottom, applyFollow, messages.length])
 
   /* Voice mode's other half — see VoiceProvider for the mic button's. One
@@ -4478,6 +4507,7 @@ export function ChatPage() {
                   <div className={i === 0 || daySep ? '' : grouped ? 'mt-2' : 'mt-7'}>
                     <Message
                       message={m}
+                      streamText={m.id === liveMessageIdRef.current ? chatStream.text : undefined}
                       subject={activeClass?.subject}
                       state={activeClass?.state}
                       isLast={i === messages.length - 1}
