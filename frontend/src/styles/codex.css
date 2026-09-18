@@ -2181,7 +2181,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
     gap: 10px !important;
     padding: 10px !important;
   }
-  .app-shell-frame.is-rail-collapsed { gap: 0 !important; }
+  .app-shell-frame.is-rail-collapsed { gap: 8px !important; }
   :root[data-theme] .app-rail:not(.rail-drawer),
   :root[data-theme] .app-shell-main {
     border: 1px solid var(--edge) !important;
@@ -2244,18 +2244,39 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .split-layout-content {
     border-radius: 0 21px 21px 0;
   }
-  /* A collapsed desktop rail is fully removed from the visual layout. Keep
-     the element mounted for the width transition and state restoration, but
-     leave no strip, border, controls, or hit area behind. */
+  /* Keep a compact rail visible when the full chat list is collapsed. This
+     preserves a stable spatial anchor and leaves the primary new-chat action
+     within easy reach. */
   .app-shell-frame.is-rail-collapsed > .app-rail {
-    width: 0 !important;
-    min-width: 0 !important;
-    flex-basis: 0 !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    opacity: 0;
-    pointer-events: none;
-    visibility: hidden;
+    width: 52px !important;
+    min-width: 52px !important;
+    flex-basis: 52px !important;
+    border-radius: 18px !important;
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .rail-collapsed-actions {
+    width: 100%;
+  }
+  .app-shell-frame.is-rail-collapsed .rail-collapsed-actions {
+    flex: 1 1 auto !important;
+    height: 100% !important;
+    min-height: 0;
+    margin: 0;
+    padding: 8px 0;
+  }
+  .app-shell-frame.is-rail-collapsed > .app-rail .chat-workspace-add {
+    width: 36px;
+    height: 36px;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.72);
+    border-radius: 12px;
+    background: rgb(var(--paper-raised-rgb) / 0.72);
+  }
+  .app-shell-frame.is-rail-collapsed > .app-rail .chat-workspace-add:hover,
+  .app-shell-frame.is-rail-collapsed > .app-rail .chat-workspace-add:focus-visible {
+    color: var(--accent-text);
+    background: rgb(var(--accent-tint-rgb) / 0.72);
+    outline: none;
   }
   :root[data-theme] .app-rail:not(.rail-drawer) {
     border-right-color: var(--edge) !important;
