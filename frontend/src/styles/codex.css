@@ -2158,11 +2158,11 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body { width: 100%; }
   .chat-context-strip,
   .workspace-panes:has(.artifact-drawer.is-open) .chat-context-strip { padding-inline: 24px; }
-  /* Outputs is a docked part of the workspace, not a darker card placed over
-     it. Matching the chat surface removes the false vertical seam along their
-     shared edge while the drawer keeps its outline on the exposed edges. */
+  /* Outputs is an elevated inspector, not a continuation of the chat canvas. */
   :root[data-theme='dark'] .workspace-panes > .artifact-drawer,
-  :root[data-theme='dark'] .artifact-rail:not(.is-bar) { background: var(--paper) !important; }
+  :root[data-theme='dark'] .artifact-rail:not(.is-bar) {
+    background: rgb(28 27 23) !important;
+  }
 }
 @media (max-width: 1023.98px) {
   .workspace-topbar .workspace-sidebar-toggle { display: none; }
@@ -2285,22 +2285,33 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .workspace-panes > .artifact-drawer.is-open .artifact-rail:not(.is-bar) {
     border-radius: 0 0 21px 21px;
   }
-  /* The outputs drawer shares the chat's right edge. Remove only the divider
-     so it reads as one workspace surface, while retaining the drawer's
-     rounded silhouette at the exposed top and bottom corners. */
-  .workspace-panes > .artifact-drawer,
-  .workspace-panes > .artifact-drawer.is-open,
-  .workspace-panes > .artifact-drawer.is-closing {
-    margin-left: 0 !important;
-    border-left: 0 !important;
-    border-top-left-radius: 22px !important;
-    border-bottom-left-radius: 22px !important;
+  /* Outputs floats above the workspace from the right edge. Its complete
+     rounded outline makes it a readable inspector without turning a shared
+     in-flow edge into a harsh divider. The open lesson reader owns this space
+     instead, so it keeps the drawer collapsed beneath that state. */
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer,
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-open,
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-closing {
+    position: absolute !important;
+    inset: 10px 10px 10px auto !important;
+    z-index: 20;
+    height: auto !important;
+    margin: 0 !important;
+    border: 1px solid rgb(var(--edge-strong-rgb) / 0.82) !important;
+    border-radius: 22px !important;
+    background: rgb(28 27 23) !important;
+    box-shadow: 0 14px 34px rgb(0 0 0 / 0.22) !important;
   }
-  .workspace-panes > .artifact-drawer.is-open .artifact-drawer-heading {
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-closing {
+    width: clamp(280px, 25vw, 340px) !important;
+    min-width: 0 !important;
+    transform: translateX(24px);
+  }
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-open .artifact-drawer-heading {
     border-top-left-radius: 21px !important;
   }
-  .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body,
-  .workspace-panes > .artifact-drawer.is-open .artifact-rail:not(.is-bar) {
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-open .artifact-drawer-body,
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-open .artifact-rail:not(.is-bar) {
     border-bottom-left-radius: 21px !important;
   }
 }
