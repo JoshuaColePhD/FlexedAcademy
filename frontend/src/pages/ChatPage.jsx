@@ -3600,6 +3600,25 @@ export function ChatPage() {
     return () => window.clearTimeout(release)
   }, [composerReaderSettling, desktopInspectorOpen])
   const setDocumentReading = workspaceRail.setDocumentReading
+  // Snapshot the command bar before opening a lesson-plan reader. The reader
+  // intentionally changes the workspace geometry, but the composer should
+  // keep the exact width and screen position it had in the chat view.
+  const captureComposerReaderAnchor = useCallback(() => {
+    if (isPhone || isLandscapePhone || artifactFullscreen) return
+    const dock = composerDockRef.current
+    const shell = dock?.querySelector('.composer-shell')
+    const anchor = composerAnchorRef.current
+    if (!dock || !shell || !anchor) return
+    const dockRect = dock.getBoundingClientRect()
+    const shellRect = shell.getBoundingClientRect()
+    composerReaderAnchorRef.current = {
+      left: dockRect.left,
+      width: dockRect.width,
+      laneWidth: Math.max(0, dockRect.width),
+      shellLeft: shellRect.left,
+      shellInset: shellRect.left - dockRect.left,
+    }
+  }, [artifactFullscreen, isLandscapePhone, isPhone])
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('is-document-reading', Boolean(desktopInspectorOpen))
     setDocumentReading?.(Boolean(desktopInspectorOpen))
@@ -3619,13 +3638,12 @@ export function ChatPage() {
       const shell = dock?.querySelector('.composer-shell')
       const anchor = composerAnchorRef.current
       if (!dock || !shell || !anchor) return
-      const anchorRect = anchor.getBoundingClientRect()
       const dockRect = dock.getBoundingClientRect()
       const shellRect = shell.getBoundingClientRect()
       composerReaderAnchorRef.current = {
         left: dockRect.left,
         width: dockRect.width,
-        laneWidth: Math.max(0, anchorRect.width),
+        laneWidth: Math.max(0, dockRect.width),
         shellLeft: shellRect.left,
         shellInset: shellRect.left - dockRect.left,
       }
@@ -3939,10 +3957,11 @@ export function ChatPage() {
 
   /** Opening the document from anywhere, optionally straight into a cell. */
   const openDocument = useCallback((tweak = null) => {
+    captureComposerReaderAnchor()
     setViewKind('plan')
     setOpenTweak(tweak)
     setExpanded(true)
-  }, [])
+  }, [captureComposerReaderAnchor])
   const handleOpenPlanDay = useCallback((dayIndex, field = 'during') => {
     openDocument({ dayIndex, field })
   }, [openDocument])
