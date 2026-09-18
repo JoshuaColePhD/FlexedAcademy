@@ -310,7 +310,7 @@ def test_conversational_stream_omits_tools_and_uses_light_reasoning(monkeypatch)
     assert calls[0]["max_completion_tokens"] == 2200 + llm._REASONING_HEADROOM["low"]
 
 
-def test_tool_turns_get_reasoning_room_and_budget_headroom(monkeypatch):
+def test_tool_turns_force_reasoning_none_for_luna(monkeypatch):
     calls = []
 
     class Stream:
@@ -332,15 +332,11 @@ def test_tool_turns_get_reasoning_room_and_budget_headroom(monkeypatch):
     monkeypatch.setattr(llm, "beta_features_for", lambda _: False)
 
     list(llm.stream_chat("u", []))
-    # Choosing a tool and building its arguments is judgment; this used to be
-    # "none" on exactly these turns and "low" on chit-chat.
-    assert calls[0]["reasoning_effort"] == "low"
+    # gpt-5.6-luna Chat Completions 400s if function tools are sent with any
+    # reasoning_effort other than "none". Typed chat always has tools.
+    assert calls[0]["reasoning_effort"] == "none"
     assert calls[0]["tools"]
-    # Reasoning tokens come out of this budget, so the ceiling must rise with
-    # the effort or the model returns empty content and the turn 502s.
-    assert calls[0]["max_completion_tokens"] == (
-        2200 + llm._REASONING_HEADROOM["low"] + llm._TOOL_ARG_HEADROOM
-    )
+    assert calls[0]["max_completion_tokens"] == 2200 + llm._TOOL_ARG_HEADROOM
 
 
 def fake_stream(monkeypatch, payload, *, truncated=False):

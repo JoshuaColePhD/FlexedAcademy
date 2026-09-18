@@ -2380,10 +2380,10 @@ def stream_chat(
 
     The first message should be the system prompt.
 
-    `actions_enabled=False` is the ordinary conversational path. It removes
-    artifact tools and gives Luna a small amount of reasoning room for
-    interpretation. Action turns retain the no-reasoning compatibility path
-    used by the existing function-call workflow.
+    Typed chat always sends function tools. gpt-5.6-luna on Chat Completions
+    rejects that combination unless reasoning_effort is "none" — "low" 400s
+    the turn before a token is produced. Tool-less calls (the deprecated
+    actions_enabled=False path) still use "low".
     """
 
     started_at = time.perf_counter()
@@ -2394,14 +2394,12 @@ def stream_chat(
         actions_enabled=actions_enabled,
         quizzes_on=quizzes_on,
     )
-    effort = "low"
+    # Luna on /v1/chat/completions: function tools require reasoning_effort
+    # "none". Production 400 after PR 87: "Function tools with reasoning_effort
+    # are not supported for gpt-5.6-luna".
+    effort = "none" if tool_defs else "low"
     request_kwargs = {
         "model": settings.openai_model,
-        # Choosing whether to call a tool, which one, and what arguments to give
-        # it is judgment. This used to be "none" on exactly those turns and
-        # "low" on chit-chat, which is backwards: with no reasoning room the
-        # model pattern-matches the prompt's surface forms, and a build request
-        # phrased any way the prompt did not literally show became prose.
         "reasoning_effort": effort,
         # Voice replies stay deliberately short. Written chat follows the
         # same persisted preference as lesson-plan generation, so this setting
