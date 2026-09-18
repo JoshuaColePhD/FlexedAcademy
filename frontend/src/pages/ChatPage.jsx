@@ -1248,6 +1248,7 @@ export function ChatPage() {
   const lastSpokenRef = useRef(null)
 
   /* ── load an existing conversation and whatever plan it produced ──────── */
+  const localClassFor = useRef(null)
   useEffect(() => {
     let cancelled = false
     /* Neither stream aborts on its own when the chat under it changes — only
@@ -1294,10 +1295,12 @@ export function ChatPage() {
       lastSpokenRef.current = null
       liveMessageIdRef.current = null
       setDecisions([])
+      setAttachments([])
+      localClassFor.current = null
       return undefined
     }
     // The transcript on screen is already this chat's — nothing to catch up on.
-    if (localFor.current === chatId) return undefined
+    if (localFor.current === chatId && localClassFor.current === classId) return undefined
 
     // Genuinely switching to a different, already-existing conversation —
     // NOW it's safe to stop whatever the old one had running.
@@ -1317,6 +1320,7 @@ export function ChatPage() {
     setViewKind('plan')
     setViewingQuiz(null)
     setViewingDoc(null)
+    setAttachments([])
     setRailOpen(false)
     railAutoOpenedRef.current = false
     setPlanPeekOpen(false)
@@ -1359,6 +1363,10 @@ export function ChatPage() {
     getChatWithRetry(chatId)
       .then(async (row) => {
         if (!loadIsCurrent()) return
+        if (row.class_id && row.class_id !== classId) {
+          navigate(`/c/${classId}`, { replace: true })
+          return
+        }
         setChatMode(normalizeChatMode(row.mode))
         const loaded = (row.messages || []).map((m) => {
           const receipt = readQuizReceipt(m.content)
@@ -1378,6 +1386,7 @@ export function ChatPage() {
         })
         setMessages(loaded)
         localFor.current = chatId
+        localClassFor.current = classId
         lastSpokenRef.current = loaded.length ? loaded[loaded.length - 1].id : null
         const lastQuiz = [...loaded].reverse().find((m) => m.quizReceipt)?.quizReceipt
         if (lastQuiz && betaFeaturesRef.current) {
@@ -1479,7 +1488,7 @@ export function ChatPage() {
     // useCallback closed over a ref, so even this closure's "stale" copy
     // still aborts whatever is actually in flight — see useLessonStream.js.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, toast, artifactRetryTick])
+  }, [chatId, classId, navigate, toast, artifactRetryTick])
 
   // The rail's Reload button, for the "a real plan exists and its fetch
   // failed" case. localFor.current already equals chatId by the time
@@ -2630,6 +2639,7 @@ export function ChatPage() {
            not replace this optimistic turn or clear the artifact this
            request produces. */
         localFor.current = activeChatId
+        localClassFor.current = classId
         chatLoadVersionRef.current += 1
       }
       if (!activeChatId) {
@@ -2664,6 +2674,7 @@ export function ChatPage() {
           if (pendingSubmissionRef.current !== submissionToken) return
           activeChatId = created.id
           localFor.current = created.id
+          localClassFor.current = classId
           qc.invalidateQueries({ queryKey: ['chats'] })
           navigate(`/c/${classId}/chat/${created.id}`, {
             replace: true,

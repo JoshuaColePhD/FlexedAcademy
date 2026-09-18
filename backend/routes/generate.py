@@ -166,14 +166,26 @@ def _request_class(user_id: str, req_class_id: str | None, chat_id: str | None) 
     """The class this generation is actually about.
 
     Prefers the request's own explicit class_id (the page the teacher is
-    standing on) over the chat's stored one — get_class both looks it up AND
-    checks it belongs to this user, so a class_id from another account is
-    silently ignored rather than trusted. Falls back to _chat_class only when
-    the caller didn't send one (older frontend builds, or a stream reopened
-    without it)."""
+    standing on), but only when it agrees with the chat's stored class. An
+    explicit class is still necessary for legacy chats whose class_id is NULL;
+    a non-legacy mismatch is rejected rather than combining one class's
+    transcript with another class's prompt and saved plan. get_class also
+    checks that the class belongs to this user. Falls back to _chat_class only
+    when the caller didn't send one (older frontend builds, or a stream
+    reopened without it)."""
     if req_class_id:
         cls = db.get_class(user_id, req_class_id)
         if cls:
+            if chat_id:
+                chat = db.get_chat(user_id, chat_id)
+                stored_class_id = (chat or {}).get("class_id")
+                if stored_class_id and stored_class_id != cls.get("id"):
+                    raise AppError(
+                        "class_chat_mismatch",
+                        "This conversation belongs to another class.",
+                        status=409,
+                        hint="Open the conversation from its own class and try again.",
+                    )
             return cls
     return _chat_class(user_id, chat_id)
 
