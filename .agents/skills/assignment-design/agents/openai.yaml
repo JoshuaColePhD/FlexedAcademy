@@ -1,0 +1,7 @@
+interface:
+  display_name: "Assignment Design"
+  short_description: "Create aligned, student-ready assignments"
+  default_prompt: "Use $assignment-design to create or revise a student-ready classroom assignment."
+
+policy:
+  allow_implicit_invocation: true

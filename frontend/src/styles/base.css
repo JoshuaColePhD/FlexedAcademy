@@ -2065,6 +2065,7 @@
      different hue is correct. A teacher holding this next to the printed .docx
      should see the same document. */
   .plan-doc {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: var(--sp-6);
@@ -2108,10 +2109,14 @@
      tokens. Wraps rather than squeezing: "AI review & revise" plus two icon
      buttons plus a week label does not fit beside itself on a phone. */
   .plan-head {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 2;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     gap: var(--sp-3);
   }
   .plan-head h2 {

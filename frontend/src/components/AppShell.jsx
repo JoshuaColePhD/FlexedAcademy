@@ -638,7 +638,7 @@ export function AppShell({ children }) {
      master/detail views. Give
      their own split panels the full shell width so the chat rail never crowds
      the page's navigation and content surfaces. */
-  const isFocusedRoute = /\/(settings|class|admin|contact)$/.test(location.pathname)
+  const isFocusedRoute = /\/(settings|class|admin|contact|assignment-preview)$/.test(location.pathname)
   const routeCollapsesRail = isFocusedRoute
   const { user, logout } = useAuth()
 
@@ -699,7 +699,7 @@ export function AppShell({ children }) {
           className="app-rail relative z-10 flex shrink-0 flex-row overflow-hidden transition-[width] bg-paper/40 backdrop-blur-3xl rounded-2xl glass-panel"
           style={{
             width: effectiveRailCollapsed ? '52px' : 'var(--sidebar-w)',
-            transitionDuration: documentReading ? '220ms' : 'var(--t-base)',
+            transitionDuration: documentReading ? 'var(--t-reader)' : 'var(--t-base)',
             transitionTimingFunction: documentReading ? 'var(--ease-glide)' : 'var(--ease-out)',
           }}
         >

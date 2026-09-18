@@ -131,7 +131,6 @@ export const LessonPlanTable = memo(function LessonPlanTable({
   return (
     <div className="plan-doc">
       <div className="plan-head">
-        <h2>{plan.week_of || 'Untitled week'}</h2>
         {planId && mode !== 'phone' ? (
           <>
             <div className="plan-feedback">
