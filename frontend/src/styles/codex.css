@@ -2065,6 +2065,21 @@
   max-width: 54rem;
   margin-inline: auto;
 }
+/* Desktop composer geometry is intentionally independent of rails and
+   readers. It is the one stable command location in the workspace: overlays
+   may pass behind it, but never push it sideways or stretch it. */
+@media (min-width: 900px) {
+  .composer-dock-lane {
+    transition: none !important;
+  }
+  .composer-dock-surface > div {
+    /* The dock already inherits the visible chat lane's width. Keep the
+       composer inside that lane so an Outputs reader can overlap the rest of
+       the workspace without making the command bar spill underneath it. */
+    width: 100% !important;
+    max-width: 54rem !important;
+  }
+}
 /* A modal owns the screen while it is open. Keep the persistent composer from
    showing through the dimmed layer as a distracting dark rectangle beneath the
    card; it returns with its original geometry as soon as the modal closes. */
