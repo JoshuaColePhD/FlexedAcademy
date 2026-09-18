@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from backend.config import Settings
+from backend.retrieval import retrieval_concurrency
 
 
 def test_missing_env_cannot_enable_codegen_or_widen_pools(monkeypatch):
@@ -22,3 +23,4 @@ def test_missing_env_cannot_enable_codegen_or_widen_pools(monkeypatch):
     # test demonstrates that two active model streams do not contend with
     # other database traffic or exceed the deployment's memory budget.
     assert settings.generation_max_concurrent == 1
+    assert retrieval_concurrency(settings.db_pool_size, settings.retrieval_workers) == 1
