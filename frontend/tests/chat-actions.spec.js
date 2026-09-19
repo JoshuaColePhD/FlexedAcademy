@@ -45,23 +45,29 @@ async function send(page, text) {
   await page.locator('#composer-input').fill(text)
   await page.locator('#composer-input').press('Enter')
 }
+/* Seeded chats land on the conversation. The week stays in Outputs until
+   the teacher opens it; that click is what mounts the desktop reader. */
+async function openDesktopPlan(page) {
+  await page.getByRole('button', { name: /Open Week 03/i }).click()
+  await expect(page.locator('.is-composer-overlay')).toBeVisible()
+}
 const planAction = (action, extra = {}) => ({ tool_call: 'generate_lesson_plan', action, target_plan_id: action === 'create' ? null : 'plan1', instruction: 'Keep paper materials and the 45-minute period.', days: [], field: null, week_number: 3, ...extra })
 const done = { done: true }
 
 for (const prompt of ['Why use this approach?', 'Could a debate help students explain their evidence?']) {
-  test(`advice with an open plan does not mutate: ${prompt}`, async ({ page }) => {
+  test(`advice with an existing plan does not mutate: ${prompt}`, async ({ page }) => {
     await openChat(page)
     await send(page, prompt)
     await expect(page.getByText('Try a short modeled example, then check an independent response.', { exact: true })).toBeVisible()
     expect(await page.evaluate(() => window.chatCalls.filter((c) => c.path !== 'chat'))).toEqual([])
     expect(await page.evaluate(() => window.chatCalls[0].body.active_plan_id)).toBe('plan1')
-    expect(await page.evaluate(() => window.chatCalls[0].body.plan_open)).toBe(true)
+    expect(await page.evaluate(() => window.chatCalls[0].body.plan_open)).toBe(false)
   })
 }
 
 test('commands from the open week apply to that plan', async ({ page }) => {
   await openChat(page)
-  await expect(page.locator('.is-composer-overlay')).toBeVisible()
+  await openDesktopPlan(page)
   await events(page, [planAction('revise_week'), done])
   await send(page, 'Ask questions')
   expect(await page.evaluate(() => window.chatCalls[0].body.plan_open)).toBe(true)
@@ -342,7 +348,7 @@ test('unspecified quiz uses a 5-question default instead of interviewing', async
   await page.goto('/preview.html?fresh=0&trial=3&beta=1&at=/c/c1/chat/seed1')
   await expect(page.locator('#composer-input')).toBeVisible()
   await send(page, 'make a quiz')
-  await expect(page.getByText(/5-question multiple-choice/i)).toBeVisible()
+  await expect(page.locator('#main').getByText(/I’ll make a short 5-question multiple-choice check/i)).toBeVisible()
   await expect(page.getByText('What kind of questions?', { exact: true })).toHaveCount(0)
   await expect(page.getByText(/Built "/).last()).toBeVisible()
   await page.locator('#composer-input').fill('Could a debate help?')

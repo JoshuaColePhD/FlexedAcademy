@@ -3,10 +3,17 @@ import { expect, test } from '@playwright/test'
 const seed = '/preview.html?fresh=0&at=/c/c1/chat/seed1'
 
 /* Seeded chats already have a week, so Outputs auto-opens as an in-flow
-   column. The Close/Open artifacts panel header toggle was removed; wait
-   for the drawer itself rather than a control that no longer exists. */
+   column. The conversation stays the main view; the desktop reader only
+   mounts after the teacher opens the week from that rail. The Close/Open
+   artifacts panel header toggle was removed; wait for the drawer itself
+   rather than a control that no longer exists. */
 async function openArtifactsPanel(page) {
   await expect(page.locator('.artifact-drawer')).toBeVisible()
+}
+
+async function openDesktopDocument(page) {
+  await page.getByRole('button', { name: /Open Week 03/i }).click()
+  await expect(page.locator('.is-composer-overlay')).toBeVisible()
 }
 
 test('desktop document spans most of the workspace under the composer and fullscreen restores it', async ({ page }) => {
@@ -15,7 +22,7 @@ test('desktop document spans most of the workspace under the composer and fullsc
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto(`${seed}&beta=1`)
   await expect(page.locator('body')).not.toContainText('not retrieved')
-  await expect(page.locator('.is-composer-overlay')).toBeVisible()
+  await openDesktopDocument(page)
   const panel = page.locator('.is-composer-overlay')
   const composer = page.locator('#composer-input')
   await expect(panel).toBeVisible()
@@ -111,7 +118,7 @@ test('system appearance updates without visiting settings', async ({ page }, tes
   await page.goto(seed)
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await expect(page.locator('.app-rail')).toHaveCSS('background-color', 'rgb(20, 20, 19)')
-  await expect(page.locator('.is-composer-overlay')).toBeVisible()
+  await expect(page.locator('.artifact-drawer')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('dark-workspace.png') })
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
@@ -162,10 +169,7 @@ test('composer stays centered between the navigation and materials rails', async
   await page.goto(seed)
   const composer = page.locator('.composer-shell')
   await expect(composer).toBeVisible()
-  const overlay = page.locator('.is-composer-overlay')
-  await expect(overlay).toBeVisible()
-  await overlay.getByRole('button', { name: 'Close document' }).click()
-  await expect(overlay).toHaveCount(0)
+  await expect(page.locator('.is-composer-overlay')).toHaveCount(0)
   await openArtifactsPanel(page)
   await expect(page.locator('.artifact-drawer')).toBeVisible()
   await expect(page.locator('.artifact-drawer-handle')).toHaveCount(0)
