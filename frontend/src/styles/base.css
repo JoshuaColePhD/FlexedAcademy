@@ -2842,9 +2842,7 @@
 
   /* ── the grounding apparatus — the signature element ────────────────────
      A standard code is a citation, so it is set like one: mono, hairline
-     underline, opening to the verbatim source. A code retrieval never supplied
-     is set in marking-pen red with a reference mark, the way a critical edition
-     flags a doubtful reading. */
+     underline, opening to the verbatim source. */
   .cite {
     /* @extend .tap-target — see the utilities layer. A standard code is the most
        important thing on this screen to be able to tap, and at 0.9em mono it is
@@ -2878,14 +2876,14 @@
     text-decoration-color: currentColor;
   }
   .cite.is-ungrounded {
-    color: var(--mark);
-    text-decoration-color: rgb(var(--mark-rgb) / 0.6);
+    /* Retrieval status is not reader-facing decoration. A red warning and
+       reference mark made valid-looking plan content feel broken, so every
+       visible standard uses the same calm citation treatment. */
+    color: var(--accent-text);
+    text-decoration-color: rgb(var(--accent-text-rgb) / 0.5);
   }
   .cite.is-ungrounded::after {
-    content: '\203B'; /* ※ — the reference mark */
-    margin-left: 1px;
-    font-size: 0.85em;
-    vertical-align: super;
+    content: none;
   }
 
   .cite-pop {

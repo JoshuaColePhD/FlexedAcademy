@@ -303,7 +303,7 @@ function ChatRow({ chat, classId, onDelete, onPin, onNavigate, spacious, touchAc
    the chats list and account controls, the same core content as the desktop
    sidebar, landing where a teacher currently gets dropped straight into an
    empty chat instead. See MobileChatHome.jsx. */
-export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerExtra, spacious, touchActions = false }) {
+export function Rail({ onNavigate, onClose, collapsed, headerExtra, spacious, touchActions = false }) {
   const { classId } = useParams()
   const location = useLocation()
   const { data: chats, isLoading } = useChats()
@@ -378,24 +378,7 @@ export function Rail({ onNavigate, onClose, collapsed, onToggleCollapse, headerE
 
   return (
     <>
-      {collapsed ? (
-        <div className="rail-collapsed-actions flex h-full min-h-0 shrink-0 flex-col items-center justify-between py-2">
-          <Link
-            to={classPath}
-            onClick={(event) => {
-              onToggleCollapse?.()
-              haptic('light')
-              onNavigate?.(event)
-            }}
-            className="chat-workspace-add"
-            aria-label="New chat"
-            title="New chat"
-          >
-            <Plus size={20} aria-hidden="true" />
-          </Link>
-          <AccountMenu classPath={classPath} collapsed />
-        </div>
-      ) : (
+      {collapsed ? null : (
       <div className="rail-brand-row flex h-14 shrink-0 items-center gap-2 px-3 mt-2">
         <svg viewBox="0 0 64 64" className="w-6 h-6 shrink-0 text-[#7c3aed] drop-shadow-sm" aria-hidden="true">
           <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
@@ -709,7 +692,7 @@ export function AppShell({ children }) {
           }}
         >
           <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-            <Rail collapsed={effectiveRailCollapsed} onToggleCollapse={toggleRailCollapsed} touchActions={isTouch} />
+            <Rail collapsed={effectiveRailCollapsed} touchActions={isTouch} />
           </div>
         </div>
       ) : null}
