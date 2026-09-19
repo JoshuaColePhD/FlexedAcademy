@@ -21,6 +21,10 @@ admin usage-cost report and a staging load test before changing production.
   on a larger instance or a dedicated worker after a memory test.
 - Confirm Render dashboard env matches `render.yaml`: `BUILDER_CODEGEN_ENABLED=false`,
   `GENERATION_MAX_CONCURRENT=1`, `RETRIEVAL_WORKERS=1`, `DB_POOL_SIZE=2`.
+- Keep document builds on the same in-process generation slot. The worker
+  claims with a 200ms pool wait and will not start python-docx while a
+  generate/chat/quiz is using the slot. Do not raise retrieval workers to
+  match `DB_POOL_SIZE` — one slot must stay free for auth.
 - Run the safe local burst check:
 
   ```bash

@@ -23,7 +23,7 @@ def test_document_jobs_have_a_scheduled_retry_column():
 
 
 def test_document_jobs_claim_only_when_retry_is_due():
-    assert "COALESCE(available_at, updated_at) <= ?" in DB_SOURCE
+    assert "COALESCE(available_at, updated_at) <= %s" in DB_SOURCE
 
 
 def test_document_jobs_bound_automatic_retries():
@@ -35,7 +35,9 @@ def test_document_job_claim_commits_the_update():
     claim_start = DB_SOURCE.index("def claim_next_document_build")
     claim_end = DB_SOURCE.index("def finish_document_build", claim_start)
     claim = DB_SOURCE[claim_start:claim_end]
-    assert "return _write_returning(" in claim
+    assert "borrow(timeout=_DOCUMENT_CLAIM_TIMEOUT_S)" in claim
+    assert "conn.commit()" in claim
+    assert "except TimeoutError:" in claim
 
 
 def test_document_status_recovers_stale_paths_and_reports_app_errors():

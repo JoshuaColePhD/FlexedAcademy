@@ -118,7 +118,7 @@ async def _document_build_worker_loop() -> None:
             consecutive_pool_timeouts = 0
             if job:
                 log.info("document build worker: claimed plan_id=%s", job["plan_id"])
-                await loop.run_in_executor(None, service.run_document_build_job, job)
+                await loop.run_in_executor(None, service.run_claimed_document_build, job)
                 continue
         except asyncio.CancelledError:
             raise

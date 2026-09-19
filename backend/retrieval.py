@@ -1027,7 +1027,23 @@ _ITERATIVE_SCAN = (
 #
 # Acquired BEFORE db.borrow(), and always in that order, so the two semaphores
 # cannot deadlock against each other.
-_INFLIGHT = threading.Semaphore(max(1, min(settings.retrieval_workers, settings.db_pool_size)))
+
+
+def retrieval_concurrency(pool_size: int | None = None, workers: int | None = None) -> int:
+    """How many hybrid queries may run at once.
+
+    When the process has more than one database slot, keep one free for
+    interactive borrows (auth, health, document-claim). Filling both slots
+    with retrieval is what made get_current_user time out during generate
+    on the 2026-09-13 1c-2g restart.
+    """
+    pool = settings.db_pool_size if pool_size is None else int(pool_size)
+    configured = settings.retrieval_workers if workers is None else int(workers)
+    reserved = 1 if pool > 1 else 0
+    return max(1, min(configured, pool - reserved))
+
+
+_INFLIGHT = threading.Semaphore(retrieval_concurrency())
 
 
 def _retrieval_states(course: str | None, source_type: str | None, requested: str) -> tuple[str, ...]:
@@ -1367,15 +1383,11 @@ def retrieve_grounded(
     for q in searches:
         consider(lookup_codes(q, subject_code, grade, state=state))
 
-    # Bounded by BOTH settings — never more in-flight queries than the pool has
-    # connections, because a worker past that just blocks in db.borrow() while
-    # holding a thread, and never more than the memory bound allows. See
+    # Bounded by BOTH settings — never more in-flight queries than the pool
+    # can spare after reserving one slot for auth. See retrieval_concurrency().
     # settings.retrieval_workers: at 8 this peaked over Render's 512MB and the
     # worker was OOM-killed mid-stream.
-    # Keep the concurrent work aligned with the database pool. Two workers is
-    # the measured fast, stable point: it overlaps the independent standards
-    # searches without allowing a burst of hybrid-query buffers in memory.
-    workers = max(1, min(settings.retrieval_workers, settings.db_pool_size))
+    workers = retrieval_concurrency()
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = []
         for q, n, source_type in jobs:

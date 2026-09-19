@@ -27,6 +27,11 @@ class _Ticket:
     enqueued_at: float
     acquired: bool = False
     cancelled: bool = False
+    # In-process document builds share the same global slot as generation so
+    # DOCX rendering and retrieval/LLM work cannot peak RSS at the same time
+    # on the 1c-2g web process. Background tickets wait behind teachers and
+    # do not count toward the teacher-facing queue caps.
+    background: bool = False
 
 
 class GenerationLease:
@@ -110,8 +115,10 @@ class GenerationQueue:
 
     def enqueue(self, user_id: str) -> GenerationLease:
         with self._condition:
-            queued_total = len(self._waiters)
-            queued_for_user = sum(ticket.user_id == user_id for ticket in self._waiters)
+            queued_total = sum(not ticket.background for ticket in self._waiters)
+            queued_for_user = sum(
+                ticket.user_id == user_id and not ticket.background for ticket in self._waiters
+            )
             if queued_total >= self.max_queue:
                 raise AppError(
                     "generation_queue_full",
@@ -129,6 +136,14 @@ class GenerationQueue:
                     extra={"retryable": True, "retry_after_seconds": 3},
                 )
             ticket = _Ticket(user_id=user_id, enqueued_at=monotonic())
+            self._waiters.append(ticket)
+            self._condition.notify_all()
+            return GenerationLease(self, ticket)
+
+    def enqueue_background(self, user_id: str) -> GenerationLease:
+        """Wait for a free global slot without occupying the teacher queue."""
+        with self._condition:
+            ticket = _Ticket(user_id=user_id, enqueued_at=monotonic(), background=True)
             self._waiters.append(ticket)
             self._condition.notify_all()
             return GenerationLease(self, ticket)
@@ -161,6 +176,9 @@ class GenerationQueue:
             eligible.append(ticket)
         if not eligible:
             return None
+        teachers = [ticket for ticket in eligible if not ticket.background]
+        if teachers:
+            eligible = teachers
         # Round-robin between users when possible. A teacher's own requests
         # stay ordered, but a six-request burst cannot starve the next teacher
         # who is waiting behind it.
