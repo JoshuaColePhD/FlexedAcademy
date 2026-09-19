@@ -129,19 +129,24 @@ table swap — retries never write a partial live corpus.
 - **Streaming** — Server-Sent Events for streamed generation
 - **Documents** — `python-docx` and LibreOffice-compatible generation
 - **Integrations** — Google OAuth & Drive, Stripe billing, Resend email, Sentry, Render
-- **Interop** — MCP Streamable HTTP connector with OAuth 2.1/PKCE and an Apps SDK lesson-plan widget
+- **Interop** *(experimental, not yet in production)* — an in-progress MCP Streamable HTTP connector with OAuth 2.1/PKCE and an Apps SDK lesson-plan widget
 
-## MCP / ChatGPT connection
+## MCP / ChatGPT connection (experimental — not yet enabled in production)
 
-FlexEd exposes a remote MCP server at `/mcp/`. A compatible ChatGPT custom app, Claude connector, or
-MCP client can authenticate with OAuth discovery, approve access in the teacher's FlexEd account, and
-then call the same calibrated retrieval → generation → grounding → database → DOCX pipeline the web
-app uses. The first Apps SDK surface includes class/week context, plan listing and retrieval, plan
-generation, day-level revision, a secure DOCX capability URL, and an in-chat lesson-plan widget.
+> **Status:** work in progress. The pieces below exist in the codebase but the connector is still
+> being built and hardened, and it is **not turned on in the production deployment**. Treat this as a
+> preview of intended functionality rather than a shipped feature.
 
-For a local smoke test, log in and `POST /api/mcp/token` for a short-lived per-user bearer token and
-the MCP URL. For a shared deployment, set `MCP_PUBLIC_URL` to the public HTTPS origin. Never commit
-`MCP_ACCESS_TOKEN`, `SESSION_SECRET`, or any generated connector token.
+FlexEd includes an in-progress remote MCP server (`/mcp/`) that aims to let a compatible ChatGPT
+custom app, Claude connector, or MCP client authenticate with OAuth discovery, approve access in the
+teacher's FlexEd account, and then call the same retrieval → generation → grounding → database → DOCX
+pipeline the web app uses. The planned Apps SDK surface covers class/week context, plan listing and
+retrieval, plan generation, day-level revision, a secure DOCX capability URL, and an in-chat
+lesson-plan widget.
+
+For local experimentation, log in and `POST /api/mcp/token` for a short-lived per-user bearer token
+and the MCP URL, and set `MCP_PUBLIC_URL` to the public HTTPS origin for a shared deployment. Never
+commit `MCP_ACCESS_TOKEN`, `SESSION_SECRET`, or any generated connector token.
 
 ## Repository layout
 
