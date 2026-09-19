@@ -6,9 +6,8 @@
 
 **Standards-grounded AI lesson planning for high-school teachers.**
 
-Give FlexEd a weekly request. It returns a five-day, standards-aligned lesson plan — with every cited
-standard traced to its source — formatted in your district's template and ready to download as a Word
-document.
+Turn a weekly request into a structured, standards-aligned lesson plan — with the source behind
+every cited standard — and export it as a district-formatted Word document.
 
 [![Quality](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/quality.yml/badge.svg)](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/quality.yml)
 [![Security](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/security.yml/badge.svg)](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/security.yml)
@@ -22,8 +21,8 @@ document.
 
 ## Demo
 
-Open a week, review the five-day plan and its **cited standards**, check the **sources** behind them,
-and download the district-formatted **DOCX** — in light or dark mode.
+Open a week, review the generated five-day plan and its **cited standards**, inspect the grounded
+**sources**, and download the district-formatted **DOCX** — in light or dark mode.
 
 ![FlexEd Academy walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.gif)
 
@@ -35,19 +34,19 @@ and download the district-formatted **DOCX** — in light or dark mode.
 
 | | |
 | --- | --- |
-| **Plans a full week** | A five-day, standards-aligned plan from a teacher prompt and class context. |
-| **Grounded in real standards** | Cites source documents — not model memory — with verbatim text and provenance. |
-| **Shows the sources** | Lists the cited standards, where they came from, and any grounding warnings. |
+| **Plans a full week** | Generates a five-day, standards-aligned plan from a teacher prompt and class context. |
+| **Grounded in real standards** | Cites source documents — not model memory — with verbatim text and source metadata. |
+| **Shows the sources** | Surfaces cited standards, provenance, and grounding warnings for review. |
 | **Matches your district** | Renders school-specific lesson-plan templates and exports DOCX (and QTI for quizzes). |
 | **Conversational** | Coaching, day-level revision, quiz generation, and teacher-owned pacing guides. |
-| **Production-ready** | Multi-teacher accounts, class scoping, usage entitlements, billing, and account controls. |
+| **Production-ready** | Multi-teacher auth, class scoping, usage entitlements, billing, and account controls. |
 
 ## Why this is an AI-engineering project
 
-The hard problem isn't generating text — it's **trust**. Standards contain look-alike codes and
-course-specific meanings that language models easily confuse. FlexEd treats retrieval, validation,
-and refusal as first-class product behavior, so a plan can prove where every cited standard came
-from:
+The hard problem isn't text generation — it's **trust**. Standards contain low-frequency codes,
+repeated numbering schemes, and course-specific meanings that language models easily confuse.
+FlexEd treats retrieval, validation, and refusal as first-class product behavior, so a plan can
+prove where every cited standard came from:
 
 ```text
 Teacher request
@@ -71,13 +70,13 @@ Postgres persistence + templated DOCX generation
 
 ## Engineering highlights
 
-- **Retrieval-augmented generation** — source metadata, verbatim standard text, course/grade filters, query expansion, and measured relevance thresholds.
-- **Layered grounding controls** — out-of-scope grade refusal, off-domain refusal, source-type-aware retrieval, and post-generation detection of missing, borrowed, or hallucinated standard codes.
-- **Structured outputs** — strict JSON schemas, so the frontend and document builders get a predictable contract instead of free-form model text.
-- **Resilient streaming** — reconnects, upstream timeouts, rate limits, model refusals, truncation, token accounting, and database-backed completion caching.
-- **Standards ingestion** from ALSDE CASE packages with PDF verification. The Alabama artifact holds 7,456 unique standards and 19,701 grade-scoped chunks across 11 frameworks at `--grades 0-12` (defaults to 9–12); AP Language is the most thoroughly calibrated path.
-- **Template-aware documents** — plans are validated before rendering, school templates are supported, and generated documents persist through a durable queue.
-- **Tenant-aware platform** — authentication, class scoping, account export/deletion, session invalidation, plan sharing, rate limiting, and security regression tests.
+- **Retrieval-augmented generation** with source metadata, verbatim standard text, course/grade filters, query expansion, and measured relevance thresholds.
+- **Layered grounding controls**: out-of-scope grade refusal, off-domain refusal, source-type-aware retrieval, and post-generation detection of missing, borrowed, or hallucinated standard codes.
+- **Structured outputs**: strict JSON schemas so the frontend and document builders get a predictable contract instead of free-form model text.
+- **Resilient streaming** over Server-Sent Events: reconnects, upstream timeouts, rate limits, model refusals, response truncation, token accounting, and database-backed completion caching.
+- **Standards ingestion** from ALSDE CASE packages with PDF verification. The checked Alabama artifact holds 7,456 unique standards and 19,701 grade-scoped chunks across 11 frameworks at `--grades 0-12` (ingest defaults to 9–12); AP Language is the most thoroughly calibrated path.
+- **Template-aware document pipeline** that validates plans before rendering, supports school-specific templates, and persists generated documents through a durable queue.
+- **Tenant-aware platform**: authentication, class scoping, account export/deletion, session invalidation, plan-sharing controls, rate limiting, and security regression tests.
 
 ## Evaluation
 
@@ -95,6 +94,8 @@ The suite also covers cross-course and cross-class grounding isolation, off-doma
 structured plan shape, grounded vs. non-retrieved vs. hallucinated citations, streaming reconnects,
 DOCX integrity and queued document recovery, and security cases (account takeover, session
 invalidation, public-plan access, SPA file exposure).
+
+Run the fast local checks from the repository root:
 
 ```bash
 ./venv/bin/python eval/run_all.py --fast
