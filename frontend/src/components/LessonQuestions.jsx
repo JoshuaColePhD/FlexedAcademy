@@ -232,7 +232,13 @@ export function LessonQuestions({ questions, onSubmit, purpose = 'clarify' }) {
           </div>
         </div>
       ) : (
-        <div key={`opts-${q.id}`} className="lesson-question-options flex flex-col gap-1.5">
+        <div
+          key={`opts-${q.id}`}
+          className="lesson-question-options flex flex-col gap-1.5"
+          // Keep the answer directions as a true list even if an older
+          // stylesheet is still resident during Vite hot replacement.
+          style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' }}
+        >
           {options.map((opt, i) => {
             const picked = answers[q.id] === opt
             return (
@@ -247,17 +253,17 @@ export function LessonQuestions({ questions, onSubmit, purpose = 'clarify' }) {
                 // choosable right up to the instant the next question replaced
                 // them, so the tap read as having done nothing.
                 style={{ animationDelay: `${Math.min(i, 4) * 32 + 55}ms` }}
-                className={`lesson-question-option fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-all ${
+                className={`lesson-question-option fa-press tap-target group flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium transition-all ${
                   picked
                     ? 'neo-inset text-accent-text'
                     : advancePending
                       ? 'neo-raised text-ink-soft opacity-40'
-                      : 'neo-raised text-ink-soft'
+                      : 'neo-raised text-ink-soft hover:bg-accent/10 hover:text-ink'
                 }`}
               >
                 <span
                   aria-hidden="true"
-                  className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-paper-sunken text-2xs font-semibold text-ink-faint"
+                  className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-paper-sunken text-2xs font-semibold text-ink-faint transition-colors group-hover:bg-accent/15 group-hover:text-accent-text"
                 >
                   {i + 1}
                 </span>
@@ -270,13 +276,13 @@ export function LessonQuestions({ questions, onSubmit, purpose = 'clarify' }) {
             onClick={() => setTypingOther(true)}
             disabled={Boolean(advancePending)}
             style={{ animationDelay: `${Math.min(options.length, 4) * 32 + 55}ms` }}
-            className={`lesson-question-option fa-press tap-target flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-ink-muted transition-colors hover:bg-paper-sunken ${
+            className={`lesson-question-option fa-press tap-target group flex items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-medium text-ink-muted transition-colors hover:bg-accent/10 hover:text-ink ${
               advancePending ? 'opacity-40' : ''
             }`}
           >
             <span
               aria-hidden="true"
-              className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-paper-sunken text-2xs font-semibold text-ink-faint"
+              className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-paper-sunken text-2xs font-semibold text-ink-faint transition-colors group-hover:bg-accent/15 group-hover:text-accent-text"
             >
               {otherKey}
             </span>
@@ -298,7 +304,7 @@ export function LessonQuestions({ questions, onSubmit, purpose = 'clarify' }) {
         <div className="lesson-question-footer flex items-center justify-between gap-3">
           <button
             type="button"
-            className="text-sm font-medium text-ink-muted hover:underline disabled:pointer-events-none disabled:opacity-40"
+            className="rounded-lg px-2.5 py-2 text-sm font-medium text-ink-muted transition-colors hover:bg-accent/10 hover:text-accent-text hover:no-underline disabled:pointer-events-none disabled:opacity-40"
             onClick={skip}
             disabled={Boolean(advancePending)}
           >

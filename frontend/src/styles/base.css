@@ -4781,9 +4781,12 @@
     box-shadow: none;
   }
   .questions-dock-body .lesson-question-options {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--sp-1) var(--sp-2);
+    display: flex !important;
+    /* Planning directions are often sentence-length. One full-width choice
+       per row keeps the labels readable and makes the decision feel like a
+       calm list rather than a compact form. */
+    flex-direction: column;
+    gap: var(--sp-1);
   }
   @keyframes composer-plan-lift-in {
     from { opacity: 0; transform: translateY(10px) scale(0.985); }
@@ -4793,12 +4796,6 @@
     from { opacity: 1; transform: none; }
     to { opacity: 0; transform: translateY(8px) scale(0.99); }
   }
-  @media (max-width: 640px) {
-    .questions-dock-body .lesson-question-options {
-      grid-template-columns: 1fr;
-    }
-  }
-
   /* A clarification round is a conversation turn, not a form sliding into
      view. Give it one readable order: prompt, choices, then the small footer
      hint. The stagger is short enough to feel responsive and capped by the
