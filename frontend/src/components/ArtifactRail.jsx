@@ -418,12 +418,12 @@ export function ArtifactRail({
  * the same component would mean every prop here needing an isBar escape hatch.
  *
  * Auto-opens the moment a build starts or a plan exists (ChatPage owns that
- * effect); smaller layouts can still open or close it after that. Desktop
- * keeps the inspector present so the workspace geometry never shifts.
+ * effect); afterward the header Close/Open artifacts panel toggle is the
+ * teacher's control on desktop and tablet.
  *
  * `open` is still owned by ChatPage so the panel can be hidden while a
- * document overlay is active. `persistent` removes the redundant close
- * action when that inspector is a permanent desktop column.
+ * document overlay is active. `persistent` hides only the in-drawer X so
+ * the header toggle remains the one close/open control.
  */
 export function ArtifactDrawer({ open, onClose, persistent = false, hasArtifact, busy, ...railProps }) {
   /* Keep the node mounted through close so the width/opacity CSS can play.
