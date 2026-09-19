@@ -14,7 +14,6 @@ import {
 } from 'lucide-react'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
-import { unitSuffix } from '../lib/planShape'
 import { questionTypesLabel } from '../lib/quizShape'
 import { classColor } from '../lib/classColor'
 import { shortDateTime } from '../lib/dates'
@@ -35,6 +34,11 @@ const RailGroup = ({ title, headerTitle = title, isBar, children }) => {
   )
 }
 import { useToast } from '../lib/toastContext'
+
+// The full date range belongs in the reader. In the persistent Outputs rail,
+// the week number is the useful scan target and keeps the row comparable to a
+// chat title rather than a second document heading.
+const shortPlanWeek = (weekOf) => String(weekOf || '').match(/Week\s+\d+/i)?.[0] || 'Lesson plan'
 
 
 
@@ -311,14 +315,14 @@ export function ArtifactRail({
                 <FileText size={15} aria-hidden="true" />
               </span>
               <span className="rail-text rail-open-title">
-                <span className="rail-title">{plan?.week_of || 'Weekly lesson plan'}</span>
+                <span className="rail-title">{shortPlanWeek(plan?.week_of)}</span>
                 <span className="rail-sub">
                   {updating ? (
                     <>
                       <Loader2 size={12} className="inline animate-spin" aria-hidden="true" /> Updating the week
                     </>
                   ) : (
-                    <>View lesson plan{unitSuffix(artifact?.unit, ' · ')}</>
+                    <>Lesson plan</>
                   )}
                 </span>
               </span>
