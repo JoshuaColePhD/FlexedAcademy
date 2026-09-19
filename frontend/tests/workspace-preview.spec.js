@@ -41,9 +41,12 @@ test('desktop document spans most of the workspace under the composer and fullsc
     const leftRailBox = await page.locator('.app-rail').boundingBox()
     const chatBox = await page.locator('.workspace-chat').boundingBox()
     const actionBox = await panel.locator('.doc-head > div:last-child').boundingBox()
-    await expect(page.locator('.app-shell-frame.is-rail-collapsed .account-menu-footer')).toBeVisible()
-    expect(leftRailBox.width).toBeGreaterThanOrEqual(48)
-    expect(leftRailBox.width).toBeLessThanOrEqual(56)
+    /* A collapsed desktop rail is fully absent. The old 52px strip kept the
+       plus button and account avatar beside the lesson reader after
+       navigation had already closed. */
+    await expect(page.locator('.app-shell-frame.is-rail-collapsed')).toBeVisible()
+    await expect(page.locator('.app-shell-frame.is-rail-collapsed .account-menu-footer')).toHaveCount(0)
+    expect(leftRailBox?.width ?? 0).toBeLessThanOrEqual(1)
     expect(chatBox.width).toBeGreaterThan(250)
     expect(chatBox.width).toBeLessThanOrEqual(360)
     expect(panelBox.x).toBeGreaterThanOrEqual(chatBox.x + chatBox.width - 8)
