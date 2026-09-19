@@ -3599,10 +3599,10 @@ export function ChatPage() {
   // landscape the plan earns a stable pane beside the conversation.
   const tabletLandscapePlanOpen = isTabletLandscape && overlayOpen && viewKind === 'plan'
   const desktopInspectorOpen = desktopInspector && overlayExit.mounted
-  // Desktop owns a fixed third Outputs column. `railOpen` remains the
-  // adaptive drawer state for tablet layouts, but must not resize the desktop
-  // conversation or composer.
-  const outputsOpen = desktopInspector || railOpen
+  // Desktop still uses the in-flow Outputs column, but `railOpen` remains
+  // the single open/close state for every non-phone layout. Forcing the
+  // column open whenever `desktopInspector` is true hid the header toggle
+  // and left Playwright unable to find Close/Open artifacts panel.
   // The reader unmounts before Outputs has returned to its resting width.
   // Preserve the command bar's last good geometry through that small gap so
   // a transient, full-width chat lane is never captured as its new target.
@@ -3621,7 +3621,7 @@ export function ChatPage() {
   // The initial state is deliberately silent; only subsequent panel moves
   // receive this response.
   useEffect(() => {
-    const nextState = `${outputsOpen}:${overlayOpen}:${artifactFullscreen}`
+    const nextState = `${railOpen}:${overlayOpen}:${artifactFullscreen}`
     const previousState = composerWorkspaceStateRef.current
     composerWorkspaceStateRef.current = nextState
     if (previousState == null || previousState === nextState) return undefined
@@ -3632,7 +3632,7 @@ export function ChatPage() {
       window.cancelAnimationFrame(frame)
       window.clearTimeout(clear)
     }
-  }, [artifactFullscreen, overlayOpen, outputsOpen])
+  }, [artifactFullscreen, overlayOpen, railOpen])
   const setDocumentReading = workspaceRail.setDocumentReading
   // Snapshot the command bar before opening a lesson-plan reader. The reader
   // intentionally changes the workspace geometry, but the composer should
@@ -4305,8 +4305,11 @@ export function ChatPage() {
             </button>
           ) : null}
           {/* Phone opens the plan from the composer pull; keep the rail toggle
-             for desktop where there is no plan-peek handle. */}
-          {!desktopInspector && !isPhone && !isLandscapePhone && !desktopInspectorOpen ? (
+             for desktop where there is no plan-peek handle. Hide it only
+             while the lesson reader is mounted, not for the whole desktop
+             inspector layout — those Close/Open artifacts panel names are
+             the durable affordance for the Outputs column. */}
+          {!isPhone && !isLandscapePhone && !desktopInspectorOpen ? (
             <button
               type="button"
               className="workspace-artifact-toggle fa-press relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--accent-text)]"
@@ -4946,7 +4949,7 @@ export function ChatPage() {
     // fa-rise — see fa-rise-panel's own comment in base.css for why a
     // full-viewport container inside AppShell's blurred "main" panel
     // shouldn't animate opacity.
-    <div ref={overlayAnchorRef} className={`workspace-panes flex h-full w-full min-w-0${isPhone ? ' fa-rise-panel' : ''}${isTabletLandscape ? ' is-tablet-landscape-workspace' : ''}${outputsOpen && !isPhone ? ' artifacts-open' : ''}`}>
+    <div ref={overlayAnchorRef} className={`workspace-panes flex h-full w-full min-w-0${isPhone ? ' fa-rise-panel' : ''}${isTabletLandscape ? ' is-tablet-landscape-workspace' : ''}${railOpen && !isPhone ? ' artifacts-open' : ''}`}>
       {/* OUTSIDE chatPane. It used to live inside it, and ArtifactPanel sets
           aria-modal="true" when overlaying — which tells assistive tech to
           ignore everything outside the dialog, so on a phone with the document
@@ -4982,13 +4985,13 @@ export function ChatPage() {
         </div>
       ) : null}
 
-      {/* Desktop keeps Outputs as a true third workspace column. Smaller
-          layouts use the adaptive drawer; phone uses the bar in chatPane.
-          Keep it mounted while a reader overlays the workspace so closing the
-          reader restores the same panel without a second slide-in animation. */}
+      {/* Desktop keeps Outputs as an in-flow third column while `railOpen`
+          is true. Smaller layouts use the adaptive drawer; phone uses the
+          bar in chatPane. Closing the header toggle unmounts this node so
+          the workspace can reclaim the column. */}
       {!isPhone ? (
         <ArtifactDrawer
-          open={outputsOpen}
+          open={railOpen}
           onClose={() => setRailOpen(false)}
           persistent={desktopInspector}
           hasArtifact={hasArtifact}
