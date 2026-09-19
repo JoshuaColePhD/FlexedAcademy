@@ -1107,25 +1107,6 @@
   border-color: transparent !important;
   box-shadow: none !important;
 }
-.workspace-sidebar-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 28px;
-  padding: 0;
-  color: var(--ink-muted);
-  background: transparent !important;
-  border: 0 !important;
-  border-radius: var(--r-sm);
-  box-shadow: none !important;
-}
-.workspace-sidebar-toggle:hover,
-.workspace-sidebar-toggle:focus-visible {
-  color: var(--ink);
-  background: var(--paper-inset) !important;
-  outline: none;
-}
 .app-shell-menu-toggle {
   background: transparent !important;
   border-color: transparent !important;
@@ -2187,9 +2168,6 @@ body:has(.dialog-scrim) .composer-dock-surface {
     background: rgb(28 27 23) !important;
   }
 }
-@media (max-width: 1023.98px) {
-  .workspace-topbar .workspace-sidebar-toggle { display: none; }
-}
 @media (prefers-reduced-motion: reduce) {
   .chat-workspace-chat-row, .app-rail, .artifact-drawer { transition: none !important; }
 }
@@ -2622,7 +2600,6 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .week-picker-embedded,
   .class-switcher-embedded { max-height: min(32dvh, 240px); }
 }
-.workspace-sidebar-toggle:focus-visible,
 .workspace-artifact-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (pointer: coarse) {
   .artifact-rail-scroll .rail-actions { opacity: 1; }
@@ -4773,19 +4750,9 @@ body:has(.dialog-scrim) .composer-dock-surface {
     background: rgb(var(--paper-raised-rgb) / 0.56);
   }
 
-  .app-shell-frame.is-tablet-landscape .workspace-sidebar-toggle,
   .app-shell-frame.is-tablet-landscape .workspace-artifact-toggle {
     min-width: 44px;
     min-height: 44px;
-  }
-
-  /* A legacy sub-1024 rule hid this control because phones use their own
-     navigation. iPad portrait uses the same topbar but needs this button to
-     open the chat-list drawer; landscape uses it to collapse the docked rail. */
-  .app-shell-frame .workspace-topbar .workspace-sidebar-toggle {
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
   }
 
   .app-shell-frame.is-tablet-landscape .workspace-panes {
@@ -4819,18 +4786,6 @@ body:has(.dialog-scrim) .composer-dock-surface {
   }
 }
 
-@media (min-width: 768px) and (max-width: 1199.98px) and (orientation: portrait) {
-  /* Portrait iPad keeps the conversation full-width until the teacher asks
-     for the chat list. The topbar button is the drawer trigger and must stay
-     visible despite the older sub-1024 phone-navigation rule. */
-  .workspace-topbar .workspace-sidebar-toggle {
-    display: inline-flex !important;
-    min-width: 44px;
-    min-height: 44px;
-    align-items: center;
-    justify-content: center;
-  }
-}
 
 /* Page-level back controls on phones need the same affordance as the chat
    back control: a visible, glassy target large enough to find and press with

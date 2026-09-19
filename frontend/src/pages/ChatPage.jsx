@@ -4,7 +4,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelLeft, PanelRight, Plus, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, Plus, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { haptic } from '../lib/haptics'
 import { useToast } from '../lib/toastContext'
@@ -4169,17 +4169,6 @@ export function ChatPage() {
           it, not floating apart from the rest of the pane's own left
           margin. */}
       <div className={`workspace-topbar flex h-11 shrink-0 items-center bg-paper border-b border-edge px-2 z-10${(isPhone || isLandscapePhone) && !chatId ? ' mobile-new-chat-header' : ''}${(isPhone || isLandscapePhone) && chatId ? ' mobile-active-chat-header' : ''}`}>
-        {!desktopInspector && !isPhone && !isLandscapePhone && workspaceRail.toggle && !workspaceRail.documentReading ? (
-          <button
-            type="button"
-            className="workspace-sidebar-toggle shrink-0"
-            aria-label={workspaceRail.docked ? (workspaceRail.collapsed ? 'Show the sidebar' : 'Collapse the sidebar') : 'Show chats'}
-            title={workspaceRail.docked ? (workspaceRail.collapsed ? 'Show the sidebar' : 'Collapse the sidebar') : 'Show chats'}
-            onClick={workspaceRail.toggle}
-          >
-            <PanelLeft size={16} aria-hidden="true" />
-          </button>
-        ) : null}
         {isPhone || isLandscapePhone ? (
           /* The old dense row (ClassSwitcher + a pacing dot + WeekPicker + a
              calendar dot, all inline) doesn't fit a phone width without
@@ -4302,33 +4291,6 @@ export function ChatPage() {
               }}
             >
               <Plus size={22} strokeWidth={1.8} aria-hidden="true" />
-            </button>
-          ) : null}
-          {/* Phone opens the plan from the composer pull; keep the rail toggle
-             for desktop where there is no plan-peek handle. Hide it only
-             while the lesson reader is mounted, not for the whole desktop
-             inspector layout — those Close/Open artifacts panel names are
-             the durable affordance for the Outputs column. */}
-          {!isPhone && !isLandscapePhone && !desktopInspectorOpen ? (
-            <button
-              type="button"
-              className="workspace-artifact-toggle fa-press relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[var(--accent-text)]"
-              aria-label={railOpen ? 'Close artifacts panel' : 'Open artifacts panel'}
-              title={railOpen ? 'Close artifacts panel' : 'Open artifacts panel'}
-              aria-expanded={railOpen}
-              aria-controls="artifacts-panel"
-              onClick={() => {
-                haptic('light')
-                setRailOpen((open) => !open)
-              }}
-            >
-              <PanelRight size={18} aria-hidden="true" />
-              {hasArtifact && !railOpen ? (
-                <span
-                  className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-[rgb(var(--rail-pop-rgb))]"
-                  aria-hidden="true"
-                />
-              ) : null}
             </button>
           ) : null}
         </div>
