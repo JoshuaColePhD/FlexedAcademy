@@ -1,7 +1,7 @@
 {
   "name": "FlexEd Academy",
   "short_name": "FlexEd",
-  "description": "Build a week of lesson plans, grounded in your district's standards and delivered in your school's own template.",
+  "description": "Build a week of lesson plans for your class, grounded in your state's standards and delivered in your school's own template.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
