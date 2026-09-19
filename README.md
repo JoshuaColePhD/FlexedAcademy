@@ -24,9 +24,11 @@ source behind every standard it cites — and export it as a district-formatted 
 A teacher opens a week, reviews the generated five-day plan with its **cited standards**, checks the
 grounded **sources**, and the district-formatted **DOCX** is ready to download — in light or dark mode.
 
-![FlexEd Academy walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.gif)
+<div align="center">
+  <video src="https://github.com/JoshuaColePhD/FlexedAcademy/raw/6b9bde9a647490c85e075b33907865a880c5d28d/docs/recruiter/FlexedAcademy_Walkthrough.mp4" controls muted playsinline width="920"></video>
+</div>
 
-<sub>Higher quality: [MP4](docs/recruiter/FlexedAcademy_Walkthrough.mp4) · [WebM](docs/recruiter/FlexedAcademy_Walkthrough.webm). On the live site, click **Explore demo (read-only)** on the sign-in page — no setup required.</sub>
+<sub>Video not playing? Watch the [animated GIF](docs/recruiter/FlexedAcademy_Walkthrough.gif) or download the [MP4](docs/recruiter/FlexedAcademy_Walkthrough.mp4) · [WebM](docs/recruiter/FlexedAcademy_Walkthrough.webm). On the live site, click **Explore demo (read-only)** on the sign-in page — no setup required.</sub>
 
 ---
 
