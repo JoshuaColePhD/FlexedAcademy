@@ -174,6 +174,9 @@ export function Composer({
   questionsPanel = null,
   mode = 'brainstorm',
   onModeChange,
+  // Already-loaded class context. Keeping this local makes completions feel
+  // immediate and avoids a model request for every keystroke.
+  ghostContext = {},
   focusOnMount = false,
   placeholder = 'What are you teaching? (Press ⌘K for actions)',
   sendLabel = 'Send',
@@ -364,10 +367,10 @@ export function Composer({
     return () => document.removeEventListener('keydown', onKey)
   }, [isRecording])
 
-  // Two fixed prompts — never week numbers, day names, or last-turn wording.
-  // Empty field shows the first; a matching typed prefix can surface the
-  // second. ChatPage used to feed heuristic + LLM ghosts through here.
-  const textSuggestion = useMemo(() => pickComposerGhost(value), [value])
+  const textSuggestion = useMemo(
+    () => pickComposerGhost(value, ghostContext),
+    [value, ghostContext]
+  )
   const suggestionKey = textSuggestion?.id || null
   const activeSuggestion = textSuggestion
 

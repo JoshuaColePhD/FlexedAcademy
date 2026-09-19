@@ -356,6 +356,10 @@ class SuggestionRequest(BaseModel):
     class_id: str | None = None
     week_number: int = Field(ge=1, le=52)
     week_label: str = Field(min_length=1, max_length=80)
+    # Text extracted locally from files newly attached to THIS turn. It is
+    # bounded and treated strictly as reference material below, never as
+    # instructions. Saved class documents are retrieved server-side.
+    attachment_context: str = Field(default="", max_length=8000)
 
 
 class ReviseDayRequest(BaseModel):
@@ -1651,11 +1655,23 @@ def suggestion(req: SuggestionRequest, request: Request, user_id: str = Depends(
     weeks = schoolcal.school_weeks(school_id)
     week = next((w for w in weeks if w["week"] == req.week_number), {"week": req.week_number, "start": None, "end": None})
     hit = curriculum.unit_for_calendar_week(user_id, subject, week)
+    # Retrieve only the active class's own documents. This is the same
+    # source-scoping used by generation and avoids a similar course in another
+    # prep influencing an inline suggestion. Retrieval is best effort: a cold
+    # embedding index falls back to the parsed week/unit and then local ghosts.
+    reference_context = llm.map_context_for(
+        user_id,
+        subject,
+        f"{req.week_label} lesson planning focus, texts, skills, standards, and assessments",
+        class_id=req.class_id,
+    )
     result = llm.generate_week_suggestion(
         user_id,
         week_label=req.week_label,
         unit=(hit or {}).get("unit"),
         class_name=(cls or {}).get("name"),
+        reference_context=reference_context,
+        attachment_context=req.attachment_context,
         custom_instructions=llm.custom_instructions_for(user_id),
         class_custom_instructions=(cls or {}).get("custom_instructions"),
     )

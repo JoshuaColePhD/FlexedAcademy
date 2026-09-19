@@ -4083,13 +4083,58 @@ export function ChatPage() {
     ]
   )
 
-  // Composer Tab-completions are a fixed boilerplate pair now (see
-  // composerGhosts.js). Contextual + LLM week wording no longer feeds the
-  // input overlay. add-pacing-guide / add-school-calendar still live here
-  // because they are not chat messages — Greeting shows them as a settings
-  // hint in the empty state only.
+  // The empty-state settings actions stay separate: accepting a composer
+  // completion fills text, while these must navigate or open an upload dialog.
   const emptyStateHint =
     !messages.length && contextualSuggestions[0]?.action === 'open-settings' ? contextualSuggestions[0] : null
+
+  // Attachment extraction has already happened in Composer before an item
+  // reaches this state. Send only a small labelled excerpt to the background
+  // suggestion request, so a fresh source can improve the ghost text without
+  // putting an entire PDF—or an old chat—into a keystroke-time request.
+  const attachmentSuggestionContext = useMemo(
+    () => attachments
+      .map((attachment) => {
+        const text = String(attachment?.text || '').replace(/\s+/g, ' ').trim()
+        return text ? `[${attachment.filename}]\n${text.slice(0, 1200)}` : ''
+      })
+      .filter(Boolean)
+      .join('\n\n')
+      .slice(0, 8000),
+    [attachments]
+  )
+  const documentSignature = useMemo(
+    () => (classDocuments.data || [])
+      .map((document) => `${document.id}:${document.kind}:${document.uploaded_at || ''}`)
+      .join('|'),
+    [classDocuments.data]
+  )
+  const groundedComposerSuggestion = useQuery({
+    queryKey: ['composer-ghost', classId, conversationWeek, documentSignature, attachmentSuggestionContext],
+    queryFn: ({ signal }) => api.getSuggestion({
+      class_id: classId,
+      week_number: conversationWeek,
+      week_label: displayWeek?.label || `Week ${String(conversationWeek).padStart(2, '0')}`,
+      attachment_context: attachmentSuggestionContext,
+    }, { signal }),
+    // This refreshes only when the selected week or relevant materials change,
+    // never as the teacher types. Local candidates remain visible while it is
+    // loading or if retrieval cannot find enough source material.
+    enabled: Boolean(classId && conversationWeek && (documentSignature || attachmentSuggestionContext)),
+    staleTime: 10 * 60_000,
+    retry: false,
+  })
+
+  const composerGhostContext = useMemo(
+    () => ({
+      week: displayWeek,
+      documents: classDocuments.data || [],
+      attachments,
+      hasPlan: Boolean(artifact?.planId),
+      modelSuggestion: groundedComposerSuggestion.data?.prompt || '',
+    }),
+    [artifact?.planId, attachments, classDocuments.data, displayWeek, groundedComposerSuggestion.data?.prompt]
+  )
 
   const artifactEl =
     viewKind === 'plan' ? (
@@ -4767,6 +4812,7 @@ export function ChatPage() {
             voiceModeActive={voiceOpen}
             mode={chatMode}
             onModeChange={changeChatMode}
+            ghostContext={composerGhostContext}
             voiceGlossary={[activeClass?.name, activeClass?.subject, selectedStandard?.code].filter(Boolean)}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (

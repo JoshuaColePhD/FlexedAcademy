@@ -538,9 +538,9 @@ export const api = {
      just keeps whatever it already had. */
   getDecisions: (messages) => request('/api/decisions', { method: 'POST', body: { messages } }),
 
-  /* Unused by the chat composer (ghosts are a fixed boilerplate pair now).
-     Kept for the existing /api/suggestion endpoint. */
-  getSuggestion: (payload) => request('/api/suggestion', { method: 'POST', body: payload }),
+  // A background refresh after the class context changes, never a request on
+  // each keystroke. `signal` lets React Query abandon an obsolete week/file.
+  getSuggestion: (payload, { signal } = {}) => request('/api/suggestion', { method: 'POST', body: payload, signal }),
 
   reviseDay: (payload) => request('/api/revise_day', { method: 'POST', body: payload, timeoutMs: 60000 }),
 

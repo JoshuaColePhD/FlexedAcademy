@@ -1052,6 +1052,13 @@ export function installMockApi() {
       const f = init.body?.get?.('file')
       return json({ filename: f?.name || 'syllabus.pdf', text: 'UNIT 2 PACING: weeks 3-6 cover voice and tone.', chars: 46 })
     }
+    if (path === '/api/suggestion' && method === 'POST') {
+      await wait(180)
+      const attachment = String(body.attachment_context || '')
+      const week = `Week ${String(body.week_number || 0).padStart(2, '0')}`
+      if (attachment) return json({ prompt: `Plan ${week} using the newly attached material.`, reason: 'Grounded in the attached source.' })
+      return json({ prompt: `Plan ${week} around the current unit and pacing guide.`, reason: 'Grounded in your class materials.' })
+    }
 
     /* ── chats ───────────────────────────────────────────────────────────── */
     if (path === '/api/chats' && method === 'GET') {
