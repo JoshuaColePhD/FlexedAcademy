@@ -43,6 +43,11 @@
   --shadow-lg: 0 12px 28px rgb(0 0 0 / 0.14);
   --shadow-pop: 0 12px 32px rgb(0 0 0 / 0.16);
   --shadow-panel: -1px 0 0 var(--edge);
+  /* The Outputs inspector surface. In light mode it is the raised paper the
+     rest of the workspace uses; dark mode overrides it to the recessed
+     near-black inspector fill below. A single token keeps the docked-column
+     rule from hard-coding a dark colour that then leaks into light mode. */
+  --outputs-surface: var(--paper-raised);
 }
 
 /* ── Support mailbox ───────────────────────────────────────────────────────
@@ -369,6 +374,8 @@
   --paper-raised-rgb: 47 47 47;
   --paper-sunken-rgb: 20 20 19;
   --paper-inset-rgb: 40 40 39;
+  /* The recessed near-black inspector fill for the Outputs column at night. */
+  --outputs-surface: rgb(28 27 23);
   --edge-rgb: 52 52 50;
   --edge-strong-rgb: 74 74 71;
   --ink-rgb: 242 242 245;
@@ -2165,7 +2172,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
   /* Outputs is an elevated inspector, not a continuation of the chat canvas. */
   :root[data-theme='dark'] .workspace-panes > .artifact-drawer,
   :root[data-theme='dark'] .artifact-rail:not(.is-bar) {
-    background: rgb(28 27 23) !important;
+    background: var(--outputs-surface) !important;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2318,7 +2325,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
        right, and bottom frame provide the distinct inspector silhouette. */
     border-left-color: transparent !important;
     border-radius: 22px !important;
-    background: rgb(28 27 23) !important;
+    background: var(--outputs-surface) !important;
     box-shadow: none !important;
   }
   /* The drawer owns the panel surface. Its header and body stay transparent
