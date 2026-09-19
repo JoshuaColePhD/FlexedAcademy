@@ -4,10 +4,10 @@
 
 # FlexEd Academy
 
-**Standards-grounded AI lesson planning for high-school teachers.**
+**Standards-grounded lesson planning that shows its work.**
 
-Turn a weekly request into a structured, standards-aligned lesson plan — with the source behind
-every cited standard — and export it as a district-formatted Word document.
+Tell FlexEd what you're teaching this week. It returns a five-day, standards-aligned plan —
+every cited code traced to its source — in your district's template, ready as a Word document.
 
 [![Quality](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/quality.yml/badge.svg)](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/quality.yml)
 [![Security](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/security.yml/badge.svg)](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/security.yml)
@@ -21,8 +21,7 @@ every cited standard — and export it as a district-formatted Word document.
 
 ## Demo
 
-Open a week, review the generated five-day plan and its **cited standards**, inspect the grounded
-**sources**, and download the district-formatted **DOCX** — in light or dark mode.
+A week planned, cited, and exported — in light or dark mode.
 
 ![FlexEd Academy walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.gif)
 
@@ -32,18 +31,21 @@ Open a week, review the generated five-day plan and its **cited standards**, ins
 
 ## What it does
 
+Teachers get a plan they can stand behind in a PLC. The engineering underneath is retrieval,
+validation, and refusal — not a chatbot that invents codes.
+
 | | |
 | --- | --- |
-| **Plans a full week** | Generates a five-day, standards-aligned plan from a teacher prompt and class context. |
-| **Grounded in real standards** | Cites source documents — not model memory — with verbatim text and source metadata. |
-| **Shows the sources** | Surfaces cited standards, provenance, and grounding warnings for review. |
-| **Matches your district** | Renders school-specific lesson-plan templates and exports DOCX (and QTI for quizzes). |
-| **Conversational** | Coaching, day-level revision, quiz generation, and teacher-owned pacing guides. |
-| **Production-ready** | Multi-teacher auth, class scoping, usage entitlements, billing, and account controls. |
+| **A full week, from one request** | Five days of standards-aligned planning from a prompt and class context. |
+| **Cites the real standards** | Pulls from source documents — not model memory — with verbatim text and provenance. |
+| **Shows the sources** | Which codes were used, where they came from, and any grounding warnings. |
+| **Your district's format** | School lesson-plan templates, DOCX export, and QTI for quizzes. |
+| **Revise in conversation** | Coaching, day-level edits, quiz generation, and teacher-owned pacing guides. |
+| **Ready for a real school** | Multi-teacher accounts, class scoping, usage entitlements, billing, and account controls. |
 
 ## Why this is an AI-engineering project
 
-The hard problem isn't text generation — it's **trust**. Standards contain low-frequency codes,
+The hard problem isn't generating text — it's **trust**. Standards contain low-frequency codes,
 repeated numbering schemes, and course-specific meanings that language models easily confuse.
 FlexEd treats retrieval, validation, and refusal as first-class product behavior, so a plan can
 prove where every cited standard came from:
