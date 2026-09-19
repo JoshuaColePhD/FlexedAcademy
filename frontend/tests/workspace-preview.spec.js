@@ -2,20 +2,11 @@ import { expect, test } from '@playwright/test'
 
 const seed = '/preview.html?fresh=0&at=/c/c1/chat/seed1'
 
-/* Seeded chats already have a week, so Outputs should already be open.
-   Keep this helper for tests that run before the artifact fetch lands, or
-   after a prior step closed the rail. */
+/* Seeded chats already have a week, so Outputs auto-opens as an in-flow
+   column. The Close/Open artifacts panel header toggle was removed; wait
+   for the drawer itself rather than a control that no longer exists. */
 async function openArtifactsPanel(page) {
-  const closeRail = page.getByRole('button', { name: 'Close artifacts panel', exact: true })
-  const openRail = page.getByRole('button', { name: 'Open artifacts panel', exact: true })
-  const drawer = page.locator('.artifact-drawer')
-  await expect(closeRail.or(openRail)).toBeVisible()
-  if (await closeRail.isVisible()) {
-    await expect(drawer).toBeVisible()
-    return
-  }
-  await openRail.click()
-  await expect(drawer).toBeVisible()
+  await expect(page.locator('.artifact-drawer')).toBeVisible()
 }
 
 test('desktop document spans most of the workspace under the composer and fullscreen restores it', async ({ page }) => {
@@ -193,27 +184,13 @@ test('composer stays centered between the navigation and materials rails', async
     expect(composerBox.x + composerBox.width).toBeLessThanOrEqual(drawerBox.x - 24)
   }
   await assertComposerBetweenRails()
-
-  const closeRail = page.getByRole('button', { name: 'Close artifacts panel', exact: true })
-  await expect(closeRail).toHaveAttribute('aria-expanded', 'true')
-  await expect(closeRail).toHaveAttribute('aria-controls', 'artifacts-panel')
-  await closeRail.click()
-  await expect(page.locator('.artifact-drawer')).toHaveCount(0)
-  const openRail = page.getByRole('button', { name: 'Open artifacts panel', exact: true })
-  await expect(openRail).toBeVisible()
-  await expect(openRail).toHaveAttribute('aria-expanded', 'false')
-  await expect(composer).toBeVisible()
-  await openRail.click()
-  await expect(page.locator('.artifact-drawer')).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Close artifacts panel', exact: true })).toHaveAttribute('aria-expanded', 'true')
-  await page.waitForTimeout(420)
-  await assertComposerBetweenRails()
+  await expect(page.getByRole('button', { name: 'Close artifacts panel', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Open artifacts panel', exact: true })).toHaveCount(0)
 
   await page.setViewportSize({ width: 1512, height: 900 })
   await page.waitForTimeout(220)
   await assertComposerBetweenRails()
-  await page.getByRole('button', { name: 'Close artifacts panel', exact: true }).click()
-  await expect(page.locator('.artifact-drawer')).toHaveCount(0)
+  await expect(page.locator('.artifact-drawer')).toBeVisible()
   await expect(composer).toBeVisible()
 })
 
