@@ -9919,20 +9919,6 @@
     min-width: 0;
     white-space: nowrap;
   }
-  .composer-ghost-tab {
-    margin-left: auto;
-    flex-shrink: 0;
-    font-family: inherit;
-    font-size: 0.625rem;
-    font-weight: 650;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--ink-muted);
-    border: 1px solid var(--edge);
-    border-radius: 0.35rem;
-    padding: 0.12rem 0.38rem;
-    line-height: 1.2;
-  }
   /* The attachment rail already gets its layout from the utility classes in
      Composer; this named hook keeps the class checker aware of that surface
      for future attachment-specific styling. */

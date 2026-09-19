@@ -967,7 +967,6 @@ export function Composer({
                 <span className={`composer-ghost min-w-0 animate-slide-in-right ${value.trim() ? 'text-ink-faint' : 'text-ink-muted'}`}>
                   {completion}
                 </span>
-                <kbd className="composer-ghost-tab">Tab</kbd>
               </div>
             ) : null}
             <textarea

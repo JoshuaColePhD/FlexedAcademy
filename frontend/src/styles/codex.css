@@ -3913,10 +3913,6 @@ body:has(.dialog-scrim) .composer-dock-surface {
     padding-bottom: 10px !important;
   }
 
-  .composer-ghost-tab {
-    display: none !important;
-  }
-
   .chat-header-scrim {
     background: rgb(0 0 0 / 0.42) !important;
     -webkit-backdrop-filter: blur(4px);
