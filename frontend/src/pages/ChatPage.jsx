@@ -3613,7 +3613,11 @@ export function ChatPage() {
       return undefined
     }
     if (!composerReaderSettling) return undefined
-    const release = window.setTimeout(() => setComposerReaderSettling(false), 600)
+    // The reader and workspace both settle inside 380ms. Leave one short
+    // frame of slack, then hand geometry back to the live chat lane. Keeping
+    // this tied to that single transition window avoids a second, delayed
+    // composer correction after the panel already appears to be at rest.
+    const release = window.setTimeout(() => setComposerReaderSettling(false), 420)
     return () => window.clearTimeout(release)
   }, [composerReaderSettling, desktopInspectorOpen])
   // The command surface does not travel with the workspace, but a tiny
@@ -3621,7 +3625,10 @@ export function ChatPage() {
   // The initial state is deliberately silent; only subsequent panel moves
   // receive this response.
   useEffect(() => {
-    const nextState = `${railOpen}:${overlayOpen}:${artifactFullscreen}`
+    // Fullscreen is a reader-only expansion. The composer keeps its locked
+    // rectangle through it, so it must not receive a second acknowledgement
+    // animation that looks like a late layout correction.
+    const nextState = `${railOpen}:${overlayOpen}`
     const previousState = composerWorkspaceStateRef.current
     composerWorkspaceStateRef.current = nextState
     if (previousState == null || previousState === nextState) return undefined
@@ -3632,7 +3639,7 @@ export function ChatPage() {
       window.cancelAnimationFrame(frame)
       window.clearTimeout(clear)
     }
-  }, [artifactFullscreen, overlayOpen, railOpen])
+  }, [overlayOpen, railOpen])
   const setDocumentReading = workspaceRail.setDocumentReading
   // Snapshot the command bar before opening a lesson-plan reader. The reader
   // intentionally changes the workspace geometry, but the composer should
@@ -3663,18 +3670,23 @@ export function ChatPage() {
       setDocumentReading?.(false)
     }
   }, [desktopInspectorOpen, setDocumentReading])
-  // Capture the settled centered composer geometry before the reader opens.
-  // The reader narrows the available lane, but the composer remains anchored
-  // in the middle workspace instead of moving into the collapsed chat rail.
+  // Keep a fresh idle snapshot for the next reader. Capture only across two
+  // paint frames—not an arbitrary delayed timeout—so a later rail transition
+  // cannot overwrite the snapshot halfway through a reader close.
   useLayoutEffect(() => {
     if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-    const capture = () => {
+    let secondFrame = null
+    const firstFrame = window.requestAnimationFrame(() => {
       if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-      captureComposerReaderAnchor()
+      secondFrame = window.requestAnimationFrame(() => {
+        if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
+        captureComposerReaderAnchor()
+      })
+    })
+    return () => {
+      window.cancelAnimationFrame(firstFrame)
+      if (secondFrame != null) window.cancelAnimationFrame(secondFrame)
     }
-    capture()
-    const settleTimer = window.setTimeout(capture, 450)
-    return () => window.clearTimeout(settleTimer)
   }, [artifactFullscreen, captureComposerReaderAnchor, composerDockH, composerReaderSettling, desktopInspectorOpen, overlayOpen, railOpen])
   // Fullscreen: the host becomes the true viewport. Docked: the host
   // becomes exactly the box #main used to provide for free (before this
@@ -3779,31 +3791,10 @@ export function ChatPage() {
         Math.min(r.width, drawerLeft == null ? r.width : drawerLeft - 24 - r.left),
       )
       const documentReading = document.documentElement.classList.contains('is-document-reading')
-      // Do not overwrite the pre-reader anchor during the return journey.
-      // Between the document unmounting and Outputs reaching its resting
-      // width, the live lane briefly spans the whole chat area. Capturing
-      // that transient value was the source of the close-time bounce.
-      const retainingReaderAnchor = desktopInspector && composerReaderSettling
-      if (!overlayOpen && !desktopInspectorOpen && !documentReading && !artifactFullscreen && !retainingReaderAnchor) {
-        const dock = composerDockRef.current
-        const shell = dock?.querySelector('.composer-shell')
-        const dockRect = dock?.getBoundingClientRect()
-        const shellRect = shell?.getBoundingClientRect()
-        if (dockRect && shellRect && dockRect.width >= 100 && shellRect.width >= 100) {
-          composerReaderAnchorRef.current = {
-            left: dockRect.left,
-            width: dockRect.width,
-            laneWidth,
-            shellLeft: shellRect.left,
-            shellInset: shellRect.left - dockRect.left,
-          }
-        }
-      }
       // Keep the composer pinned to its pre-reader geometry while the lesson
-      // plan is actually mounted. Once the reader has left, size the command
-      // lane to the live chat column so it does not sit over the in-flow
-      // Outputs inspector. Inner max-width: 54rem still aligns the bar with
-      // the transcript reading measure inside that lane.
+      // plan is mounted or returning, whether it is docked or fullscreen.
+      // Snapshot capture is intentionally owned by openDocument/the idle
+      // effect above; this resize path must never replace it mid-transition.
       const cachedReaderAnchor = composerReaderAnchorRef.current
       const hasValidCachedAnchor = Boolean(
         cachedReaderAnchor &&
@@ -3812,10 +3803,8 @@ export function ChatPage() {
       )
       if (cachedReaderAnchor && !hasValidCachedAnchor) composerReaderAnchorRef.current = null
       const keepReaderComposer = Boolean(
-        desktopInspector &&
+        (desktopInspectorOpen || composerReaderSettling) &&
         hasValidCachedAnchor &&
-        desktopInspectorOpen &&
-        !artifactFullscreen &&
         !isPhone &&
         !isLandscapePhone
       )
@@ -3827,9 +3816,14 @@ export function ChatPage() {
       const visibleLaneWidth = readerAnchor
         ? readerAnchor.laneWidth
         : laneWidth
-      portalHost.style.transition = documentReading || desktopInspectorOpen
-        ? 'width var(--t-reader) var(--ease-glide)'
-        : 'left var(--t-reader) var(--ease-glide), width var(--t-reader) var(--ease-glide)'
+      // Desktop geometry is intentionally static. The adjacent panel carries
+      // the motion; animating this portaled host at the same time creates a
+      // competing width tween and the visible composer "jump" on reversals.
+      portalHost.style.transition = !isPhone && !isLandscapePhone
+        ? 'none'
+        : (documentReading || desktopInspectorOpen
+          ? 'width var(--t-reader) var(--ease-glide)'
+          : 'left var(--t-reader) var(--ease-glide), width var(--t-reader) var(--ease-glide)')
       portalHost.style.left = `${hostLeft}px`
       portalHost.style.width = `${Math.max(0, hostWidth)}px`
       portalHost.style.top = 'auto'
@@ -3840,28 +3834,29 @@ export function ChatPage() {
         composerDockRef.current.style.maxWidth = 'none'
       }
     }
+    let syncFrame = null
+    const scheduleSync = () => {
+      if (syncFrame != null) return
+      syncFrame = window.requestAnimationFrame(() => {
+        syncFrame = null
+        sync()
+      })
+    }
     sync()
-    const ro = new ResizeObserver(sync)
+    const ro = new ResizeObserver(scheduleSync)
     ro.observe(anchor)
     const pane = anchor.parentElement
     if (pane && pane !== anchor) ro.observe(pane)
     if (workspace && workspace !== pane) ro.observe(workspace)
     const drawer = getDrawer()
     if (drawer) ro.observe(drawer)
-    const mo = workspace ? new MutationObserver(sync) : null
-    mo?.observe(workspace, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['class', 'style'],
-    })
-    window.addEventListener('resize', sync)
-    window.visualViewport?.addEventListener('resize', sync)
+    window.addEventListener('resize', scheduleSync)
+    window.visualViewport?.addEventListener('resize', scheduleSync)
     return () => {
       ro.disconnect()
-      mo?.disconnect()
-      window.removeEventListener('resize', sync)
-      window.visualViewport?.removeEventListener('resize', sync)
+      if (syncFrame != null) window.cancelAnimationFrame(syncFrame)
+      window.removeEventListener('resize', scheduleSync)
+      window.visualViewport?.removeEventListener('resize', scheduleSync)
     }
   }, [artifactFullscreen, composerDockH, overlayOpen, overlayPortalHost, portalHost, desktopInspector, desktopInspectorOpen, composerReaderSettling, tabletPortraitReaderOpen, isLandscapePhone, isPhone])
   // Keep the composer above the document in both docked and fullscreen
