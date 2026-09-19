@@ -54,11 +54,30 @@
          rather than the system scheme; a teacher who forced light mode on a dark
          phone should not get a dark status bar. -->
     <meta name="theme-color" content="#f7f7f8" />
+    <!-- Crawlers (LinkedIn, Slack, Google) read these tags from the static
+         HTML, not from the React landing page. Keep this copy generic: no
+         district, school, or state-named product claim. LinkedIn in particular
+         caches og:description; without it, it keeps an old name="description". -->
+    <title>FlexEd Academy</title>
+    <link rel="canonical" href="https://flexedacademy.com/" />
     <meta
       name="description"
-      content="Build source-grounded weekly lesson plans for your class."
+      content="Build a week of lesson plans for your class, grounded in your state's standards and delivered in your school's own template."
     />
-    <title>FlexEd Academy</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="FlexEd Academy" />
+    <meta property="og:title" content="FlexEd Academy" />
+    <meta property="og:url" content="https://flexedacademy.com/" />
+    <meta
+      property="og:description"
+      content="Build a week of lesson plans for your class, grounded in your state's standards and delivered in your school's own template."
+    />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="FlexEd Academy" />
+    <meta
+      name="twitter:description"
+      content="Build a week of lesson plans for your class, grounded in your state's standards and delivered in your school's own template."
+    />
 
     <!-- Self-hosted (src/styles/fonts.css, from @fontsource/*) rather than
          Google's own CSS + CDN — that used to cost a DNS+TLS round trip to
