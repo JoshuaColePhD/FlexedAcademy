@@ -610,6 +610,10 @@ export function AppShell({ children }) {
   const isTouchLandscapeTablet = useMediaQuery('(hover: none) and (pointer: coarse) and (orientation: landscape) and (min-height: 521px)')
   const usesTabletDock = !isPhone && !tabletPortrait && !isShortLandscape && (isTablet || isTouchLandscapeTablet)
   const usesDockedRail = !isPhone && (!isTablet || usesTabletDock)
+  // Desktop is a stable three-column workspace. Unlike the adaptive tablet
+  // dock, its navigation is always present, so a stored collapsed state can
+  // never leave behind a narrow rail or cause the center to reflow.
+  const hasPermanentDesktopRail = !isPhone && !isTablet && !isTouchLandscapeTablet
   const [drawerOpen, setDrawerOpen] = useState(false)
   const drawerRef = useRef(null)
   // Keep the mounted exit window aligned with the drawer's direct
@@ -670,7 +674,7 @@ export function AppShell({ children }) {
   }, [toggleRailCollapsed, usesDockedRail])
 
   const [documentReading, setDocumentReading] = useState(false)
-  const effectiveRailCollapsed = railCollapsed || routeCollapsesRail || documentReading
+  const effectiveRailCollapsed = (!hasPermanentDesktopRail && railCollapsed) || routeCollapsesRail || documentReading
   const workspaceRailValue = useMemo(
     () => ({
       collapsed: effectiveRailCollapsed,

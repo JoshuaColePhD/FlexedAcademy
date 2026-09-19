@@ -606,6 +606,17 @@
   padding: 0 !important;
   background: var(--paper) !important;
 }
+/* Keep texture outside the working surfaces: it lives only in the exposed
+   application frame between the permanent panels. The low-contrast, layered
+   grain prevents the dark shell from reading as a flat slab without adding
+   visual noise to chat, Outputs, or the composer. */
+:root[data-theme='dark'] .app-shell-frame {
+  background-color: var(--paper) !important;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgb(255 255 255 / 0.11) 0 0.55px, transparent 0.8px),
+    radial-gradient(circle at 70% 60%, rgb(0 0 0 / 0.084) 0 0.55px, transparent 0.8px) !important;
+  background-size: 13px 17px, 19px 23px !important;
+}
 :root[data-theme] .app-rail,
 :root[data-theme] .app-shell-main,
 :root[data-theme] .glass-panel {
@@ -699,7 +710,9 @@
 /* A command-like composer: clear edge, quiet controls, one strong send. */
 .composer-shell {
   border: 1px solid var(--edge-strong) !important;
-  border-radius: 28px !important;
+  /* A command surface, not a pill: soften the corners without letting the
+     shell become square or change its measured geometry. */
+  border-radius: 18px !important;
   /* Lift the composer one surface above the transcript so it reads as the
      active command bar without needing a heavy shadow or bright accent fill. */
   background: var(--paper-raised) !important;
@@ -722,7 +735,7 @@
   color: var(--ink-inverse) !important;
 }
 .composer-shell.is-expanded {
-  border-radius: 20px !important;
+  border-radius: 16px !important;
 }
 .composer-input {
   scrollbar-width: thin;
@@ -2098,9 +2111,10 @@
   }
   .composer-dock-surface > div {
     /* The dock already inherits the visible chat lane's width. Keep the
-       composer inside that lane so an Outputs reader can overlap the rest of
-       the workspace without making the command bar spill underneath it. */
-    width: 100% !important;
+       composer slightly inside that lane so its edges share the transcript's
+       breathing room without making the command bar spill underneath
+       Outputs. This is a static inset, never a response to a panel move. */
+    width: calc(100% - 32px) !important;
     max-width: 54rem !important;
   }
 
@@ -2294,9 +2308,9 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .workspace-panes > .artifact-drawer.is-open {
     border-color: rgb(var(--edge-strong-rgb) / 0.82) !important;
     border-radius: 22px !important;
-    /* Keep the depth cue on the exposed/right side without casting a dark
-       vertical strip back onto the chat at the shared edge. */
-    box-shadow: 10px 10px 28px -18px rgb(0 0 0 / 0.16) !important;
+    /* A permanent column does not need an elevated-card shadow. Keeping the
+       surface flat prevents any blur from bleeding into the shared edge. */
+    box-shadow: none !important;
     isolation: isolate;
   }
   .workspace-panes > .artifact-drawer.is-open .artifact-drawer-heading {
@@ -2306,25 +2320,47 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .workspace-panes > .artifact-drawer.is-open .artifact-rail:not(.is-bar) {
     border-radius: 0 0 21px 21px;
   }
-  /* Outputs stays an in-flow inspector column so the composer can keep a
-     gutter between the rails. Layering it absolute over the workspace
-     removed that geometry and hid .app-rail-adjacent measurements. Keep
-     the elevated outline, and let the open lesson reader collapse this
-     column as before. */
+  /* Outputs stays an in-flow, persistent third column, while the reader owns
+     the space when open. Its flex slot can show around the rounded corners,
+     so use the base workspace surface rather than the lighter chat canvas. */
+  .workspace-panes:not(:has(.document-stage)) {
+    background: var(--paper);
+  }
+  /* The conversation gets its own lighter reading surface. Keep the workspace
+     substrate at the application's base surface, so only the rounded
+     Outputs edge—not the lighter chat canvas—can ever show around that panel. */
+  :root[data-theme='dark'] .workspace-panes:not(:has(.document-stage)) {
+    background: var(--paper) !important;
+  }
+  :root[data-theme='dark'] .chat-workspace-main {
+    background: rgb(40 40 40) !important;
+  }
   .workspace-panes:not(:has(.document-stage)) > .artifact-drawer,
   .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-open,
   .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-closing {
     position: relative !important;
     inset: auto !important;
     z-index: 2;
+    flex: 0 0 clamp(280px, 25vw, 340px) !important;
+    width: clamp(280px, 25vw, 340px) !important;
+    min-width: 0 !important;
     height: auto !important;
-    margin-left: 0 !important;
+    margin: 10px 10px 10px 0 !important;
     border: 1px solid rgb(var(--edge-strong-rgb) / 0.82) !important;
-    border-left: 0 !important;
+    /* The shared edge carries no divider or cast shadow. The panel's top,
+       right, and bottom frame provide the distinct inspector silhouette. */
+    border-left-color: transparent !important;
     border-radius: 22px !important;
-    border-top-left-radius: 22px !important;
-    border-bottom-left-radius: 22px !important;
-    box-shadow: 0 14px 34px rgb(0 0 0 / 0.22) !important;
+    background: rgb(28 27 23) !important;
+    box-shadow: none !important;
+  }
+  /* The drawer owns the panel surface. Its header and body stay transparent
+     so no child adds a competing edge inside the outer frame. */
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer .artifact-drawer-heading,
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer .artifact-drawer-body,
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer .artifact-rail:not(.is-bar),
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer .artifact-rail-scroll {
+    background: transparent !important;
   }
   .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-open .artifact-drawer-heading {
     border-top-left-radius: 21px !important;

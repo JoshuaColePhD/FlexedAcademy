@@ -411,21 +411,21 @@ export function ArtifactRail({
   )
 }
 
-/* The persistent floating shell around ArtifactRail — mounted as a quiet
- * inspector card once a plan exists. Kept separate from ArtifactRail itself
+/* The persistent inspector shell around ArtifactRail — mounted as a quiet
+ * third workspace column on desktop once a plan exists. Kept separate from ArtifactRail itself
  * rather than folded in: the "bar" variant (phone, rendered inline above the
  * composer) never goes through a drawer at all, and mixing that concern into
  * the same component would mean every prop here needing an isBar escape hatch.
  *
  * Auto-opens the moment a build starts or a plan exists (ChatPage owns that
- * effect); afterward it is the teacher's to open or close, and closing it
- * once does not get silently overridden on the next render.
+ * effect); smaller layouts can still open or close it after that. Desktop
+ * keeps the inspector present so the workspace geometry never shifts.
  *
- * The side seam no longer carries a second chevron button: the card itself is
- * the affordance, matching the reference inspector. `open` is still owned by
- * ChatPage so the panel can be hidden while a document overlay is active.
+ * `open` is still owned by ChatPage so the panel can be hidden while a
+ * document overlay is active. `persistent` removes the redundant close
+ * action when that inspector is a permanent desktop column.
  */
-export function ArtifactDrawer({ open, onClose, hasArtifact, busy, ...railProps }) {
+export function ArtifactDrawer({ open, onClose, persistent = false, hasArtifact, busy, ...railProps }) {
   /* Keep the node mounted through close so the width/opacity CSS can play.
      Unmounting on `open === false` made the chat column snap open instead of
      gliding into the freed space the way ChatGPT/Grok side panels do. */
@@ -442,7 +442,9 @@ export function ArtifactDrawer({ open, onClose, hasArtifact, busy, ...railProps 
     >
       <div className="artifact-drawer-heading">
         <span>Outputs</span>
-        <button type="button" className="btn-icon fa-press" onClick={onClose} aria-label="Close workspace" title="Close workspace"><X size={18} aria-hidden="true" /></button>
+        {!persistent ? (
+          <button type="button" className="btn-icon fa-press" onClick={onClose} aria-label="Close workspace" title="Close workspace"><X size={18} aria-hidden="true" /></button>
+        ) : null}
       </div>
       <div className="artifact-drawer-body h-full">
         <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
