@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 
 from backend import abuse, auth, db
+from backend.config import settings
 from backend.deps import COOKIE_NAME, _verify_current
 from backend.routes import auth as auth_routes
 from backend.server import app
@@ -47,6 +48,33 @@ def _stub_public_user_deps(monkeypatch):
     monkeypatch.setattr(db, "tokens_used_two_windows", lambda *_args: (0, 0))
     monkeypatch.setattr(db, "is_owner", lambda _uid: False)
     monkeypatch.setattr(abuse, "ensure_device_cookie", lambda _request, _response: "device")
+
+
+def _stub_http_auth(monkeypatch, user):
+    """In-memory doubles for the database-free CI pytest line.
+
+    A successful login sets a session cookie. TestClient keeps it, so the next
+    POST hits ReadOnlyDemoMiddleware → deps._verify_current → get_user_by_id
+    and touch_last_seen. Google sign-in also calls link_google_sub when the
+    row has no sub yet. None of those may reach _ensure_pool() here.
+    """
+    recorded = []
+    monkeypatch.setattr(settings, "database_url", "")
+    monkeypatch.setattr(
+        db,
+        "_ensure_pool",
+        lambda: (_ for _ in ()).throw(ValueError("DATABASE_URL is not set in .env")),
+    )
+    monkeypatch.setattr(db, "get_user_by_email", lambda _email: user)
+    monkeypatch.setattr(db, "get_user_by_id", lambda user_id: user if user_id == user["id"] else None)
+    monkeypatch.setattr(db, "get_user_by_google_sub", lambda _sub: user)
+    monkeypatch.setattr(db, "record_login", lambda user_id, **_kwargs: recorded.append(user_id))
+    monkeypatch.setattr(db, "touch_last_seen", lambda _seen, **_kwargs: False)
+    monkeypatch.setattr(db, "link_google_sub", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(db, "mark_email_verified", lambda *_args, **_kwargs: user)
+    monkeypatch.setattr(db, "start_verified_trial", lambda *_args, **_kwargs: user)
+    _stub_public_user_deps(monkeypatch)
+    return recorded
 
 
 def test_migration_adds_nullable_presence_columns():
@@ -100,14 +128,16 @@ def test_touch_last_seen_throttles_fresh_timestamp(monkeypatch):
 
 def test_password_login_records_presence(monkeypatch):
     user = _sample_user()
-    recorded = []
-    monkeypatch.setattr(db, "get_user_by_email", lambda _email: user)
-    monkeypatch.setattr(db, "record_login", lambda user_id, **_kwargs: recorded.append(user_id))
-    _stub_public_user_deps(monkeypatch)
+    recorded = _stub_http_auth(monkeypatch, user)
 
     client = TestClient(app, raise_server_exceptions=False)
     ok = client.post("/api/auth/login", json={"email": user["email"], "password": "correct-password"})
-    denied = client.post("/api/auth/login", json={"email": user["email"], "password": "wrong-password"})
+    # Fresh client: the successful login left a session cookie, and TestClient
+    # would replay it. The 401 path must not depend on last_seen middleware.
+    denied = TestClient(app, raise_server_exceptions=False).post(
+        "/api/auth/login",
+        json={"email": user["email"], "password": "wrong-password"},
+    )
 
     assert ok.status_code == 200
     assert denied.status_code == 401
@@ -116,13 +146,13 @@ def test_password_login_records_presence(monkeypatch):
 
 
 def test_google_login_records_presence(monkeypatch):
+    # No google_sub on the row yet — the live route calls link_google_sub
+    # before _log_in. That write must stay stubbed on this CI line.
     user = _sample_user(password_hash=None)
-    recorded = []
-    monkeypatch.setattr(auth, "verify_google_token", lambda _credential: {"email": user["email"], "email_verified": True, "sub": "google-sub", "name": "Teacher"})
-    monkeypatch.setattr(auth_routes.auth, "verify_google_token", lambda _credential: {"email": user["email"], "email_verified": True, "sub": "google-sub", "name": "Teacher"})
-    monkeypatch.setattr(db, "get_user_by_google_sub", lambda _sub: user)
-    monkeypatch.setattr(db, "record_login", lambda user_id, **_kwargs: recorded.append(user_id))
-    _stub_public_user_deps(monkeypatch)
+    recorded = _stub_http_auth(monkeypatch, user)
+    payload = {"email": user["email"], "email_verified": True, "sub": "google-sub", "name": "Teacher"}
+    monkeypatch.setattr(auth, "verify_google_token", lambda _credential: payload)
+    monkeypatch.setattr(auth_routes.auth, "verify_google_token", lambda _credential: payload)
 
     client = TestClient(app, raise_server_exceptions=False)
     response = client.post("/api/auth/google", json={"credential": "fake-google-token"})
