@@ -8294,54 +8294,24 @@
     cursor: pointer;
   }
 
-  /* ══ THE LANDING PAGE — A VERIFIED SEAL, SLEEK AND WHITE ═══════════════
-     The only surface in the app with its own fixed palette and type voice.
-     It does not follow data-theme: this page is white-on-near-black-ink at
-     every hour, for every visitor — not something that flips dark because a
-     visitor's OS prefers dark mode.
-
-     Repainted again on request, away from the cream/rose world, toward a
-     sleeker, OpenAI-style hero: a white ground, near-black ink, and one
-     quiet violet accent that does the same recurring job gold/rose used to
-     — the pipeline stage labels, the footer CTA, the proof section's
-     citation mark. The one atmosphere effect is a soft multi-hue "aurora"
-     wash behind the headline (see .land-blob below) rather than a single-hue
-     glow. Every raised surface (the CTA, the excerpt cards, the pipeline
-     dot) keeps the soft embossed/neomorphic treatment the rest of the app
-     uses, recalibrated for a white ground instead of cream. */
+  /* ══ THE LANDING PAGE — WARM PAPER, GOLD SEAL, DISTRICT BLUE ═══════════
+     Same paper/ink as the product so the door and the workspace agree.
+     Gold is only the verification seal. District blue is the one filled
+     action. The page does not follow data-theme. */
   .land {
     height: var(--app-h);
     overflow-y: auto;
     overflow-x: hidden;
     background: var(--brand);
     color: var(--brand-ink);
-    /* Recolored on request, same mechanism as before: redeclared here
-       rather than in tokens.css, same reasoning as .neo-world/.auth-ground —
-       a fixed world override, scoped to what actually wears it, not a
-       global rename of tokens other surfaces might still reasonably want
-       their own value for. */
-    --brand-rgb: 255 255 255;
-    --brand-ink-rgb: 13 13 13;
-    --brand-muted-rgb: 82 82 82;
-    /* --land-gold(-bright/-ink) become this world's violet instead of gold/
-       rose — same three-tier split as before (fill / hover-fill / small-
-       text-or-stroke), now the one signature accent color on an otherwise
-       black-and-white page. */
-    --land-gold-rgb: 124 58 237;
-    --land-gold-bright-rgb: 147 90 246;
-    --land-gold-ink-rgb: 91 33 182;
-    /* The proof section's paper goes from warm cream to a barely-there
-       off-white — still one step off the page's pure-white ground, just
-       not warm-toned now that the rest of the page isn't either. */
-    --land-paper-rgb: 250 250 250;
-    /* The primitives above do nothing on their own for any rule reading
-       var(--brand)/var(--brand-ink)/var(--land-gold) etc — tokens.css's own
-       ALIASES ("for hand-written CSS") are declared once at :root, wrapping
-       their matching primitive in rgb(), and that computed value freezes at
-       :root's own declaration site; every .land-* rule below reaches for the
-       alias, not the primitive. Exact same gap .neo-world's own comment
-       documents for --paper/--ink — redeclaring the aliases too, from THESE
-       primitives, is what actually makes any of the above take effect. */
+    --brand-rgb: 246 244 236;
+    --brand-ink-rgb: 20 22 26;
+    --brand-muted-rgb: 102 109 120;
+    --land-gold-rgb: 212 167 60;
+    --land-gold-bright-rgb: 232 193 104;
+    --land-gold-ink-rgb: 138 98 21;
+    --land-paper-rgb: 250 247 242;
+    --land-accent-rgb: 47 95 191;
     --brand: rgb(var(--brand-rgb));
     --brand-ink: rgb(var(--brand-ink-rgb));
     --brand-muted: rgb(var(--brand-muted-rgb));
@@ -8349,20 +8319,14 @@
     --land-gold-bright: rgb(var(--land-gold-bright-rgb));
     --land-gold-ink: rgb(var(--land-gold-ink-rgb));
     --land-paper: rgb(var(--land-paper-rgb));
-    /* --neo-light/--neo-dark are .neo-raised/.neo-panel/.neo-inset's own two
-       primitives (base.css, search NEOMORPHISM) — recalibrated here for a
-       near-white ground: a near-white highlight is barely distinguishable
-       from the ground itself, so the "light" side leans on pure white and
-       the "dark" side is a soft neutral grey rather than cream's warm one. */
+    --land-accent: rgb(var(--land-accent-rgb));
     --neo-light-rgb: 255 255 255;
-    --neo-dark-rgb: 214 214 219;
+    --neo-dark-rgb: 195 189 172;
   }
 
   .land-bar,
   .land-hero,
   .land-proof,
-  .land-pipeline,
-  .land-mech,
   .land-foot {
     padding-left: clamp(var(--sp-5), 6vw, var(--sp-16));
     padding-right: clamp(var(--sp-5), 6vw, var(--sp-16));
@@ -8532,8 +8496,8 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
-    padding-top: clamp(var(--sp-14), 11vw, calc(var(--sp-16) * 1.3));
-    padding-bottom: clamp(var(--sp-14), 9vw, var(--sp-16));
+    padding-top: clamp(var(--sp-12), 8vw, var(--sp-16));
+    padding-bottom: clamp(var(--sp-8), 5vw, var(--sp-10));
     overflow: hidden;
     /* Its own compositing layer + containing block, so a WebKit webview can't
        fold this element's paint into the scrolling ancestor's — see the note
@@ -8633,7 +8597,7 @@
   }
   .land-title {
     position: relative;
-    max-width: 16ch;
+    max-width: 18ch;
     margin: 0;
     font-family: var(--font-display);
     /* Rare/first-paint only (once per visit, not re-triggered by anything a
@@ -8677,8 +8641,13 @@
      only appears in the proof section now (dropped from the hero title), so
      this reaches straight for --land-paper rather than keeping a --brand
      fallback for a context that no longer renders it. */
+  .land-seal--hero {
+    width: 40px;
+    height: 40px;
+    vertical-align: -0.08em;
+  }
   .land-seal-disc {
-    fill: var(--land-paper);
+    fill: var(--brand);
     /* Was a plain fill with no entrance of its own, so it rendered solid on
        the very first paint — a fully-formed dot sitting there before the
        ring/check draw-in even started. Fading it in on the same timeline
@@ -8747,31 +8716,24 @@
     font-size: var(--fs-lg);
     font-weight: var(--fw-semibold);
     color: #fff;
-    /* Solid black now (per direct request), not frosted glass — the fill is
-       plain --brand-ink at full opacity, no backdrop-filter, so it reads as
-       an opaque object rather than a pane over the aurora blob behind it.
-       Violet stays exactly where it was: the border and the glow, never the
-       fill. */
-    background: var(--brand-ink);
-    border: 1px solid rgb(var(--land-gold-rgb) / 0.55);
+    background: var(--land-accent);
+    border: 0;
     text-decoration: none;
-    box-shadow: 0 0 22px rgb(var(--land-gold-rgb) / 0.45), 0 8px 24px rgb(0 0 0 / 0.35);
-    transition: transform var(--t-fast) var(--ease-out), box-shadow var(--t-fast) var(--ease),
-      border-color var(--t-fast) var(--ease);
+    box-shadow: var(--shadow-md);
+    transition: transform var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease),
+      box-shadow var(--t-fast) var(--ease);
   }
   .land-cta:hover {
-    transform: translateY(-2px);
-    border-color: rgb(var(--land-gold-rgb) / 0.8);
-    box-shadow: 0 0 30px rgb(var(--land-gold-rgb) / 0.6), 0 12px 32px rgb(0 0 0 / 0.4);
+    transform: translateY(-1px);
+    background: rgb(37 75 168);
+    box-shadow: var(--shadow-lg);
   }
   .land-cta:active {
     transform: translateY(0);
-    border-color: rgb(var(--land-gold-rgb) / 0.65);
-    box-shadow: 0 0 16px rgb(var(--land-gold-rgb) / 0.4), 0 4px 12px rgb(0 0 0 / 0.3);
+    background: rgb(33 68 150);
   }
   .land-cta:focus-visible,
-  .land-signin:focus-visible,
-  .land-foot-cta:focus-visible {
+  .land-signin:focus-visible {
     outline: none;
     box-shadow: var(--focus-ring);
   }
@@ -8780,10 +8742,23 @@
     vertical-align: -1px;
   }
   .land-note {
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--brand-muted);
+  }
+  .land-meta {
     position: relative;
     z-index: 1;
-    font-family: var(--font-mono);
-    font-size: var(--fs-md);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--sp-2);
+    margin-top: var(--sp-6);
+    animation: land-hero-in var(--t-enter) var(--ease-out) 180ms both;
+  }
+  .land-price {
+    margin: 0;
+    font-size: var(--fs-sm);
     color: var(--brand-muted);
   }
   .land-demo-link {
@@ -8812,24 +8787,9 @@
     color: var(--land-gold-ink);
     font-size: var(--fs-sm);
   }
-  .land-price {
-    position: relative;
-    z-index: 1;
-    margin-top: var(--sp-5);
-    font-size: var(--fs-md);
-    color: var(--brand-muted);
-    /* Mounts whenever the pricing fetch resolves — usually after the rest of
-       the hero has already finished its own entrance (land-hero-in, above),
-       so without this it just teleports in over already-settled content. Same
-       token, no delay: the fetch itself is the delay. */
-    animation: land-hero-in var(--t-enter) var(--ease-out) both;
-  }
-  /* The figure itself, not the whole sentence — same darker violet
-     (--land-gold-ink) the proof section's citation mark uses, since this
-     also sits on the near-white ground and a straight --land-gold only
-     clears ~2.1:1 there (see .land-proof .land-seal's own comment). */
+
   .land-price-amount {
-    color: var(--land-gold-ink);
+    color: var(--land-accent);
     font-weight: var(--fw-semibold);
   }
 
@@ -8867,89 +8827,7 @@
     color: var(--brand-muted);
   }
 
-  .land-template-proof {
-    display: grid;
-    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
-    gap: clamp(var(--sp-8), 8vw, var(--sp-14));
-    align-items: center;
-    padding: clamp(var(--sp-12), 8vw, var(--sp-16)) max(6vw, var(--sp-6));
-    color: var(--brand-ink);
-    background: var(--brand);
-  }
-  .land-template-copy {
-    max-width: 48ch;
-    margin-top: var(--sp-4);
-    color: var(--brand-muted);
-    font-size: var(--fs-lg);
-    line-height: var(--lh-relaxed);
-  }
-  .land-template-flow {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: clamp(var(--sp-3), 4vw, var(--sp-8));
-  }
-  .land-template-flow > .land-arrow {
-    flex-shrink: 0;
-    color: var(--land-gold-ink);
-  }
-  .land-template-card {
-    display: flex;
-    width: min(100%, 220px);
-    min-height: 210px;
-    flex-direction: column;
-    gap: var(--sp-3);
-    padding: var(--sp-5);
-    border: 1px solid rgb(var(--brand-ink-rgb) / 0.12);
-    border-radius: var(--r-lg);
-    background: rgb(var(--brand-rgb) / 0.55);
-    box-shadow: 0 12px 28px rgb(var(--brand-ink-rgb) / 0.08);
-  }
-  .land-template-card--filled {
-    border-color: rgb(var(--land-gold-rgb) / 0.55);
-    background: rgb(var(--land-gold-rgb) / 0.12);
-  }
-  .land-template-card-label {
-    margin-bottom: var(--sp-2);
-    color: var(--brand-muted);
-    font-family: var(--font-mono);
-    font-size: var(--fs-xs);
-    text-transform: uppercase;
-    letter-spacing: var(--tracking-caps);
-  }
-  .land-template-row {
-    display: block;
-    height: 9px;
-    border-radius: var(--r-full);
-    background: rgb(var(--brand-ink-rgb) / 0.18);
-  }
-  .land-template-row--short {
-    width: 62%;
-  }
-  .land-template-row--violet {
-    height: 18px;
-    background: rgb(var(--brand-ink-rgb) / 0.55);
-  }
-  .land-template-row--gold {
-    height: 18px;
-    background: var(--land-gold);
-  }
-  .land-template-cell-grid {
-    display: grid;
-    flex: 1;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 5px;
-    margin-top: var(--sp-2);
-  }
-  .land-template-cell-grid i {
-    display: block;
-    min-height: 30px;
-    border: 1px solid rgb(var(--brand-ink-rgb) / 0.14);
-    border-radius: 3px;
-    background: rgb(var(--brand-ink-rgb) / 0.05);
-  }
-
-  /* ── proof: one shade off the page's white ground ───────────────────── */
+  /* ── proof: one shade off the page ground ───────────────────────────── */
   .land-proof {
     background: var(--land-paper);
     color: rgb(var(--brand-ink-rgb));
@@ -9086,175 +8964,13 @@
     font-size: var(--fs-xs);
     opacity: 0.6;
   }
-
-  /* ── pipeline: a thread, not a card grid ─────────────────────────────── */
-  .land-pipeline {
-    padding-top: clamp(var(--sp-12), 7vw, var(--sp-14));
-    padding-bottom: clamp(var(--sp-10), 6vw, var(--sp-12));
-  }
-  .land-thread {
-    position: relative;
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--sp-8);
-  }
-  .land-thread-line {
-    position: absolute;
-    top: 5px;
-    left: 0;
-    width: 100%;
-    height: 4px;
-    color: rgb(var(--brand-ink-rgb) / 0.18);
-  }
-  .land-thread-line line {
-    stroke-dasharray: 600;
-    stroke-dashoffset: 600;
-    transition: stroke-dashoffset 1100ms var(--ease-out) 100ms;
-  }
-  .land-pipeline.is-inview .land-thread-line line {
-    stroke-dashoffset: 0;
-  }
-  .land-node {
-    position: relative;
-    padding-top: var(--sp-6);
-  }
-  .land-node-dot {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 12px;
-    height: 12px;
-    border-radius: var(--r-full);
-    background: var(--land-gold);
-    /* Small enough that a wide blur just muddies into a glow — tight offset
-       and blur instead, the same emboss everything else on this page now
-       carries, scaled to a 12px mark rather than a button. */
-    box-shadow: 1.5px 1.5px 3px rgb(var(--neo-dark-rgb) / 0.7), -1.5px -1.5px 3px rgb(var(--neo-light-rgb) / 0.5);
-    /* Was scale(0) — nothing in the real world appears from nothing; a dot
-       still fades in from a fraction of its size rather than materializing.
-       Opacity added alongside so it reads as arriving, not just growing. */
-    opacity: 0;
-    transform: scale(0.4);
-    transition: transform var(--t-base) var(--ease-out) 900ms, opacity var(--t-base) var(--ease-out) 900ms;
-  }
-  /* Each dot a beat behind the last, same 40-ish ms stagger the mech-steps
-     below already use for their own three-item entrance — three dots
-     popping in at once read as a glitch, not a sequence. */
-  .land-node:nth-of-type(2) .land-node-dot {
-    transition-delay: 945ms;
-  }
-  .land-node:nth-of-type(3) .land-node-dot {
-    transition-delay: 990ms;
-  }
-  .land-pipeline.is-inview .land-node-dot {
-    opacity: 1;
-    transform: scale(1);
-  }
-  .land-stage {
-    display: block;
-    margin-bottom: var(--sp-2);
-    font-family: var(--font-mono);
-    font-size: var(--fs-xs);
-    font-weight: var(--fw-semibold);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
-    color: var(--land-gold);
-  }
-  .land-node p {
-    font-size: var(--fs-md);
-    line-height: var(--lh-relaxed);
-    color: var(--brand-muted);
-  }
-
-  /* ── mechanism: one concrete pass, not another abstract description ────
-     The pipeline section above states retrieve/generate/audit as prose; this
-     walks one real example through all three, so the SAME phrase (tone)
-     visibly reappears from the retrieved standard to the generated line
-     rather than asking the reader to trust the connection. Glass cards, same
-     treatment as the proof section's excerpt pair, for the same reason —
-     this is a comparison, three things being placed side by side. */
-  .land-mech {
-    background: var(--land-paper);
-    padding-top: clamp(var(--sp-12), 8vw, var(--sp-14));
-    padding-bottom: clamp(var(--sp-12), 8vw, var(--sp-14));
-  }
-  .land-mech-steps {
-    display: flex;
-    align-items: center;
-    gap: var(--sp-4);
-    margin-top: clamp(var(--sp-8), 5vw, var(--sp-10));
-    /* Each card is flex: 1 — fine when the row itself is a reasonable
-       width, but with nothing capping THIS width, the row was the full
-       (now-padded, see .land-mech above) section width, so on a wide
-       screen each of the three cards stretched to a third of the entire
-       viewport. --measure-wide is the same "wide but still a deliberate
-       column" cap the year grid uses elsewhere in the app — three cards
-       this size, centered, read as a considered row; three cards a third
-       of an ultrawide monitor read as the layout not having an opinion. */
-    max-width: var(--measure-wide);
-    margin-left: auto;
-    margin-right: auto;
-  }
-  .land-mech-step {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp-2);
-    padding: var(--sp-5);
-    border-radius: var(--r-lg);
-    background: rgb(var(--brand-rgb) / 0.5);
-    backdrop-filter: blur(14px) saturate(180%);
-    -webkit-backdrop-filter: blur(14px) saturate(180%);
-    border: 1px solid rgb(var(--brand-ink-rgb) / 0.08);
-    box-shadow: 0 8px 24px rgb(var(--brand-ink-rgb) / 0.06);
-    /* Each card settles in a beat after the last, rather than all three
-       popping at once — small enough to read as "in order," not a delay. */
-    opacity: 0;
-    transform: translateY(8px);
-    transition: opacity 450ms var(--ease-out), transform 450ms var(--ease-out);
-  }
-  /* Steps 2 and 3, addressed by their actual position among ALL children
-     (arrows included) — .land-mech-step is the 1st, 3rd, and 5th child,
-     the arrows sit at 2 and 4. */
-  .land-mech-step:nth-child(3) {
-    transition-delay: 150ms;
-  }
-  .land-mech-step:nth-child(5) {
-    transition-delay: 300ms;
-  }
-  .land-mech.is-inview .land-mech-step {
-    opacity: 1;
-    transform: none;
-  }
-  .land-mech-step--audit {
-    align-items: center;
+  .land-trust {
+    max-width: 42ch;
+    margin: clamp(var(--sp-8), 5vw, var(--sp-10)) auto 0;
     text-align: center;
-    color: var(--brand-muted);
-  }
-  .land-mech-step--audit .land-seal {
-    margin-left: 0;
-  }
-  .land-mech-arrow {
-    flex: 0 0 auto;
-    color: rgb(var(--brand-ink-rgb) / 0.3);
-  }
-  /* The one word/phrase retrieval actually carried into the generated
-     line, highlighted the same way in both cards — the mechanism made
-     visible instead of just claimed. */
-  .land-mark {
-    background: rgb(var(--land-gold-rgb) / 0.18);
-    color: var(--land-gold-ink);
-    border-radius: 3px;
-    padding: 0 0.15em;
-  }
-
-  @media (max-width: 767.98px) {
-    .land-mech-steps {
-      flex-direction: column;
-    }
-    .land-mech-arrow {
-      transform: rotate(90deg);
-    }
+    font-size: var(--fs-lg);
+    line-height: var(--lh-relaxed);
+    color: var(--brand-ink);
   }
 
   /* Apple's HIG treats reduced transparency as its own accessibility signal,
@@ -9270,13 +8986,12 @@
       -webkit-backdrop-filter: none;
     }
     .land-cta {
-      background: var(--brand-ink);
+      background: var(--land-accent);
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
     }
     .land-excerpt-plan,
-    .land-excerpt-source,
-    .land-mech-step {
+    .land-excerpt-source {
       background: var(--land-paper);
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
@@ -9296,23 +9011,12 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--sp-3);
-    padding-top: var(--sp-6);
-    padding-bottom: clamp(var(--sp-8), 5vw, var(--sp-12));
+    gap: var(--sp-6);
+    padding-top: clamp(var(--sp-10), 6vw, var(--sp-12));
+    padding-bottom: clamp(var(--sp-10), 5vw, var(--sp-12));
     font-family: var(--font-mono);
     font-size: var(--fs-sm);
     color: rgb(var(--brand-ink-rgb) / 0.5);
-  }
-  .land-foot-cta {
-    display: inline-flex;
-    align-items: center;
-    font-weight: var(--fw-semibold);
-    color: var(--land-gold);
-    text-decoration: none;
-  }
-  .land-foot-cta:hover,
-  .land-foot-cta:active {
-    color: var(--land-gold-bright);
   }
   /* Below the CTA, not beside it — a legal link fighting the primary CTA
      for the same row read as equally important, which it isn't. */
@@ -9336,6 +9040,14 @@
     .land-title {
       max-width: none;
     }
+    .land-actions {
+      flex-direction: column;
+      gap: var(--sp-4);
+    }
+    .land-cta {
+      min-width: min(100%, 20rem);
+      justify-content: center;
+    }
     .land-excerpt {
       grid-template-columns: 1fr;
       gap: var(--sp-6);
@@ -9354,25 +9066,7 @@
       left: 0;
       width: 28px;
       height: 1.5px;
-      /* Same fix as .land-connector above — the mobile stand-in for it. */
       background: rgb(var(--brand-ink-rgb) / 0.3);
-    }
-    .land-thread {
-      grid-template-columns: 1fr;
-      gap: var(--sp-8);
-    }
-    .land-thread-line {
-      display: none;
-    }
-    .land-template-proof {
-      grid-template-columns: 1fr;
-    }
-    .land-template-flow {
-      gap: var(--sp-3);
-    }
-    .land-template-card {
-      min-height: 180px;
-      padding: var(--sp-4);
     }
   }
 
