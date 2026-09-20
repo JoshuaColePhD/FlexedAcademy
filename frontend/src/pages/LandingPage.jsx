@@ -4,6 +4,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { api } from '../lib/api'
 import { handleViewTransitionNavigation } from '../lib/viewTransitions'
 import { SignInForm } from '../components/SignInForm'
+import { LandCursor } from '../components/LandCursor'
 import { useAuth } from '../lib/authContext'
 
 /* The public front door — warm paper like the product, gold seal for
@@ -301,7 +302,7 @@ function SignInPopover() {
     >
       <button
         type="button"
-        className="land-signin"
+        className="land-signin magnetic-target"
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((o) => !o)}
@@ -353,12 +354,12 @@ function LandingWalkthrough() {
   return (
     <section className="land-walkthrough" aria-labelledby="walkthrough-heading">
       <div className="land-blob land-blob--quiet" aria-hidden="true" />
-      <h2 id="walkthrough-heading" className="land-heading">
+      <h2 id="walkthrough-heading" className="land-heading" data-cursor-text="">
         See a week planned, cited, and exported.
       </h2>
       <figure className="land-walkthrough-figure">
         {reduceMotion ? (
-          <img className="land-walkthrough-media" src={poster} alt={label} />
+          <img className="land-walkthrough-media" src={poster} alt={label} data-cursor-media="Play" />
         ) : (
           <video
             ref={videoRef}
@@ -370,6 +371,7 @@ function LandingWalkthrough() {
             autoPlay
             preload="metadata"
             aria-label={label}
+            data-cursor-media="Play"
           >
             <source src="/walkthrough/FlexedAcademy_Walkthrough.mp4" type="video/mp4" />
             <source src="/walkthrough/FlexedAcademy_Walkthrough.webm" type="video/webm" />
@@ -457,7 +459,7 @@ export function LandingPage() {
       <section className="land-hero">
         <div className="land-blob" aria-hidden="true" />
         <div className="land-hero-frost">
-        <h1 className="land-title">
+        <h1 className="land-title" data-cursor-text="">
           A week of lesson plans, cited to the standard
           <VerifySeal className="land-seal land-seal--hero" />
         </h1>
@@ -468,13 +470,13 @@ export function LandingPage() {
         <div className="land-actions">
           <Link
             to="/signup"
-            className="land-cta"
+            className="land-cta magnetic-target"
             onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
           >
             Start planning
             <ArrowIcon />
           </Link>
-          <button type="button" className="land-demo-link" onClick={openDemo} disabled={demoLoading}>
+          <button type="button" className="land-demo-link magnetic-target" onClick={openDemo} disabled={demoLoading}>
             {demoLoading ? 'Opening demo…' : 'See a finished lesson plan'}
           </button>
         </div>
@@ -489,7 +491,7 @@ export function LandingPage() {
       <LandingWalkthrough />
 
       <section ref={proofRef} className={`land-proof${proofInView ? ' is-inview' : ''}`}>
-        <h2 className="land-heading">Every line cites where it came from.</h2>
+        <h2 className="land-heading" data-cursor-text="">Every line cites where it came from.</h2>
         <div className="land-excerpt">
           <div className="land-excerpt-plan">
             <div>
@@ -529,7 +531,7 @@ export function LandingPage() {
       <footer className="land-foot">
         <Link
           to="/signup"
-          className="land-cta"
+          className="land-cta magnetic-target"
           onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
         >
           Start planning
@@ -546,6 +548,7 @@ export function LandingPage() {
           </span>
         </div>
       </footer>
+      <LandCursor rootRef={landRef} />
     </div>
   )
 }
