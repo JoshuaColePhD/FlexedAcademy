@@ -367,6 +367,72 @@ function SignInPopover() {
   )
 }
 
+function LandingWalkthrough() {
+  const videoRef = useRef(null)
+  const [reduceMotion, setReduceMotion] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const onChange = () => setReduceMotion(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el || reduceMotion) return undefined
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.play().catch(() => {})
+        } else {
+          el.pause()
+        }
+      },
+      { threshold: 0.2 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [reduceMotion])
+
+  const poster = '/walkthrough/poster.webp'
+  const label = 'FlexEd workspace walkthrough: a week planned, cited, and exported'
+
+  return (
+    <section className="land-walkthrough" aria-labelledby="walkthrough-heading">
+      <span className="land-tag">The workspace</span>
+      <h2 id="walkthrough-heading" className="land-heading">
+        See a week planned, cited, and exported.
+      </h2>
+      <figure className="land-walkthrough-figure">
+        {reduceMotion ? (
+          <img className="land-walkthrough-media" src={poster} alt={label} />
+        ) : (
+          <video
+            ref={videoRef}
+            className="land-walkthrough-media"
+            poster={poster}
+            muted
+            loop
+            playsInline
+            autoPlay
+            preload="metadata"
+            aria-label={label}
+          >
+            <source src="/walkthrough/FlexedAcademy_Walkthrough.mp4" type="video/mp4" />
+            <source src="/walkthrough/FlexedAcademy_Walkthrough.webm" type="video/webm" />
+          </video>
+        )}
+        <figcaption className="land-walkthrough-cap">
+          The real teacher workspace. Sign in at flexedacademy.com — nothing to install.
+        </figcaption>
+      </figure>
+    </section>
+  )
+}
+
 export function LandingPage() {
   useDocumentTitle('Lesson plans, cited to the standard')
   const navigate = useNavigate()
@@ -467,6 +533,8 @@ export function LandingPage() {
         {demoError ? <p className="land-demo-error" role="alert">{demoError}</p> : null}
         {pricing ? <p className="land-price">{pricing}</p> : null}
       </section>
+
+      <LandingWalkthrough />
 
       <section className="land-template-proof" aria-labelledby="template-proof-heading">
         <div>

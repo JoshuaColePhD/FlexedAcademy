@@ -8833,6 +8833,40 @@
     font-weight: var(--fw-semibold);
   }
 
+  .land-walkthrough {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 0 max(6vw, var(--sp-6)) clamp(var(--sp-12), 8vw, var(--sp-16));
+  }
+  .land-walkthrough .land-heading {
+    max-width: 22ch;
+    margin-top: var(--sp-3);
+  }
+  .land-walkthrough-figure {
+    width: min(100%, 1040px);
+    margin: clamp(var(--sp-6), 4vw, var(--sp-8)) 0 0;
+  }
+  .land-walkthrough-media {
+    display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1280 / 800;
+    object-fit: cover;
+    border-radius: var(--r-lg);
+    border: 1px solid rgb(var(--brand-ink-rgb) / 0.1);
+    background: rgb(28 27 23);
+    box-shadow: 0 18px 48px rgb(var(--brand-ink-rgb) / 0.14);
+  }
+  .land-walkthrough-cap {
+    margin-top: var(--sp-4);
+    font-size: var(--fs-sm);
+    color: var(--brand-muted);
+  }
+
   .land-template-proof {
     display: grid;
     grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
