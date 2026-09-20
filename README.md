@@ -19,13 +19,20 @@ every cited code traced to its source — in your district's template, ready as 
 
 ---
 
+## Try it
+
+Teachers use the live site — [flexedacademy.com](https://flexedacademy.com). Sign in, or click
+**Explore demo (read-only)** on the sign-in page. Nothing to install, nothing to run locally.
+
+This repository is the source and engineering record, not the product entry point.
+
 ## Demo
 
 A week planned, cited, and exported — in light or dark mode.
 
 ![FlexEd Academy walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.gif)
 
-<sub>Shown as a GIF because GitHub only embeds video players for files uploaded through its own UI. Full quality: [MP4](docs/recruiter/FlexedAcademy_Walkthrough.mp4) · [WebM](docs/recruiter/FlexedAcademy_Walkthrough.webm). On the live site, click **Explore demo (read-only)** — no setup required.</sub>
+<sub>Shown as a GIF because GitHub only embeds video players for files uploaded through its own UI. Full quality: [MP4](docs/recruiter/FlexedAcademy_Walkthrough.mp4) · [WebM](docs/recruiter/FlexedAcademy_Walkthrough.webm).</sub>
 
 ---
 
@@ -97,7 +104,7 @@ structured plan shape, grounded vs. non-retrieved vs. hallucinated citations, st
 DOCX integrity and queued document recovery, and security cases (account takeover, session
 invalidation, public-plan access, SPA file exposure).
 
-Run the fast local checks from the repository root:
+Reviewers who clone the repo can run the fast checks from the repository root:
 
 ```bash
 ./venv/bin/python eval/run_all.py --fast
@@ -165,20 +172,28 @@ Worth reading first: [LLM orchestration](backend/llm.py) · [retrieval & groundi
 
 ## For reviewers
 
-1. Open the [live product](https://flexedacademy.com) and click **Explore demo (read-only)**.
+Start on the live site. Teachers and most reviewers never clone this repo.
+
+1. Open [flexedacademy.com](https://flexedacademy.com) and sign in, or click **Explore demo (read-only)**.
 2. Skim the [portfolio brief](docs/recruiter/PORTFOLIO_BRIEF.md) for the problem, evidence, and story.
 3. Read the [architecture](docs/ARCHITECTURE.md) and [engineering decisions](docs/DECISIONS.md).
-4. Run `./venv/bin/python scripts/05_eval_harness.py --offline` for the no-network regression gate.
-5. See the [production evidence snapshot](docs/recruiter/PRODUCTION_EVIDENCE.md), [case study](docs/recruiter/FlexedAcademy_Case_Study.md), and [sample lesson plan](docs/recruiter/FlexedAcademy_Sample_Lesson_Plan.docx).
+4. See the [production evidence snapshot](docs/recruiter/PRODUCTION_EVIDENCE.md), [case study](docs/recruiter/FlexedAcademy_Case_Study.md), and [sample lesson plan](docs/recruiter/FlexedAcademy_Sample_Lesson_Plan.docx).
+5. Optional: clone the repo and run `./venv/bin/python scripts/05_eval_harness.py --offline` for the no-network regression gate.
 
 The read-only demo uses the same application shell and a seeded sample plan as the live product, but
 server-side enforcement disables generation, edits, uploads, sharing, and billing. To enable it on a
 deployment, set `DEMO_ACCOUNT_EMAIL` and `DEMO_ACCOUNT_PASSWORD` as secrets (optionally
 `DEMO_ACCOUNT_NAME`) and redeploy; without those values the demo stays disabled.
 
-Running locally requires Python 3.12+, Node.js, Postgres/Supabase with `pgvector`, and an OpenAI API
-key — see [.env.example](.env.example) and [DEPLOYING.md](DEPLOYING.md). Never commit `.env`, API
-keys, databases, uploaded templates, generated plans, or local model caches.
+<details>
+<summary>Optional: clone and run the source locally</summary>
+
+Only needed to inspect the code, run evals, or contribute. Python 3.12+, Node.js,
+Postgres/Supabase with `pgvector`, and an OpenAI API key — see [.env.example](.env.example) and
+[DEPLOYING.md](DEPLOYING.md). Never commit `.env`, API keys, databases, uploaded templates,
+generated plans, or local model caches.
+
+</details>
 
 ## Known limitations
 
