@@ -455,6 +455,8 @@ export function LandingPage() {
       </header>
 
       <section className="land-hero">
+        <div className="land-blob" aria-hidden="true" />
+        <div className="land-hero-frost">
         <h1 className="land-title">
           A week of lesson plans, cited to the standard
           <VerifySeal className="land-seal land-seal--hero" />
@@ -481,6 +483,7 @@ export function LandingPage() {
           <span className="land-note">Built by an Alabama high school teacher</span>
           {pricing ? <span className="land-price">{pricing}</span> : null}
         </p>
+        </div>
       </section>
 
       <LandingWalkthrough />

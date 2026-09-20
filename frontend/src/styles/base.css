@@ -8325,7 +8325,6 @@
   }
 
   .land-bar,
-  .land-hero,
   .land-proof,
   .land-foot {
     padding-left: clamp(var(--sp-5), 6vw, var(--sp-16));
@@ -8492,70 +8491,21 @@
   /* ── hero ─────────────────────────────────────────────────────────────── */
   .land-hero {
     position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    padding-top: clamp(var(--sp-12), 8vw, var(--sp-16));
-    padding-bottom: clamp(var(--sp-8), 5vw, var(--sp-10));
     overflow: hidden;
-    /* Its own compositing layer + containing block, so a WebKit webview can't
-       fold this element's paint into the scrolling ancestor's — see the note
-       on .land-blob below for the bug this avoids. */
     isolation: isolate;
-    contain: paint;
   }
-  /* The one atmosphere effect on the page: a soft multi-hue "aurora" behind
-     the headline — the modern gradient-mesh hero, not a single-brand-color
-     glow. Layered radial gradients, each already fading to transparent on
-     its own, stand in for a blurred blob; none of them carry filter: blur().
-     A large, absolutely-positioned, blurred element inside a scrolling+
-     overflow:hidden ancestor is a known WebKit compositing bug (reported as
-     horizontally tiled/duplicated page content in iOS Safari and WKWebView-
-     based in-app browsers, Claude's mobile in-app browser among them) — the
-     blur filter forces a backing layer that gets mis-tiled on scroll. Do not
-     "fix" the soft edges here by adding filter: blur() back in. */
   .land-blob {
     position: absolute;
-    top: -8%;
-    /* Was left: 50% + a fixed min(72vw, 900px) box, centered by transform —
-       a square island that stopped growing at 900px while the page around
-       it kept going, which is what read as "the image lives in a box." A
-       wash is supposed to be atmosphere behind the whole hero, not a
-       medallion sized to itself; left: 0 + width: 100% ties it to the
-       SECTION's own full width (which was already unbounded) instead of an
-       independent cap that could fall behind it. The five gradients' own
-       `at X% Y%` anchors don't need retuning for this — they're already
-       percentages of the box, so a wider box spreads them proportionally
-       further apart on its own. */
-    left: 0;
+    z-index: 0;
+    inset: -12% 0 auto;
     width: 100%;
-    height: min(60vw, 820px);
-    background: radial-gradient(circle min(15vw, 188px) at 22% 32%, rgb(191 219 254 / 0.28) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 175px) at 46% 18%, rgb(244 114 182 / 0.24) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 175px) at 68% 40%, rgb(251 146 60 / 0.22) 0%, transparent 100%),
-      radial-gradient(circle min(14.5vw, 181px) at 50% 62%, rgb(52 211 153 / 0.2) 0%, transparent 100%),
-      radial-gradient(circle min(14vw, 175px) at 28% 58%, rgb(96 165 250 / 0.26) 0%, transparent 100%);
+    height: min(70vw, 900px);
+    background: radial-gradient(circle min(18vw, 220px) at 18% 30%, rgb(191 219 254 / 0.62) 0%, transparent 100%),
+      radial-gradient(circle min(16vw, 200px) at 48% 12%, rgb(244 114 182 / 0.5) 0%, transparent 100%),
+      radial-gradient(circle min(17vw, 210px) at 78% 38%, rgb(251 146 60 / 0.48) 0%, transparent 100%),
+      radial-gradient(circle min(16vw, 200px) at 52% 68%, rgb(52 211 153 / 0.42) 0%, transparent 100%),
+      radial-gradient(circle min(15vw, 190px) at 28% 62%, rgb(96 165 250 / 0.55) 0%, transparent 100%);
     pointer-events: none;
-    /* Slow drift, on request — background-position, not transform: no
-       transform is left on this box to fight (it used to carry a static
-       translateX(-50%) for centering, gone along with left: 50%). Also,
-       deliberately, not filter: blur() animating anything — see this
-       rule's own comment above
-       on the WebKit tiling bug that a blurred layer triggers inside a
-       scrolling overflow:hidden ancestor; a background-position animation
-       never forces that kind of compositing layer.
-       Was 140%/40s/alternate — technically animating, but panning a
-       gradient that's only 40% oversized, eased across a 40-SECOND round
-       trip, moves at a rate nobody watching for a normal few seconds would
-       actually perceive; it read as "not moving" even though DevTools could
-       see the computed value changing. 180% gives real slack to pan
-       through, and 22s means a glance that lingers a moment actually
-       catches it drifting rather than needing to sit and stare. Still slow
-       relative to anything ELSE that moves on this page (fa-press, message
-       entrances) — "floating," not "spinning." Already covered by the
-       app's global prefers-reduced-motion block (collapses to a single
-       0.01ms frame). */
     background-size: 180% 180%;
     animation: land-blob-drift 22s ease-in-out infinite alternate;
   }
@@ -8572,6 +8522,19 @@
     100% {
       background-position: 60% 10%;
     }
+  }
+  .land-hero-frost {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: clamp(var(--sp-12), 8vw, var(--sp-16)) clamp(var(--sp-5), 6vw, var(--sp-16))
+      clamp(var(--sp-8), 5vw, var(--sp-10));
+    background: rgb(var(--brand-rgb) / 0.32);
+    backdrop-filter: blur(28px) saturate(170%);
+    -webkit-backdrop-filter: blur(28px) saturate(170%);
   }
   .land-eyebrow {
     position: relative;
@@ -8980,6 +8943,14 @@
      fill from the same paper/ink tokens already scoped to .land — rather
      than picking and choosing which surfaces stay translucent. */
   @media (prefers-reduced-transparency: reduce) {
+    .land-hero-frost {
+      background: var(--brand);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .land-blob {
+      display: none;
+    }
     .land-bar {
       background: var(--land-paper);
       backdrop-filter: none;
