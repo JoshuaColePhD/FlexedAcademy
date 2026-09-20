@@ -354,12 +354,12 @@ function LandingWalkthrough() {
   return (
     <section className="land-walkthrough" aria-labelledby="walkthrough-heading">
       <div className="land-blob land-blob--quiet" aria-hidden="true" />
-      <h2 id="walkthrough-heading" className="land-heading" data-cursor-text="">
+      <h2 id="walkthrough-heading" className="land-heading">
         See a week planned, cited, and exported.
       </h2>
       <figure className="land-walkthrough-figure">
         {reduceMotion ? (
-          <img className="land-walkthrough-media" src={poster} alt={label} data-cursor-media="Play" />
+          <img className="land-walkthrough-media" src={poster} alt={label} />
         ) : (
           <video
             ref={videoRef}
@@ -371,7 +371,6 @@ function LandingWalkthrough() {
             autoPlay
             preload="metadata"
             aria-label={label}
-            data-cursor-media="Play"
           >
             <source src="/walkthrough/FlexedAcademy_Walkthrough.mp4" type="video/mp4" />
             <source src="/walkthrough/FlexedAcademy_Walkthrough.webm" type="video/webm" />
@@ -459,7 +458,7 @@ export function LandingPage() {
       <section className="land-hero">
         <div className="land-blob" aria-hidden="true" />
         <div className="land-hero-frost">
-        <h1 className="land-title" data-cursor-text="">
+        <h1 className="land-title">
           A week of lesson plans, cited to the standard
           <VerifySeal className="land-seal land-seal--hero" />
         </h1>
@@ -491,7 +490,7 @@ export function LandingPage() {
       <LandingWalkthrough />
 
       <section ref={proofRef} className={`land-proof${proofInView ? ' is-inview' : ''}`}>
-        <h2 className="land-heading" data-cursor-text="">Every line cites where it came from.</h2>
+        <h2 className="land-heading">Every line cites where it came from.</h2>
         <div className="land-excerpt">
           <div className="land-excerpt-plan">
             <div>

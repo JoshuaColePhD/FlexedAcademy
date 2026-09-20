@@ -9058,100 +9058,27 @@
     text-decoration: underline;
   }
 
-  /* Custom cursor — landing only, fine pointers, no reduced-motion.
-     Wrapper never captures hits (pointer-events: none). Tracking is
-     translate3d in LandCursor.jsx; these rules are the visual states. */
-  .land.land--cursor,
-  .land.land--cursor * {
-    cursor: none;
-  }
-  .land.land--cursor .land-signin-pop,
-  .land.land--cursor .land-signin-pop * {
-    cursor: auto;
-  }
-  .land.land--cursor .land-signin-pop input,
-  .land.land--cursor .land-signin-pop textarea {
-    cursor: text;
-  }
+  /* Magnetic ring on landing CTAs. The OS pointer stays; this overlay is
+     pointer-events none and only paints while hovering a .magnetic-target. */
   .land-cursor {
     position: fixed;
     inset: 0;
     z-index: 400;
     pointer-events: none;
     opacity: 0;
-    transition: opacity 220ms var(--ease);
+    transition: opacity 180ms var(--ease);
   }
-  .land-cursor-ring,
-  .land-cursor-dot {
+  .land-cursor-ring {
     position: absolute;
     top: 0;
     left: 0;
-    pointer-events: none;
-    will-change: transform;
-  }
-  .land-cursor-ring {
-    width: 22px;
-    height: 22px;
-    border: 1.5px solid rgb(var(--brand-ink-rgb) / 0.5);
-    border-radius: 999px;
-    background: transparent;
-    transition: width 280ms var(--ease-out), height 280ms var(--ease-out),
-      background 280ms var(--ease), border-color 280ms var(--ease),
-      box-shadow 280ms var(--ease);
-  }
-  .land-cursor-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 999px;
-    background: rgb(var(--brand-ink-rgb));
-    transition: opacity 180ms var(--ease), transform 180ms var(--ease);
-  }
-  .land-cursor-badge {
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    font-weight: var(--fw-semibold);
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: #fff;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 180ms var(--ease);
-  }
-  .land-cursor[data-state='magnetic'] .land-cursor-ring {
     width: 58px;
     height: 58px;
+    pointer-events: none;
+    will-change: transform;
+    border-radius: 999px;
+    border: 1.5px solid rgb(var(--land-accent-rgb) / 0.7);
     background: rgb(var(--land-accent-rgb) / 0.14);
-    border-color: rgb(var(--land-accent-rgb) / 0.7);
-  }
-  .land-cursor[data-state='magnetic'] .land-cursor-dot {
-    opacity: 0;
-  }
-  .land-cursor[data-state='media'] .land-cursor-ring {
-    width: 76px;
-    height: 76px;
-    background: rgb(20 22 26 / 0.82);
-    border-color: transparent;
-    box-shadow: 0 10px 28px rgb(20 22 26 / 0.28);
-  }
-  .land-cursor[data-state='media'] .land-cursor-dot {
-    opacity: 0;
-  }
-  .land-cursor[data-state='media'] .land-cursor-badge {
-    opacity: 1;
-  }
-  .land-cursor[data-state='text'] .land-cursor-ring {
-    width: 44px;
-    height: 44px;
-    background: #fff;
-    border-color: transparent;
-    mix-blend-mode: difference;
-  }
-  .land-cursor[data-state='text'] .land-cursor-dot {
-    opacity: 0;
   }
   .magnetic-target {
     --magnet-x: 0px;
