@@ -351,11 +351,7 @@ function LandingWalkthrough() {
   const label = 'FlexEd workspace walkthrough: a week planned, cited, and exported'
 
   return (
-    <section className="land-walkthrough" aria-labelledby="walkthrough-heading">
-      <span className="land-tag">The workspace</span>
-      <h2 id="walkthrough-heading" className="land-heading">
-        See a week planned, cited, and exported.
-      </h2>
+    <section className="land-walkthrough" aria-label={label}>
       <figure className="land-walkthrough-figure">
         {reduceMotion ? (
           <img className="land-walkthrough-media" src={poster} alt={label} />

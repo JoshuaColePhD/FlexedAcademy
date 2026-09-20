@@ -8768,13 +8768,9 @@
     text-align: center;
     padding: 0 max(6vw, var(--sp-6)) clamp(var(--sp-12), 8vw, var(--sp-16));
   }
-  .land-walkthrough .land-heading {
-    max-width: 22ch;
-    margin-top: var(--sp-3);
-  }
   .land-walkthrough-figure {
     width: min(100%, 1040px);
-    margin: clamp(var(--sp-6), 4vw, var(--sp-8)) 0 0;
+    margin: 0;
   }
   .land-walkthrough-media {
     display: block;
