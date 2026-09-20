@@ -49,6 +49,10 @@ def _verify_current(flexed_session: str | None) -> str | None:
     expires = user.get("beta_expires_at")
     if expires and expires <= datetime.now(UTC).isoformat(timespec="seconds"):
         return None
+    # Throttled presence stamp — see db.touch_last_seen. Cheap skip when the
+    # row we just read is still fresh; must not run before the gates above
+    # or a blocked/expired cookie would look like activity.
+    db.touch_last_seen(user)
     return payload["uid"]
 
 
