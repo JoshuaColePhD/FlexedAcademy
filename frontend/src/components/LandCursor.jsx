@@ -1,11 +1,14 @@
 import { useEffect } from 'react'
 
 /* Magnetic pull on landing CTAs. No custom cursor and no ring around the
- * pointer — the OS cursor stays. Touch and reduced-motion skip the pull.
+ * pointer — the OS cursor stays. The shift is a few pixels, eased, so the
+ * control nudges instead of following the mouse. Touch and reduced-motion
+ * skip the pull.
  */
 
-const MAGNET_PULL = 0.22
-const MAGNET_MAX = 12
+const MAGNET_PULL = 0.08
+const MAGNET_MAX = 4
+const MAGNET_LERP = 0.12
 
 function prefersMagnet() {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
@@ -23,6 +26,8 @@ export function LandCursor({ rootRef }) {
     let mx = window.innerWidth / 2
     let my = window.innerHeight / 2
     let magnetEl = null
+    let pullX = 0
+    let pullY = 0
     let running = true
     let raf = 0
 
@@ -31,6 +36,8 @@ export function LandCursor({ rootRef }) {
       magnetEl.style.setProperty('--magnet-x', '0px')
       magnetEl.style.setProperty('--magnet-y', '0px')
       magnetEl = null
+      pullX = 0
+      pullY = 0
     }
 
     const onMove = (event) => {
@@ -58,8 +65,10 @@ export function LandCursor({ rootRef }) {
         const box = magnetEl.getBoundingClientRect()
         const cx = box.left + box.width / 2
         const cy = box.top + box.height / 2
-        const pullX = Math.max(-MAGNET_MAX, Math.min(MAGNET_MAX, (mx - cx) * MAGNET_PULL))
-        const pullY = Math.max(-MAGNET_MAX, Math.min(MAGNET_MAX, (my - cy) * MAGNET_PULL))
+        const targetX = Math.max(-MAGNET_MAX, Math.min(MAGNET_MAX, (mx - cx) * MAGNET_PULL))
+        const targetY = Math.max(-MAGNET_MAX, Math.min(MAGNET_MAX, (my - cy) * MAGNET_PULL))
+        pullX += (targetX - pullX) * MAGNET_LERP
+        pullY += (targetY - pullY) * MAGNET_LERP
         magnetEl.style.setProperty('--magnet-x', `${pullX}px`)
         magnetEl.style.setProperty('--magnet-y', `${pullY}px`)
       }
