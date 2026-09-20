@@ -8497,16 +8497,17 @@
   .land-blob {
     position: absolute;
     z-index: 0;
-    inset: -12% 0 auto;
-    width: 100%;
-    height: min(70vw, 900px);
-    background: radial-gradient(circle min(18vw, 220px) at 18% 30%, rgb(191 219 254 / 0.62) 0%, transparent 100%),
-      radial-gradient(circle min(16vw, 200px) at 48% 12%, rgb(244 114 182 / 0.5) 0%, transparent 100%),
-      radial-gradient(circle min(17vw, 210px) at 78% 38%, rgb(251 146 60 / 0.48) 0%, transparent 100%),
-      radial-gradient(circle min(16vw, 200px) at 52% 68%, rgb(52 211 153 / 0.42) 0%, transparent 100%),
-      radial-gradient(circle min(15vw, 190px) at 28% 62%, rgb(96 165 250 / 0.55) 0%, transparent 100%);
+    inset: 0;
+    /* Round color orbs, not a faint wash. Harder color at the core, then
+       a short fade so they read as floating balls behind the glass instead
+       of tinting the whole cream field. */
+    background: radial-gradient(circle min(28vw, 340px) at 14% 22%, rgb(125 211 252 / 0.9) 0%, rgb(125 211 252 / 0.35) 42%, transparent 70%),
+      radial-gradient(circle min(24vw, 300px) at 52% 8%, rgb(244 114 182 / 0.78) 0%, rgb(244 114 182 / 0.28) 40%, transparent 68%),
+      radial-gradient(circle min(26vw, 320px) at 88% 28%, rgb(251 146 60 / 0.72) 0%, rgb(251 146 60 / 0.26) 42%, transparent 70%),
+      radial-gradient(circle min(24vw, 300px) at 72% 82%, rgb(52 211 153 / 0.75) 0%, rgb(52 211 153 / 0.28) 40%, transparent 68%),
+      radial-gradient(circle min(22vw, 280px) at 22% 78%, rgb(96 165 250 / 0.85) 0%, rgb(96 165 250 / 0.32) 42%, transparent 70%);
     pointer-events: none;
-    background-size: 180% 180%;
+    background-size: 160% 160%;
     animation: land-blob-drift 22s ease-in-out infinite alternate;
   }
   @keyframes land-blob-drift {
@@ -8532,9 +8533,11 @@
     text-align: center;
     padding: clamp(var(--sp-12), 8vw, var(--sp-16)) clamp(var(--sp-5), 6vw, var(--sp-16))
       clamp(var(--sp-8), 5vw, var(--sp-10));
-    background: rgb(var(--brand-rgb) / 0.32);
-    backdrop-filter: blur(28px) saturate(170%);
-    -webkit-backdrop-filter: blur(28px) saturate(170%);
+    /* Thin cream glass: enough to keep type readable, thin enough that the
+       orbs behind it stay visible as orbs. */
+    background: rgb(var(--brand-rgb) / 0.18);
+    backdrop-filter: blur(36px) saturate(180%);
+    -webkit-backdrop-filter: blur(36px) saturate(180%);
   }
   .land-eyebrow {
     position: relative;
