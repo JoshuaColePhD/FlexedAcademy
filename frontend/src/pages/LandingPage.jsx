@@ -4,34 +4,13 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { api } from '../lib/api'
 import { handleViewTransitionNavigation } from '../lib/viewTransitions'
 import { SignInForm } from '../components/SignInForm'
+import { LandCursor } from '../components/LandCursor'
 import { useAuth } from '../lib/authContext'
 
-/* The public front door — a verification seal on violet, not a bordered grid.
- * The logo mark is a violet gem glowing on near-black; the page commits to
- * that as its real, fixed habitat rather than following the visitor's
- * light/dark preference. Gold is reserved for exactly one recurring
- * signature — the seal — so it always means "this claim was checked," never
- * generic decoration. The one warm, paper-toned section is the excerpt of an
- * actual standards document; everywhere else stays violet.
- *
- * <!-- impeccable:direction
- * THESIS: A verification seal on violet, not a bordered glass grid — one
- * signature motif (the seal) proves the mechanism instead of a layout metaphor
- * describing it.
- * OWN-WORLD: Fixed deep-violet ground (never following data-theme) + gold
- * seal accent + one warm paper section for the real document excerpt.
- * Bricolage Grotesque display, Source Serif 4 for quoted text, Inter/JetBrains
- * Mono elsewhere.
- * STORY: See the claim with its seal, watch the connector draw from claim to
- * source on scroll, see the three-stage thread that makes it true, start a
- * early access.
- * FIRST VIEWPORT: bar (mark, quiet sign-in) over a violet hero — headline
- * with a hand-drawn seal, sub, one gold CTA.
- * FORM: second pass via /frontend-design after the first (glazier-wall)
- * build read as generic/broadsheet; user-directed redesign.
- * FINISH: unreviewed and undocumented is unfinished; this build ends with
- * the finish review and an updated DESIGN.md.
- * -->
+/* The public front door — warm paper like the product, gold seal for
+ * "this citation was checked," district blue for the one filled action.
+ * Teachers see the workspace video, then one proof that a plan line maps
+ * to a real standard. They sign in on the live site; nothing to install.
  */
 
 // Plans are unlimited on the free tier now (a rolling weekly usage cap
@@ -53,50 +32,22 @@ function priceLine(data) {
   // it (routes/billing.py) — not hardcoded here, so this line can't
   // promise a number Stripe isn't actually configured to honor.
   const days = data?.trial_period_days
-  // The figure itself gets the page's one violet accent (.land-price-amount)
-  // — everywhere else on this line stays the neutral --brand-muted gray, so
-  // the price is the thing the eye lands on, not the whole sentence.
+  // The figure itself uses district blue (.land-price-amount) so the price
+  // is the thing the eye lands on, not the whole sentence.
   const amount = (
     <span className="land-price-amount">
       {money} a {every}
     </span>
   )
   return days > 0 ? (
-    <>Try FlexEd free for {days} days — no credit card required. Then {amount}.</>
+    <>Try it free for {days} days — no credit card. Then {amount}.</>
   ) : (
-    <>Join early access — {amount}.</>
+    <>Then {amount}.</>
   )
 }
 
-/* Reveal-on-scroll, with a backstop that does not depend on
- * IntersectionObserver having fired.
- *
- * What this guards is worth stating plainly, because the failure is silent and
- * total rather than partial: the three sections using this hook start at
- * `opacity: 0` / `transform: scale(0)` in CSS (.land-mech-step,
- * .land-node-dot, .land-connector-*) and are revealed ONLY by the .is-inview
- * class this hook decides to add. So anything that stops the observer from
- * delivering a callback doesn't degrade the animation — it leaves the section
- * that explains how the product works as blank space with the connecting
- * arrows still drawn around it, on the public landing page, for a visitor who
- * has never seen the product. Same shape as the AnimatePresence stall fixed in
- * ClassPage: content whose visibility is contingent on an animation callback.
- *
- * Two changes:
- *  - A plain geometric check on mount, on scroll, and on resize. It is a few
- *    lines, it is deterministic, and it covers the cases an observer alone can
- *    miss: an element already on screen at mount, a scroll container that is
- *    not the document (.land is `overflow-y: auto`, and index.html's body is
- *    overflow-hidden, so the document itself never scrolls here), and a first
- *    callback that never arrives. Whichever mechanism notices first wins —
- *    they both just set the same flag once.
- *  - threshold 0.3 -> 0.2, and the manual check uses a simple "any part of it
- *    is past 85% of the viewport" test. 30% of a section had to be on screen
- *    before anything appeared, which on a phone meant scrolling well into a
- *    blank region before it filled in.
- *
- * The reveal still only happens on approach, so the effect is unchanged for
- * anyone whose observer works normally.
+/* Reveal-on-scroll for the citation connector. Failure is silent: the
+ * strands start undrawn and only complete when `.is-inview` lands.
  */
 function useInView() {
   const ref = useRef(null)
@@ -193,7 +144,7 @@ function VerifySeal({ className }) {
           fill matches the ground, see .land-seal-disc), embossed via the
           two-shadow filter on .land-seal itself. The ring and check stay
           exactly as before, just drawn on top of something with depth now. */}
-      <circle cx="32" cy="32" r="29" className="land-seal-disc" />
+      <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
       {/* The stamp's perforated edge — more of the "seal" this icon is named
           for, and literally more connecting lines around the mark, not just
           the one ring. Sits outside the disc, inside the viewBox's own
@@ -351,7 +302,7 @@ function SignInPopover() {
     >
       <button
         type="button"
-        className="land-signin"
+        className="land-signin magnetic-target"
         aria-expanded={open}
         aria-haspopup="true"
         onClick={() => setOpen((o) => !o)}
@@ -367,14 +318,78 @@ function SignInPopover() {
   )
 }
 
+function LandingWalkthrough() {
+  const videoRef = useRef(null)
+  const [reduceMotion, setReduceMotion] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  )
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const onChange = () => setReduceMotion(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  useEffect(() => {
+    const el = videoRef.current
+    if (!el || reduceMotion) return undefined
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          el.play().catch(() => {})
+        } else {
+          el.pause()
+        }
+      },
+      { threshold: 0.2 }
+    )
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [reduceMotion])
+
+  const poster = '/walkthrough/poster.webp'
+  const label = 'FlexEd workspace walkthrough: a week planned, cited, and exported'
+
+  return (
+    <section className="land-walkthrough" aria-labelledby="walkthrough-heading">
+      <div className="land-blob land-blob--quiet" aria-hidden="true" />
+      <h2 id="walkthrough-heading" className="land-heading">
+        See a week planned, cited, and exported.
+      </h2>
+      <figure className="land-walkthrough-figure">
+        {reduceMotion ? (
+          <img className="land-walkthrough-media" src={poster} alt={label} />
+        ) : (
+          <video
+            ref={videoRef}
+            className="land-walkthrough-media"
+            poster={poster}
+            muted
+            loop
+            playsInline
+            autoPlay
+            preload="metadata"
+            aria-label={label}
+          >
+            <source src="/walkthrough/FlexedAcademy_Walkthrough.mp4" type="video/mp4" />
+            <source src="/walkthrough/FlexedAcademy_Walkthrough.webm" type="video/webm" />
+          </video>
+        )}
+        <figcaption className="land-walkthrough-cap">
+          Nothing to install. Sign in to plan your own week.
+        </figcaption>
+      </figure>
+    </section>
+  )
+}
+
 export function LandingPage() {
   useDocumentTitle('Lesson plans, cited to the standard')
   const navigate = useNavigate()
   const { loginDemo } = useAuth()
   const [pricing, setPricing] = useState(null)
   const [proofRef, proofInView] = useInView()
-  const [pipelineRef, pipelineInView] = useInView()
-  const [mechRef, mechInView] = useInView()
   const landRef = useRef(null)
   const [barHidden, setBarHidden] = useState(false)
   const [demoLoading, setDemoLoading] = useState(false)
@@ -442,57 +457,37 @@ export function LandingPage() {
 
       <section className="land-hero">
         <div className="land-blob" aria-hidden="true" />
-        {/* The "Early access" eyebrow pill was dropped: "Join early access" already
-            says it on the CTA button below, and the two together read as the same
-            claim printed twice above the fold. */}
-        <h1 className="land-title">A week of lesson plans, cited to the standard</h1>
+        <div className="land-hero-frost">
+        <h1 className="land-title">
+          A week of lesson plans, cited to the standard
+          <VerifySeal className="land-seal land-seal--hero" />
+        </h1>
         <p className="land-sub">
-          Word for word from your state's real course of study — no guessing, no vibes.
-          Just download it.
+          Every cited code traces to your state's course of study, then downloads
+          as a Word document in your school's format.
         </p>
         <div className="land-actions">
           <Link
             to="/signup"
-            className="land-cta"
+            className="land-cta magnetic-target"
             onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
           >
-            Join Early Access
+            Start planning
             <ArrowIcon />
           </Link>
-          <button type="button" className="land-demo-link" onClick={openDemo} disabled={demoLoading}>
+          <button type="button" className="land-demo-link magnetic-target" onClick={openDemo} disabled={demoLoading}>
             {demoLoading ? 'Opening demo…' : 'See a finished lesson plan'}
           </button>
-          <span className="land-note">Built by an Alabama high school teacher</span>
         </div>
         {demoError ? <p className="land-demo-error" role="alert">{demoError}</p> : null}
-        {pricing ? <p className="land-price">{pricing}</p> : null}
+        <p className="land-meta">
+          <span className="land-note">Built by an Alabama high school teacher</span>
+          {pricing ? <span className="land-price">{pricing}</span> : null}
+        </p>
+        </div>
       </section>
 
-      <section className="land-template-proof" aria-labelledby="template-proof-heading">
-        <div>
-          <span className="land-tag">Your format, carried through</span>
-          <h2 id="template-proof-heading" className="land-heading">Bring the template your school already uses.</h2>
-          <p className="land-template-copy">
-            Upload a blank Word template and FlexEd reads its cells, colors, headings, and layout intent. Your next lesson plan is written into that same format, alongside your syllabus, pacing guide, and state standards.
-          </p>
-        </div>
-        <div className="land-template-flow" aria-label="Blank template becomes a filled lesson plan">
-          <div className="land-template-card land-template-card--blank">
-            <span className="land-template-card-label">Blank template</span>
-            <span className="land-template-row land-template-row--violet" />
-            <span className="land-template-row land-template-row--short" />
-            <span className="land-template-cell-grid"><i /><i /><i /><i /></span>
-          </div>
-          <ArrowIcon />
-          <div className="land-template-card land-template-card--filled">
-            <span className="land-template-card-label">Filled lesson plan</span>
-            <span className="land-template-row land-template-row--gold" />
-            <span className="land-template-row" />
-            <span className="land-template-row land-template-row--short" />
-            <span className="land-template-row" />
-          </div>
-        </div>
-      </section>
+      <LandingWalkthrough />
 
       <section ref={proofRef} className={`land-proof${proofInView ? ' is-inview' : ''}`}>
         <h2 className="land-heading">Every line cites where it came from.</h2>
@@ -507,12 +502,6 @@ export function LandingPage() {
               </p>
             </div>
           </div>
-          {/* A bundle converging on a single junction, not one bare line —
-              the mechanism isn't "text points at text," it's several
-              things (the phrase, the code, the source) resolving to one
-              checked match. Each strand still gets the same scroll-triggered
-              draw-in as the original single path (see .land-connector path
-              below); the node itself fades in once they've all arrived. */}
           <svg className="land-connector" viewBox="0 0 200 90" preserveAspectRatio="none" aria-hidden="true">
             <path className="land-connector-line" d="M6 4 C 80 4, 92 40, 100 45" fill="none" stroke="currentColor" strokeWidth="1.3" />
             <path className="land-connector-line" d="M6 14 C 90 14, 96 42, 100 45" fill="none" stroke="currentColor" strokeWidth="2" />
@@ -533,68 +522,18 @@ export function LandingPage() {
             </div>
           </div>
         </div>
-      </section>
-
-      <section ref={pipelineRef} className={`land-pipeline${pipelineInView ? ' is-inview' : ''}`}>
-        <div className="land-thread">
-          <svg className="land-thread-line" viewBox="0 0 600 4" preserveAspectRatio="none" aria-hidden="true">
-            <line x1="0" y1="2" x2="600" y2="2" stroke="currentColor" strokeWidth="2" />
-          </svg>
-          <div className="land-node">
-            <span className="land-node-dot" />
-            <span className="land-stage">Retrieve</span>
-            <p>
-              The verbatim standard text is pulled first. An off-topic question is refused
-              outright, never answered from the nearest match.
-            </p>
-          </div>
-          <div className="land-node">
-            <span className="land-node-dot" />
-            <span className="land-stage">Generate</span>
-            <p>The plan is drafted from only what retrieval handed over — nothing recalled from memory.</p>
-          </div>
-          <div className="land-node">
-            <span className="land-node-dot" />
-            <span className="land-stage">Audit</span>
-            <p>Every code in the output is checked against what retrieval supplied. Anything else is flagged, not hidden.</p>
-          </div>
-        </div>
-      </section>
-
-      <section ref={mechRef} className={`land-mech${mechInView ? ' is-inview' : ''}`}>
-        <h2 className="land-heading">One pass through the mechanism.</h2>
-        <div className="land-mech-steps">
-          <div className="land-mech-step">
-            <span className="land-tag">Retrieved</span>
-            <p className="land-quote">
-              ELA Reading Standard 4.B — Reading: explain how{' '}
-              <mark className="land-mark">word choice and syntax convey tone</mark>.
-            </p>
-            <span className="land-loc">source_docs/ELAReadingStandards.pdf, p. 6</span>
-          </div>
-          <ArrowIcon className="land-mech-arrow" />
-          <div className="land-mech-step">
-            <span className="land-tag land-tag--cited">Generated</span>
-            <p className="land-quote">
-              Monday — Students annotate rhetorical shifts in paired excerpts, then draft a
-              claim connecting <mark className="land-mark">tone</mark> to purpose.
-            </p>
-          </div>
-          <ArrowIcon className="land-mech-arrow" />
-          <div className="land-mech-step land-mech-step--audit">
-            <VerifySeal className="land-seal" />
-            <p>Matched to the retrieved standard. Nothing flagged.</p>
-          </div>
-        </div>
+        <p className="land-trust">
+          If the standard is not in the source, FlexEd refuses rather than guess.
+        </p>
       </section>
 
       <footer className="land-foot">
         <Link
           to="/signup"
-          className="land-foot-cta"
+          className="land-cta magnetic-target"
           onClick={(event) => handleViewTransitionNavigation(event, navigate, '/signup')}
         >
-          Join Early Access
+          Start planning
           <ArrowIcon />
         </Link>
         <div className="land-foot-legal mt-4 flex-col gap-2">
@@ -607,8 +546,8 @@ export function LandingPage() {
             AP®, Pre-AP®, and College Board® are trademarks registered by the College Board, which is not affiliated with, and does not endorse, this product. ACT® is a registered trademark of ACT, Inc.
           </span>
         </div>
-        
       </footer>
+      <LandCursor rootRef={landRef} />
     </div>
   )
 }
