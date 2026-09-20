@@ -8387,13 +8387,12 @@
     color: var(--brand-ink);
     view-transition-name: flexed-brand;
   }
-  /* The favicon's own checkmark, reused as the wordmark's mark (on request)
-     rather than a separate logo asset — same seal the proof section already
-     uses for "this claim was checked," just sized down to sit beside text. */
+  /* Same purple as AppShell's sidebar mark and the favicon check — this is
+     the logo, not the gold verification stamp used next to a cited claim. */
   .land-brand-mark {
     width: 22px;
     height: 22px;
-    color: var(--land-gold);
+    color: #7c3aed;
     filter: drop-shadow(1px 1px 2px rgb(var(--neo-dark-rgb) / 0.7))
       drop-shadow(-1px -1px 2px rgb(var(--neo-light-rgb) / 0.5));
   }
@@ -8612,7 +8611,10 @@
     height: 40px;
     vertical-align: -0.08em;
   }
-  .land-seal-disc {
+  /* Scoped to .land-seal so the wordmark / AppShell / onboarding logos that
+     reuse the same SVG class names stay purple and opaque instead of
+     inheriting the gold stamp fill and the draw-in animation. */
+  .land-seal .land-seal-disc {
     fill: var(--brand);
     /* Was a plain fill with no entrance of its own, so it rendered solid on
        the very first paint — a fully-formed dot sitting there before the
@@ -8628,18 +8630,18 @@
      <circle>'s path origin) was reading as a stray dot appearing before the
      rest of the ring caught up. Fading removes that point-of-origin
      artifact outright instead of chasing where exactly it was. */
-  .land-seal-ring {
+  .land-seal .land-seal-ring {
     opacity: 0;
     animation: land-seal-disc-in 350ms var(--ease-out) 500ms both;
   }
   /* The stamp's perforated edge — a plain dashed pattern, not a sweep, so
      it has no start-point artifact to begin with. Timed to finish right as
      the ring does, so the two read as one "the seal is stamped" beat. */
-  .land-seal-ticks {
+  .land-seal .land-seal-ticks {
     opacity: 0;
     animation: land-seal-disc-in 350ms var(--ease-out) 550ms both;
   }
-  .land-seal-check {
+  .land-seal .land-seal-check {
     stroke-dasharray: 40;
     stroke-dashoffset: 40;
     animation: land-seal-draw 400ms var(--ease-out) 950ms both;

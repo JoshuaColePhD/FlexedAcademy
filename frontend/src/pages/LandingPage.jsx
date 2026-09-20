@@ -143,7 +143,7 @@ function VerifySeal({ className }) {
           fill matches the ground, see .land-seal-disc), embossed via the
           two-shadow filter on .land-seal itself. The ring and check stay
           exactly as before, just drawn on top of something with depth now. */}
-      <circle cx="32" cy="32" r="29" className="land-seal-disc" />
+      <circle cx="32" cy="32" r="29" fill="transparent" className="land-seal-disc" />
       {/* The stamp's perforated edge — more of the "seal" this icon is named
           for, and literally more connecting lines around the mark, not just
           the one ring. Sits outside the disc, inside the viewBox's own
