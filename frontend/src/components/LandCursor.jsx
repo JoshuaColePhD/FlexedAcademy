@@ -16,10 +16,13 @@ const MAGNET_PULL = 0.22
 const MAGNET_MAX = 12
 
 function prefersCustomCursor() {
-  return (
-    window.matchMedia('(pointer: fine)').matches &&
-    !window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  )
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return false
+  const coarse = window.matchMedia('(pointer: coarse)').matches
+  const fine = window.matchMedia('(pointer: fine)').matches
+  /* Touch-only devices stay on the OS cursor. A VM that reports neither
+     fine nor coarse still has a mouse in the seat, so it gets the ring. */
+  if (coarse && !fine) return false
+  return true
 }
 
 export function LandCursor({ rootRef }) {
