@@ -104,21 +104,6 @@ structured plan shape, grounded vs. non-retrieved vs. hallucinated citations, st
 DOCX integrity and queued document recovery, and security cases (account takeover, session
 invalidation, public-plan access, SPA file exposure).
 
-Reviewers who clone the repo can run the fast checks from the repository root:
-
-```bash
-./venv/bin/python eval/run_all.py --fast
-./venv/bin/python scripts/05_eval_harness.py --offline   # no network required
-```
-
-The Alabama standards artifact has its own dependency-free quality gate — framework roster, required
-metadata, valid state/grade scope, duplicate identities, source URLs, PDF verification, and report
-consistency:
-
-```bash
-./venv/bin/python scripts/check_alabama_ingest.py
-```
-
 <details>
 <summary>How embedding rebuilds stay safe</summary>
 
@@ -153,9 +138,10 @@ pipeline the web app uses. The planned Apps SDK surface covers class/week contex
 retrieval, plan generation, day-level revision, a secure DOCX capability URL, and an in-chat
 lesson-plan widget.
 
-For local experimentation, log in and `POST /api/mcp/token` for a short-lived per-user bearer token
-and the MCP URL, and set `MCP_PUBLIC_URL` to the public HTTPS origin for a shared deployment. Never
-commit `MCP_ACCESS_TOKEN`, `SESSION_SECRET`, or any generated connector token.
+Teachers do not use this path. If you are developing the connector, log in and
+`POST /api/mcp/token` for a short-lived per-user bearer token and the MCP URL, and set
+`MCP_PUBLIC_URL` to the public HTTPS origin for a shared deployment. Never commit
+`MCP_ACCESS_TOKEN`, `SESSION_SECRET`, or any generated connector token.
 
 ## Repository layout
 
@@ -178,7 +164,6 @@ Start on the live site. Teachers and most reviewers never clone this repo.
 2. Skim the [portfolio brief](docs/recruiter/PORTFOLIO_BRIEF.md) for the problem, evidence, and story.
 3. Read the [architecture](docs/ARCHITECTURE.md) and [engineering decisions](docs/DECISIONS.md).
 4. See the [production evidence snapshot](docs/recruiter/PRODUCTION_EVIDENCE.md), [case study](docs/recruiter/FlexedAcademy_Case_Study.md), and [sample lesson plan](docs/recruiter/FlexedAcademy_Sample_Lesson_Plan.docx).
-5. Optional: clone the repo and run `./venv/bin/python scripts/05_eval_harness.py --offline` for the no-network regression gate.
 
 The read-only demo uses the same application shell and a seeded sample plan as the live product, but
 server-side enforcement disables generation, edits, uploads, sharing, and billing. To enable it on a
@@ -188,10 +173,16 @@ deployment, set `DEMO_ACCOUNT_EMAIL` and `DEMO_ACCOUNT_PASSWORD` as secrets (opt
 <details>
 <summary>Optional: clone and run the source locally</summary>
 
-Only needed to inspect the code, run evals, or contribute. Python 3.12+, Node.js,
-Postgres/Supabase with `pgvector`, and an OpenAI API key — see [.env.example](.env.example) and
-[DEPLOYING.md](DEPLOYING.md). Never commit `.env`, API keys, databases, uploaded templates,
-generated plans, or local model caches.
+Only if you want to inspect the source, run evals, or contribute — not how teachers use FlexEd.
+Python 3.12+, Node.js, Postgres/Supabase with `pgvector`, and an OpenAI API key — see
+[.env.example](.env.example) and [DEPLOYING.md](DEPLOYING.md). Never commit `.env`, API keys,
+databases, uploaded templates, generated plans, or local model caches.
+
+```bash
+./venv/bin/python eval/run_all.py --fast
+./venv/bin/python scripts/05_eval_harness.py --offline   # no network required
+./venv/bin/python scripts/check_alabama_ingest.py
+```
 
 </details>
 
