@@ -9058,28 +9058,8 @@
     text-decoration: underline;
   }
 
-  /* Magnetic ring on landing CTAs. The OS pointer stays; this overlay is
-     pointer-events none and only paints while hovering a .magnetic-target. */
-  .land-cursor {
-    position: fixed;
-    inset: 0;
-    z-index: 400;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 180ms var(--ease);
-  }
-  .land-cursor-ring {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 58px;
-    height: 58px;
-    pointer-events: none;
-    will-change: transform;
-    border-radius: 999px;
-    border: 1.5px solid rgb(var(--land-accent-rgb) / 0.7);
-    background: rgb(var(--land-accent-rgb) / 0.14);
-  }
+  /* Magnetic pull on landing CTAs — the OS pointer is unchanged; the
+     control itself eases toward the mouse. */
   .magnetic-target {
     --magnet-x: 0px;
     --magnet-y: 0px;

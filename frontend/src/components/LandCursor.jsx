@@ -1,12 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
 
-/* Magnetic pull on landing CTAs. The OS pointer stays visible everywhere;
- * this overlay is only a lerp ring that appears on .magnetic-target.
- * pointer-events: none so clicks are never stolen. Touch and reduced-motion
- * skip it. The workspace is unchanged.
+/* Magnetic pull on landing CTAs. No custom cursor and no ring around the
+ * pointer — the OS cursor stays. Touch and reduced-motion skip the pull.
  */
 
-const LERP_RING = 0.16
 const MAGNET_PULL = 0.22
 const MAGNET_MAX = 12
 
@@ -19,20 +16,12 @@ function prefersMagnet() {
 }
 
 export function LandCursor({ rootRef }) {
-  const wrapRef = useRef(null)
-  const ringRef = useRef(null)
-
   useEffect(() => {
     const root = rootRef.current
-    const wrap = wrapRef.current
-    const ring = ringRef.current
-    if (!root || !wrap || !ring) return undefined
-    if (!prefersMagnet()) return undefined
+    if (!root || !prefersMagnet()) return undefined
 
     let mx = window.innerWidth / 2
     let my = window.innerHeight / 2
-    let ringX = mx
-    let ringY = my
     let magnetEl = null
     let running = true
     let raf = 0
@@ -44,12 +33,6 @@ export function LandCursor({ rootRef }) {
       magnetEl = null
     }
 
-    const hide = () => {
-      wrap.dataset.state = 'idle'
-      wrap.style.opacity = '0'
-      releaseMagnet()
-    }
-
     const onMove = (event) => {
       mx = event.clientX
       my = event.clientY
@@ -57,7 +40,7 @@ export function LandCursor({ rootRef }) {
 
     const onLeave = (event) => {
       if (event.type === 'mouseout' && (event.relatedTarget || event.toElement)) return
-      hide()
+      releaseMagnet()
     }
 
     const tick = () => {
@@ -71,35 +54,23 @@ export function LandCursor({ rootRef }) {
         magnetEl = nextMagnet
       }
 
-      let tx = mx
-      let ty = my
       if (magnetEl) {
         const box = magnetEl.getBoundingClientRect()
         const cx = box.left + box.width / 2
         const cy = box.top + box.height / 2
-        tx = cx + (mx - cx) * 0.1
-        ty = cy + (my - cy) * 0.1
         const pullX = Math.max(-MAGNET_MAX, Math.min(MAGNET_MAX, (mx - cx) * MAGNET_PULL))
         const pullY = Math.max(-MAGNET_MAX, Math.min(MAGNET_MAX, (my - cy) * MAGNET_PULL))
         magnetEl.style.setProperty('--magnet-x', `${pullX}px`)
         magnetEl.style.setProperty('--magnet-y', `${pullY}px`)
-        wrap.dataset.state = 'magnetic'
-        wrap.style.opacity = '1'
-      } else {
-        wrap.dataset.state = 'idle'
-        wrap.style.opacity = '0'
       }
 
-      ringX += (tx - ringX) * LERP_RING
-      ringY += (ty - ringY) * LERP_RING
-      ring.style.transform = `translate3d(${ringX}px, ${ringY}px, 0) translate(-50%, -50%)`
       raf = requestAnimationFrame(tick)
     }
 
     document.addEventListener('mousemove', onMove, { passive: true })
     document.addEventListener('mouseleave', onLeave)
     document.addEventListener('mouseout', onLeave)
-    window.addEventListener('blur', hide)
+    window.addEventListener('blur', releaseMagnet)
     raf = requestAnimationFrame(tick)
 
     return () => {
@@ -108,14 +79,10 @@ export function LandCursor({ rootRef }) {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseleave', onLeave)
       document.removeEventListener('mouseout', onLeave)
-      window.removeEventListener('blur', hide)
+      window.removeEventListener('blur', releaseMagnet)
       releaseMagnet()
     }
   }, [rootRef])
 
-  return (
-    <div ref={wrapRef} className="land-cursor" aria-hidden="true" data-state="idle">
-      <div ref={ringRef} className="land-cursor-ring" />
-    </div>
-  )
+  return null
 }
