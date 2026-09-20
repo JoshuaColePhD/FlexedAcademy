@@ -1119,6 +1119,8 @@ const SORT_ACCESSORS = {
   tokens_7d: (a) => a.tokens_7d || 0,
   avg_day: (a) => a.tokens_avg_day_30d || 0,
   last_active: (a) => a.last_plan_at || '',
+  last_login: (a) => a.last_login_at || '',
+  last_seen: (a) => a.last_seen_at || '',
   joined: (a) => a.created_at || '',
 }
 
@@ -2523,7 +2525,7 @@ function CustomerDetail({ account, onClose, onToggleComp, pending }) {
   return (
     <aside className="mt-5 rounded-2xl border border-accent/30 bg-accent-tint/35 p-4" aria-label={`Customer profile for ${account.name || account.email}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-accent-contrast"><UserRound size={18} aria-hidden="true" /></span><div><div className="flex flex-wrap items-center gap-2"><p className="text-lg font-semibold text-ink">{account.name || 'Unnamed customer'}</p>{account.is_blocked ? <BlockedPill /> : null}</div><p className="text-xs text-ink-muted">{account.email}{account.school ? ` · ${account.school}` : ''}</p><p className="mt-1 text-2xs text-ink-faint">Joined {relative(account.created_at)} · Last plan {relative(account.last_plan_at)}</p></div></div>
+        <div className="flex items-start gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent text-accent-contrast"><UserRound size={18} aria-hidden="true" /></span><div><div className="flex flex-wrap items-center gap-2"><p className="text-lg font-semibold text-ink">{account.name || 'Unnamed customer'}</p>{account.is_blocked ? <BlockedPill /> : null}</div><p className="text-xs text-ink-muted">{account.email}{account.school ? ` · ${account.school}` : ''}</p><p className="mt-1 text-2xs text-ink-faint">Joined {relative(account.created_at)} · Last login {relative(account.last_login_at)} · Last seen {relative(account.last_seen_at)} · Last plan {relative(account.last_plan_at)}</p></div></div>
         <button type="button" className="btn-icon" onClick={onClose} aria-label="Close customer profile"><X size={15} aria-hidden="true" /></button>
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-4">
@@ -2989,6 +2991,8 @@ export function AdminPage() {
                                 <th className="px-3 py-2 font-medium">Est. cost 7d</th>
                                 <SortHeader label="Avg/day (30d)" sortKey="avg_day" sort={sort} onSort={onSort} />
                                 <SortHeader label="Last active" sortKey="last_active" sort={sort} onSort={onSort} />
+                                <SortHeader label="Last login" sortKey="last_login" sort={sort} onSort={onSort} />
+                                <SortHeader label="Last seen" sortKey="last_seen" sort={sort} onSort={onSort} />
                                 <SortHeader label="Joined" sortKey="joined" sort={sort} onSort={onSort} />
                                 <th className="px-3 py-2 font-medium">Planning context</th>
                                 <th className="px-3 py-2 font-medium">Custom cap</th>
@@ -3027,6 +3031,8 @@ export function AdminPage() {
                                   <td className="px-3 py-2 font-mono text-ink-soft">{estCost(a.tokens_7d || 0)}</td>
                                   <td className="px-3 py-2 font-mono text-ink-soft">{(a.tokens_avg_day_30d || 0).toLocaleString()}</td>
                                   <td className="px-3 py-2 text-ink-soft">{relative(a.last_plan_at)}</td>
+                                  <td className="px-3 py-2 text-ink-soft">{relative(a.last_login_at)}</td>
+                                  <td className="px-3 py-2 text-ink-soft">{relative(a.last_seen_at)}</td>
                                   <td className="px-3 py-2 text-ink-soft">{relative(a.created_at)}</td>
                                   <td className="px-3 py-2">
                                     <PlanningContext account={a} />
@@ -3091,6 +3097,10 @@ export function AdminPage() {
                               <dd className="text-right font-mono text-ink-soft">{(a.tokens_avg_day_30d || 0).toLocaleString()}</dd>
                               <dt className="text-ink-muted">Last active</dt>
                               <dd className="text-right text-ink-soft">{relative(a.last_plan_at)}</dd>
+                              <dt className="text-ink-muted">Last login</dt>
+                              <dd className="text-right text-ink-soft">{relative(a.last_login_at)}</dd>
+                              <dt className="text-ink-muted">Last seen</dt>
+                              <dd className="text-right text-ink-soft">{relative(a.last_seen_at)}</dd>
                               <dt className="text-ink-muted">Joined</dt>
                               <dd className="text-right text-ink-soft">{relative(a.created_at)}</dd>
                             </dl>

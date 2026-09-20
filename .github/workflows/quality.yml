@@ -48,7 +48,7 @@ jobs:
       - name: Run backend lint
         run: ruff check backend
       - name: Run database-free account isolation tests
-        run: pytest -q backend/test_security_isolation.py
+        run: pytest -q backend/test_security_isolation.py backend/test_user_presence.py
       - name: Run eval suites that need no DB or API
         # eval/run_all.py --fast runs exactly the suites its own SUITES list
         # marks needs_corpus=False: test_grounding_audit, test_field_scoped_
