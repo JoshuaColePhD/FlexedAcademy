@@ -352,6 +352,7 @@ function LandingWalkthrough() {
 
   return (
     <section className="land-walkthrough" aria-labelledby="walkthrough-heading">
+      <div className="land-blob land-blob--quiet" aria-hidden="true" />
       <h2 id="walkthrough-heading" className="land-heading">
         See a week planned, cited, and exported.
       </h2>

@@ -8509,6 +8509,16 @@
     background-size: 160% 160%;
     animation: land-blob-drift 22s ease-in-out infinite alternate;
   }
+  /* Quieter cousins of the hero orbs, so the walkthrough is not a dead
+     cream slab the moment the hero ends. Same hues, lower strength, and
+     they sit behind the heading and the clip. */
+  .land-blob--quiet {
+    inset: -8% 0 auto;
+    height: min(80%, 640px);
+    opacity: 0.55;
+    animation-duration: 28s;
+    animation-direction: alternate-reverse;
+  }
   @keyframes land-blob-drift {
     0% {
       background-position: 10% 20%;
@@ -8708,6 +8718,10 @@
   .land-arrow {
     margin-left: var(--sp-2);
     vertical-align: -1px;
+    transition: transform var(--t-fast) var(--ease-out);
+  }
+  .land-cta:hover .land-arrow {
+    transform: translateX(4px);
   }
   .land-note {
     font-family: var(--font-mono);
@@ -8764,20 +8778,26 @@
   .land-walkthrough {
     position: relative;
     z-index: 1;
+    isolation: isolate;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
+    overflow: hidden;
     /* Space the clip off the hero: a heading plus top padding so the two
        blocks do not share an edge. */
     padding: clamp(var(--sp-10), 6vw, var(--sp-14)) max(6vw, var(--sp-6))
       clamp(var(--sp-12), 8vw, var(--sp-16));
   }
   .land-walkthrough .land-heading {
+    position: relative;
+    z-index: 1;
     max-width: 22ch;
     margin: 0 0 clamp(var(--sp-6), 4vw, var(--sp-8));
   }
   .land-walkthrough-figure {
+    position: relative;
+    z-index: 1;
     width: min(100%, 1040px);
     margin: 0;
   }
@@ -8791,6 +8811,11 @@
     border: 1px solid rgb(var(--brand-ink-rgb) / 0.1);
     background: rgb(28 27 23);
     box-shadow: 0 18px 48px rgb(var(--brand-ink-rgb) / 0.14);
+    transition: transform var(--t-base) var(--ease-out), box-shadow var(--t-base) var(--ease);
+  }
+  .land-walkthrough-figure:hover .land-walkthrough-media {
+    transform: translateY(-6px);
+    box-shadow: 0 28px 64px rgb(var(--brand-ink-rgb) / 0.2);
   }
   .land-walkthrough-cap {
     margin-top: var(--sp-4);
@@ -8839,6 +8864,23 @@
     -webkit-backdrop-filter: blur(14px) saturate(180%);
     border: 1px solid rgb(var(--brand-ink-rgb) / 0.08);
     box-shadow: 0 8px 24px rgb(var(--brand-ink-rgb) / 0.06);
+    opacity: 0;
+    transform: translateY(14px);
+    transition: opacity 500ms var(--ease-out), transform 500ms var(--ease-out),
+      box-shadow var(--t-base) var(--ease);
+  }
+  .land-proof.is-inview .land-excerpt-plan,
+  .land-proof.is-inview .land-excerpt-source {
+    opacity: 1;
+    transform: none;
+  }
+  .land-proof.is-inview .land-excerpt-source {
+    transition-delay: 140ms;
+  }
+  .land-proof.is-inview .land-excerpt-plan:hover,
+  .land-proof.is-inview .land-excerpt-source:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 36px rgb(var(--brand-ink-rgb) / 0.1);
   }
   .land-excerpt-source {
     align-items: flex-start;
