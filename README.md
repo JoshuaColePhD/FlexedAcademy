@@ -1,37 +1,61 @@
-# FlexedAcademy
+<div align="center">
+
+<img src="logo/blue_check_logo.svg" alt="FlexEd Academy" width="84" />
+
+# FlexEd Academy
+
+**Standards-grounded lesson planning that shows its work.**
+
+Tell FlexEd what you're teaching this week. It returns a five-day, standards-aligned plan —
+every cited code traced to its source — in your district's template, ready as a Word document.
 
 [![Quality](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/quality.yml/badge.svg)](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/quality.yml)
 [![Security](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/security.yml/badge.svg)](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/security.yml)
 [![Uptime](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/uptime.yml/badge.svg)](https://github.com/JoshuaColePhD/FlexedAcademy/actions/workflows/uptime.yml)
 
-FlexedAcademy is a standards-grounded AI lesson-planning platform for high-school teachers. It turns a teacher's weekly request into a structured, standards-aligned lesson plan, shows the sources behind the standards it cites, and exports the result as a district-formatted Word document.
+[**Live product → flexedacademy.com**](https://flexedacademy.com) · [Case study](docs/recruiter/FlexedAcademy_Case_Study.md) · [Architecture](docs/ARCHITECTURE.md)
 
-Live product: [flexedacademy.com](https://flexedacademy.com)
+</div>
 
-## Five-minute reviewer path
+---
 
-1. Open the [live product](https://flexedacademy.com) and click **Explore demo (read-only)** on the sign-in page.
-2. Review the [portfolio brief](docs/recruiter/PORTFOLIO_BRIEF.md) for the problem, evidence, and interview story.
-3. Read the [architecture](docs/ARCHITECTURE.md) and [engineering decisions](docs/DECISIONS.md).
-4. Run `./venv/bin/python scripts/05_eval_harness.py --offline` for the no-network regression gate.
-5. Open the [production evidence snapshot](docs/recruiter/PRODUCTION_EVIDENCE.md) and the [walkthrough video](docs/recruiter/FlexedAcademy_Walkthrough.mp4).
+## Try it
 
-The project is intentionally presented as an Applied AI engineering system:
-retrieval, structured generation, validation, grounding audits, persistence,
-streaming, and document export are one traceable workflow.
+Teachers use the live site — [flexedacademy.com](https://flexedacademy.com). Sign in, or click
+**Explore demo (read-only)** on the sign-in page. Nothing to install, nothing to run locally.
+
+This repository is the source and engineering record, not the product entry point.
+
+## Demo
+
+A week planned, cited, and exported — in light or dark mode.
+
+![FlexEd Academy walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.gif)
+
+<sub>Shown as a GIF because GitHub only embeds video players for files uploaded through its own UI. Full quality: [MP4](docs/recruiter/FlexedAcademy_Walkthrough.mp4) · [WebM](docs/recruiter/FlexedAcademy_Walkthrough.webm).</sub>
+
+---
 
 ## What it does
 
-- Generates weekly lesson plans from teacher prompts and class context.
-- Grounds standards claims in source documents instead of relying on model memory.
-- Displays cited standards, source metadata, and grounding warnings for review.
-- Supports teacher-owned pacing guides and school-specific lesson-plan templates.
-- Provides conversational coaching, plan revision, quiz generation, and DOCX/QTI exports.
-- Supports multiple teachers, classes, authentication, account controls, and usage entitlements.
+Teachers get a plan they can stand behind in a PLC. The engineering underneath is retrieval,
+validation, and refusal — not a chatbot that invents codes.
+
+| | |
+| --- | --- |
+| **A full week, from one request** | Five days of standards-aligned planning from a prompt and class context. |
+| **Cites the real standards** | Pulls from source documents — not model memory — with verbatim text and provenance. |
+| **Shows the sources** | Which codes were used, where they came from, and any grounding warnings. |
+| **Your district's format** | School lesson-plan templates, DOCX export, and QTI for quizzes. |
+| **Revise in conversation** | Coaching, day-level edits, quiz generation, and teacher-owned pacing guides. |
+| **Ready for a real school** | Multi-teacher accounts, class scoping, usage entitlements, billing, and account controls. |
 
 ## Why this is an AI-engineering project
 
-The central problem is not text generation alone. Standards contain low-frequency codes, repeated numbering schemes, and course-specific meanings that language models can easily confuse. FlexedAcademy treats retrieval, validation, and refusal as first-class product behavior:
+The hard problem isn't generating text — it's **trust**. Standards contain low-frequency codes,
+repeated numbering schemes, and course-specific meanings that language models easily confuse.
+FlexEd treats retrieval, validation, and refusal as first-class product behavior, so a plan can
+prove where every cited standard came from:
 
 ```text
 Teacher request
@@ -42,158 +66,137 @@ Query expansion + embedding
       ↓
 Course- and grade-scoped pgvector retrieval
       ↓
-Relevance floor and scope checks
+Relevance floor and scope checks     ──►  refuse rather than guess
       ↓
 Grounded context supplied to the model
       ↓
-Strict structured lesson-plan response
+Strict structured lesson-plan response (OpenAI Structured Outputs)
       ↓
 Schema validation + citation grounding audit
       ↓
-Postgres persistence + DOCX generation
+Postgres persistence + templated DOCX generation
 ```
 
 ## Engineering highlights
 
-- Built a retrieval-augmented generation pipeline with source metadata, verbatim standard text, course/grade filters, query expansion, and measured relevance thresholds.
-- Added layered grounding controls: out-of-scope grade refusal, off-domain refusal, source-type-aware retrieval, and post-generation detection of missing, borrowed, or hallucinated standard codes.
-- Uses OpenAI Structured Outputs with strict JSON schemas so the frontend and document builders receive a predictable contract rather than free-form model text.
-- Handles streaming generation over Server-Sent Events, reconnects, upstream timeouts, rate limits, model refusals, response truncation, token accounting, and database-backed completion caching.
-- Built a standards-ingestion path using ALSDE CASE packages and PDF verification. The checked Alabama artifact contains 7,456 unique standards and 19,701 grade-scoped chunks across 11 frameworks when built with `--grades 0-12`; the ingest defaults to grades 9–12, with AP Language as the most thoroughly calibrated path.
-- Built a template-aware document pipeline that validates plans before rendering, supports school-specific templates, and persists generated documents through a durable queue.
-- Added tenant-aware authentication, class scoping, account export/deletion, session invalidation, plan-sharing controls, rate limiting, and security regression tests.
+- **Retrieval-augmented generation** with source metadata, verbatim standard text, course/grade filters, query expansion, and measured relevance thresholds.
+- **Layered grounding controls**: out-of-scope grade refusal, off-domain refusal, source-type-aware retrieval, and post-generation detection of missing, borrowed, or hallucinated standard codes.
+- **Structured outputs**: strict JSON schemas so the frontend and document builders get a predictable contract instead of free-form model text.
+- **Resilient streaming** over Server-Sent Events: reconnects, upstream timeouts, rate limits, model refusals, response truncation, token accounting, and database-backed completion caching.
+- **Standards ingestion** from ALSDE CASE packages with PDF verification. The checked Alabama artifact holds 7,456 unique standards and 19,701 grade-scoped chunks across 11 frameworks at `--grades 0-12` (ingest defaults to 9–12); AP Language is the most thoroughly calibrated path.
+- **Template-aware document pipeline** that validates plans before rendering, supports school-specific templates, and persists generated documents through a durable queue.
+- **Tenant-aware platform**: authentication, class scoping, account export/deletion, session invalidation, plan-sharing controls, rate limiting, and security regression tests.
 
 ## Evaluation
 
-The repository includes deterministic unit, contract, retrieval, grounding, security, and artifact tests. The release retrieval gate is generated from the current corpus: 61 canonical course identities currently pass at 61/61 recall@5 and 61/61 recall@20. The older 143-case set remains a historical drift diagnostic because many of its AP codes no longer exist in the current corpus.
+The repository includes deterministic unit, contract, retrieval, grounding, security, and artifact
+tests. The release retrieval gate is generated from the current corpus:
 
 ```text
 Current recall@5:  61 / 61
 Current recall@20: 61 / 61
 ```
 
-The evaluation suite also covers:
+<sub>The older 143-case set remains a historical drift diagnostic because many of its AP codes no longer exist in the current corpus.</sub>
 
-- Cross-course and cross-class grounding isolation
-- Off-domain refusal behavior
-- Structured plan shape and required fields
-- Grounded versus non-retrieved versus hallucinated citations
-- Streaming reconnect behavior
-- DOCX integrity and queued document recovery
-- Account takeover, session invalidation, public-plan access, and SPA file exposure
+The suite also covers cross-course and cross-class grounding isolation, off-domain refusal,
+structured plan shape, grounded vs. non-retrieved vs. hallucinated citations, streaming reconnects,
+DOCX integrity and queued document recovery, and security cases (account takeover, session
+invalidation, public-plan access, SPA file exposure).
 
-Run the fast local checks from the repository root:
+<details>
+<summary>How embedding rebuilds stay safe</summary>
 
-```bash
-./venv/bin/python eval/run_all.py --fast
-./venv/bin/python scripts/05_eval_harness.py --offline
-```
+Embedding rebuilds keep a local content-addressed cache keyed by the embedding model, dimensions,
+and document text, so interrupted or repeated rebuilds reuse unchanged vectors. The staged Supabase
+cutover validates the complete replacement corpus before it becomes live: each rebuild uses a unique
+staging identifier, builds HNSW/full-text indexes after loading, and only then performs the atomic
+table swap — retries never write a partial live corpus.
 
-The Alabama standards artifact has its own dependency-free quality gate. It
-checks the complete framework roster, required metadata, valid state/grade
-scope, duplicate identities, source URLs, PDF verification availability, and
-that the aggregate ingest report still matches the emitted chunks:
+</details>
 
-```bash
-./venv/bin/python scripts/check_alabama_ingest.py
-```
+## Tech stack
 
-`01d_ingest_alcos_case.py` runs the same gate before replacing
-`data/processed/alcos_chunks.json`. Low PDF wording-match rates are reported as
-warnings for known extraction-heavy frameworks; missing PDF verification or
-structural inconsistencies fail the ingest.
+- **Backend** — Python 3.12, FastAPI, Pydantic, OpenAI API
+- **Data** — Postgres / Supabase with `pgvector`
+- **Frontend** — React, Vite, React Router, TanStack Query
+- **Streaming** — Server-Sent Events for streamed generation
+- **Documents** — `python-docx` and LibreOffice-compatible generation
+- **Integrations** — Google OAuth & Drive, Stripe billing, Resend email, Sentry, Render
+- **Interop** *(experimental, not yet in production)* — an in-progress MCP Streamable HTTP connector with OAuth 2.1/PKCE and an Apps SDK lesson-plan widget
 
-Embedding rebuilds keep a local content-addressed cache keyed by the embedding
-model, dimensions, and document text. Interrupted or repeated rebuilds reuse
-unchanged vectors, while the staged Supabase cutover still validates the
-complete replacement corpus before it becomes live. Each rebuild uses a unique
-staging identifier, builds HNSW/full-text indexes after loading, and only then
-performs the atomic table swap; retries never write a partial live corpus.
+## MCP / ChatGPT connection (experimental — not yet enabled in production)
 
-## Technology
+> **Status:** work in progress. The pieces below exist in the codebase, but the connector is still
+> being built and hardened and is **not turned on in production**. Treat this as a preview of
+> intended functionality, not a shipped feature.
 
-- Python 3.12, FastAPI, Pydantic, OpenAI API
-- Postgres/Supabase with pgvector
-- React, Vite, React Router, TanStack Query
-- Server-Sent Events for streamed generation
-- `python-docx` and LibreOffice-compatible document generation
-- Google OAuth and Google Drive integration
-- Stripe billing, Resend email, Sentry monitoring, and Render deployment
-- MCP Streamable HTTP connector with OAuth 2.1/PKCE and Apps SDK lesson-plan output
+FlexEd includes an in-progress remote MCP server (`/mcp/`) that aims to let a compatible ChatGPT
+custom app, Claude connector, or MCP client authenticate with OAuth discovery, approve access in the
+teacher's FlexEd account, and then call the same retrieval → generation → grounding → database → DOCX
+pipeline the web app uses. The planned Apps SDK surface covers class/week context, plan listing and
+retrieval, plan generation, day-level revision, a secure DOCX capability URL, and an in-chat
+lesson-plan widget.
 
-## MCP / ChatGPT connection
-
-FlexEd exposes a remote MCP server at `/mcp/`. A compatible ChatGPT custom app,
-Claude connector, or MCP client can authenticate with OAuth discovery, approve
-access in the teacher's FlexEd account, and then call the same calibrated
-retrieval → generation → grounding → database → DOCX pipeline used by the web
-application.
-
-For a local smoke test, log into FlexEd and `POST /api/mcp/token`; the response
-contains a short-lived per-user bearer token and the MCP server URL. For a
-shared deployment, set `MCP_PUBLIC_URL` to the public HTTPS origin. The OAuth
-client-registration and consent endpoints are then discovered from the MCP
-server automatically. Do not commit `MCP_ACCESS_TOKEN`, `SESSION_SECRET`, or
-any generated connector token.
-
-The first Apps SDK surface includes class/week context, plan listing and
-retrieval, plan generation, day-level revision, a secure DOCX capability URL,
-and an in-chat lesson-plan widget. The short-lived OAuth grant records are
-currently process-local; before running multiple API instances, move those
-records into a shared store such as Postgres or Redis.
+Teachers do not use this path. If you are developing the connector, log in and
+`POST /api/mcp/token` for a short-lived per-user bearer token and the MCP URL, and set
+`MCP_PUBLIC_URL` to the public HTTPS origin for a shared deployment. Never commit
+`MCP_ACCESS_TOKEN`, `SESSION_SECRET`, or any generated connector token.
 
 ## Repository layout
 
 ```text
-backend/       FastAPI application, retrieval, LLM orchestration, persistence
-frontend/      React application and responsive teacher-facing UI
-data/raw/      Source standards documents and CASE packages
-data/eval/     Golden retrieval cases and evaluation data
-eval/          Regression and quality-test suites
-scripts/       Standards ingestion, embedding, audits, and release checks
+backend/     FastAPI application, retrieval, LLM orchestration, persistence
+frontend/    React application and responsive teacher-facing UI
+data/raw/    Source standards documents and CASE packages
+data/eval/   Golden retrieval cases and evaluation data
+eval/        Regression and quality-test suites
+scripts/     Standards ingestion, embedding, audits, and release checks
 ```
 
-## Explore the implementation
+Worth reading first: [LLM orchestration](backend/llm.py) · [retrieval & grounding audits](backend/retrieval.py) · [generate → validate → persist](backend/service.py) · [evaluation suite](eval/README.md) · [deployment notes](DEPLOYING.md).
 
-The deployed product is the primary way to experience FlexedAcademy. The repository is provided so technical reviewers can inspect the implementation, evaluation strategy, and engineering decisions without needing to reproduce the hosted environment.
+## For reviewers
 
-- [LLM orchestration and structured generation](backend/llm.py)
-- [Retrieval, relevance floors, and grounding audits](backend/retrieval.py)
-- [Generate → validate → persist pipeline](backend/service.py)
-- [Evaluation suite and retrieval baseline](eval/README.md)
-- [Deployment and production-readiness notes](DEPLOYING.md)
+Start on the live site. Teachers and most reviewers never clone this repo.
 
-## Recruiter package
+1. Open [flexedacademy.com](https://flexedacademy.com) and sign in, or click **Explore demo (read-only)**.
+2. Skim the [portfolio brief](docs/recruiter/PORTFOLIO_BRIEF.md) for the problem, evidence, and story.
+3. Read the [architecture](docs/ARCHITECTURE.md) and [engineering decisions](docs/DECISIONS.md).
+4. See the [production evidence snapshot](docs/recruiter/PRODUCTION_EVIDENCE.md), [case study](docs/recruiter/FlexedAcademy_Case_Study.md), and [sample lesson plan](docs/recruiter/FlexedAcademy_Sample_Lesson_Plan.docx).
 
-![FlexEd Academy walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.gif)
+The read-only demo uses the same application shell and a seeded sample plan as the live product, but
+server-side enforcement disables generation, edits, uploads, sharing, and billing. To enable it on a
+deployment, set `DEMO_ACCOUNT_EMAIL` and `DEMO_ACCOUNT_PASSWORD` as secrets (optionally
+`DEMO_ACCOUNT_NAME`) and redeploy; without those values the demo stays disabled.
 
-- [Product walkthrough GIF](docs/recruiter/FlexedAcademy_Walkthrough.gif)
-- [Higher-quality MP4 walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.mp4)
-- [WebM walkthrough](docs/recruiter/FlexedAcademy_Walkthrough.webm)
-- [Applied-AI case study](docs/recruiter/FlexedAcademy_Case_Study.md)
-- [Sample generated lesson plan](docs/recruiter/FlexedAcademy_Sample_Lesson_Plan.docx)
+<details>
+<summary>Optional: clone and run the source locally</summary>
 
-### Recruiter demo access
+Only if you want to inspect the source, run evals, or contribute — not how teachers use FlexEd.
+Python 3.12+, Node.js, Postgres/Supabase with `pgvector`, and an OpenAI API key — see
+[.env.example](.env.example) and [DEPLOYING.md](DEPLOYING.md). Never commit `.env`, API keys,
+databases, uploaded templates, generated plans, or local model caches.
 
-The deployed sign-in page currently exposes a one-click “Explore demo” account
-for recruiters and potential customers. It uses the same application shell and
-seeded sample plan as the live product, but server-side enforcement disables
-generation, edits, uploads, sharing, billing, and other mutations. No payment
-or local setup is required.
+```bash
+./venv/bin/python eval/run_all.py --fast
+./venv/bin/python scripts/05_eval_harness.py --offline   # no network required
+./venv/bin/python scripts/check_alabama_ingest.py
+```
 
-To enable it, set `DEMO_ACCOUNT_EMAIL` and `DEMO_ACCOUNT_PASSWORD` as secrets in
-the deployment environment, optionally set `DEMO_ACCOUNT_NAME`, and redeploy.
-The password is never committed to GitHub or sent to the frontend. Without
-those two values, the demo remains completely disabled.
-
-For developers who want to run the system locally, the full setup requires Python 3.12+, Node.js, Postgres/Supabase with pgvector, and an OpenAI API key. See [.env.example](.env.example), [DEPLOYING.md](DEPLOYING.md), and the scripts in `eval/` for configuration and validation details. Never commit `.env`, API keys, database files, uploaded templates, generated plans, or local model caches.
+</details>
 
 ## Known limitations
 
-AP Language is the calibrated reference path. Other frameworks are ingested and course-scoped, but their retrieval thresholds and source verification coverage are not identical. The system depends on external model and embedding APIs, and grounded citations do not guarantee that every generated instructional activity is pedagogically optimal. Generated plans should be reviewed by a qualified teacher before distribution.
-
-The application is teacher-facing. Users should not enter student names or other identifying information into prompts. Production privacy, OAuth, billing, storage, and school-template checks require environment configuration and pilot verification in addition to passing local tests.
+AP Language is the calibrated reference path; other frameworks are ingested and course-scoped, but
+their retrieval thresholds and source-verification coverage differ. The system depends on external
+model and embedding APIs, and grounded citations do not guarantee every activity is pedagogically
+optimal — **generated plans should be reviewed by a qualified teacher before use**. The app is
+teacher-facing; users should not enter student names or other identifying information into prompts.
 
 ## Project status
 
-FlexedAcademy is deployed and actively developed. This repository is a portfolio and engineering reference for a production-oriented AI application; deployment credentials, hosted databases, generated documents, and other environment-specific assets are intentionally kept outside version control.
+FlexedAcademy is deployed and actively developed. This repository is a portfolio and engineering
+reference for a production-oriented AI application; deployment credentials, hosted databases,
+generated documents, and other environment-specific assets are intentionally kept outside version
+control.

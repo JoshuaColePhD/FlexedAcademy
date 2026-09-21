@@ -1,14 +1,14 @@
 # Teacher adoption and operational readiness
 
-Implementation pass: September 20, 2026. These changes are local and have not been deployed.
+Release preparation: September 21, 2026. The workspace, onboarding, voice and recovery changes are being released together after integration with production master. The release PR records the final checks and deployment status.
 
 ## What a teacher can do
 
 - Complete two-step onboarding: choose a state, grade and course, then supply a real topic and teaching week. Calendar and template configuration are optional. An unfinished draft resumes for the same account. Unsupported standards coverage is disclosed before generation.
 - Open a specific saved plan from the Library, including a plan whose original conversation is missing.
-- Switch a plan between the existing editable document and **Teach & review**. Inspect daily targets, activities, assessments, warnings and saved source excerpts; record review checks, taught/assessed/skipped status and a reflection.
-- Return after an edit and see that the previous review needs checking. Browse saved versions and restore one as a new revision. Existing history begins at rollout; earlier overwritten content cannot be reconstructed.
-- Use **Plan next week** to carry unfinished lessons and reflections into a new request. A listed standard is never treated as evidence that students mastered it.
+- Keep the conversation visible while opening Materials or the lesson reader. The composer keeps its dimensions across views and shows the current lesson context inside its top edge.
+- Consult by voice through a compact audio strip above the composer; see a saved change and undo it without overwriting a concurrent revision. Version history begins at rollout; earlier overwritten content cannot be reconstructed.
+- The separate **Teach & review** section was removed from the visible workspace at the teacher's request. Its delivery/history services remain covered by backend tests; the full review and next-week UI is not an exposed feature in this release.
 - Upload a teaching source, see saved/queued/processing/ready status, inspect extracted passages and retry a failed read. A document is not marked ready merely because its original file uploaded.
 
 ## Operational changes
@@ -21,7 +21,7 @@ Implementation pass: September 20, 2026. These changes are local and have not be
 - Normal frontend requests share one total deadline, including retry and response-body reading. Failed account loading presents recovery instead of permanent loading. Plan changes invalidate library and coverage queries.
 - Markdown, math, checkout, onboarding tools and monitoring load behind the surfaces that need them. The bundler does not pull shared dependencies into the lazy math chunk. Initial production HTML assets measured **190,455 gzip bytes of JavaScript** and **64,596 gzip bytes of CSS** in the local build, compared with the reviewed JavaScript baseline of roughly **338 KB**. This is a payload measurement, not a measured improvement in real-user LCP/INP.
 - Configured Sentry tracing can collect sampled page/navigation timings and web vitals. Activation events record first-plan requests/completions/failures, citation views, export, revision and completion of a week started through the next-week action. They omit prompt text, filenames and student details.
-- CI runs frontend checks, behavioral browser tests, offline backend/evaluation tests and disposable pgvector integration tests. Render is configured to wait for checks through its supported [autoDeployTrigger setting](https://render.com/docs/blueprint-spec#autodeploytrigger); uptime checks no longer create a workflow-trigger loop. The version endpoint reports release identity.
+- CI runs frontend checks, behavioral browser tests, offline backend/evaluation tests and disposable pgvector integration tests. The Render blueprint requests waiting for checks through its supported [autoDeployTrigger setting](https://render.com/docs/blueprint-spec#autodeploytrigger); the live service setting must also be verified. Uptime checks no longer create a workflow-trigger loop. The version endpoint reports release identity.
 
 ## Local walkthrough
 
@@ -38,7 +38,7 @@ These preview routes use deterministic sample responses. Opt-in `persist=1` reta
 
 ## Verification and remaining release work
 
-The backend suite passed **244 tests** locally; **16 database-dependent tests skipped** because this machine has no disposable PostgreSQL server. The offline evaluator passed all 15 suites. Frontend unit checks, lint, token/class checks and production compilation passed. The final full browser run passed **59 tests**, with **2 staging tests skipped** for missing disposable credentials; a separate parallel onboarding stress run passed **20/20**. Browser regressions cover onboarding, draft recovery, exact-plan links, class scoping, standards coverage, teaching records, version restoration, next-week handoff, mobile layouts and existing workspace flows. Seven existing frontend lint warnings and Python dependency deprecation warnings remain.
+The integrated backend suite passed **307 tests** locally; **16 database-dependent tests skipped** without a disposable PostgreSQL server. The offline evaluator passed all 15 suites. Frontend unit checks, lint, token/class checks and production compilation passed. The complete browser suite and disposable PostgreSQL checks run against the final release revision; their authoritative results are recorded in the release PR. Dependency deprecation warnings and existing frontend lint warnings remain.
 
 Before deployment, run the PostgreSQL CI job against the exact final changes and review its migration, tenant-isolation and concurrency results. No local mock is evidence that a production migration or paid model run succeeded. Sentry collection requires the deployment's public DSN. Live Google/Stripe account flows require the existing disposable staging credentials. Process-local admission limits still require a distributed design before horizontally scaling model workers.
 

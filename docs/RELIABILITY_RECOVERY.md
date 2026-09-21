@@ -1,8 +1,8 @@
 # Reliability recovery — September 21, 2026
 
-The broader recovery changes remain local. The focused ACT citation-format fix and its release tests were merged in [PR #107](https://github.com/JoshuaColePhD/FlexedAcademy/pull/107), based on current master and separate from the workspace redesign. After explicit user approval, Render deployed merge commit `2bd4c96970b8300cfc00ee67502a5358687d67a8` as deployment `dep-daoiuv7lk1mc7387tjdg`, marked live at 2026-09-21 13:23:11 UTC.
+The broader recovery changes are now included in the full workspace release candidate. Final CI and deployment verification are recorded in its release PR. The focused ACT citation-format fix and its release tests were merged in [PR #107](https://github.com/JoshuaColePhD/FlexedAcademy/pull/107), based on current master and separate from the workspace redesign. After explicit user approval, Render deployed merge commit `2bd4c96970b8300cfc00ee67502a5358687d67a8` as deployment `dep-daoiuv7lk1mc7387tjdg`, marked live at 2026-09-21 13:23:11 UTC.
 
-The hotfix commit `ed65bde81a7083c7b3a7960c54cb589ed55cbed8` passed all five GitHub checks: backend, frontend, local-quality, npm-audit, and pip-audit. It changes only ACT citation validation, its tests, and CI coverage. The deployed Render service reports automatic deployment on master commits. The wider chat/recovery changes below are not part of this release.
+The hotfix commit `ed65bde81a7083c7b3a7960c54cb589ed55cbed8` passed all five GitHub checks: backend, frontend, local-quality, npm-audit, and pip-audit. It changes only ACT citation validation, its tests, and CI coverage. The deployed Render service reports automatic deployment on master commits. That focused hotfix did not include the wider chat/recovery changes below; those are part of the subsequent full workspace release.
 
 After deployment, `https://flexedacademy.com/api/health` and `/api/health/ready` both returned HTTP 200 with `{"ok":true}`; the public app page returned HTTP 200 with its application shell. No paid production lesson generation was initiated during this verification.
 

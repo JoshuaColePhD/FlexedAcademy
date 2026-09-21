@@ -3939,6 +3939,26 @@ MIGRATIONS: list[str] = [
     ALTER TABLE quizzes ADD COLUMN IF NOT EXISTS class_id TEXT REFERENCES classes(id) ON DELETE SET NULL;
     CREATE INDEX IF NOT EXISTS idx_quizzes_class ON quizzes(class_id);
     """,
+
+    # ── 88: last login / last seen on the account row ───────────────────────
+    #
+    # Answers "did this teacher come back?" without a product-analytics stack.
+    # last_login_at is the moment a session is established (password, Google,
+    # email-verify, password-reset). last_seen_at is that same stamp, then
+    # refreshed on later authenticated API traffic under a 10-minute throttle
+    # so a busy teacher does not write the row on every request.
+    #
+    # Stored as ISO-8601 TEXT, same as users.created_at / onboarding_seen_at /
+    # email_verified_at — this schema's timestamp convention since the SQLite
+    # years. Nullable on purpose: no backfill. NULL means "never seen since
+    # this deployed," which is the truthful answer, not a fake epoch.
+    #
+    # Timestamps only. No IP, user-agent, or device columns here — signup
+    # already has hashed abuse signals, and these two fields are not that.
+    """
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TEXT;
+    """,
     # Revision-safe artifacts and signed billing transactions.
     """
     ALTER TABLE plans ADD COLUMN IF NOT EXISTS revision BIGINT NOT NULL DEFAULT 1;
@@ -4029,6 +4049,71 @@ MIGRATIONS: list[str] = [
 
 def now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+# Presence writes from deps.get_current_user. Ten minutes is the middle of
+# the 5–15 minute window: coarse enough that a chat page full of refetches
+# does not UPDATE users on every round trip, fine enough to tell whether a
+# teacher came back today.
+LAST_SEEN_MIN_INTERVAL = timedelta(minutes=10)
+
+
+def _as_utc(value: Any) -> datetime | None:
+    """Parse a users.* timestamp (ISO TEXT, or a driver datetime) to UTC."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value))
+        except (TypeError, ValueError):
+            return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
+
+def record_login(user_id: str, *, at: str | None = None) -> str:
+    """Stamp last_login_at and last_seen_at for a newly established session."""
+    ts = at or now()
+    _write(
+        "UPDATE users SET last_login_at = ?, last_seen_at = ? WHERE id = ?",
+        (ts, ts, user_id),
+    )
+    return ts
+
+
+def touch_last_seen(
+    user: dict,
+    *,
+    at: str | None = None,
+    min_interval: timedelta = LAST_SEEN_MIN_INTERVAL,
+) -> bool:
+    """Write last_seen_at at most once per throttle window. Returns True if written.
+
+    The already-fetched user row is the cheap skip; the UPDATE's WHERE clause
+    is the race-safe one, so two concurrent requests after a stale window
+    still converge on one fresh timestamp.
+    """
+    ts = at or now()
+    now_dt = _as_utc(ts)
+    last = _as_utc(user.get("last_seen_at"))
+    if last and now_dt and now_dt - last < min_interval:
+        return False
+    threshold = (now_dt - min_interval).isoformat(timespec="seconds") if now_dt else ts
+    return (
+        _write(
+            """
+            UPDATE users
+               SET last_seen_at = ?
+             WHERE id = ?
+               AND (last_seen_at IS NULL OR last_seen_at < ?)
+            """,
+            (ts, user["id"], threshold),
+        )
+        > 0
+    )
 
 
 def new_id() -> str:
@@ -7859,6 +7944,7 @@ def list_accounts_with_stats() -> list[dict]:
         SELECT u.id, u.email, u.name, u.school, u.subscription_status, u.is_admin,
                u.is_blocked, u.blocked_at, u.created_at,
                u.custom_weekly_token_cap, u.beta_expires_at,
+               u.last_login_at, u.last_seen_at,
                COUNT(p.id) AS plans_built,
                MAX(p.created_at) AS last_plan_at,
                COALESCE(ue7.tokens, 0) AS tokens_7d,
@@ -7886,7 +7972,8 @@ def list_accounts_with_stats() -> list[dict]:
         ) ueburst ON ueburst.user_id = u.id
         GROUP BY u.id, u.email, u.name, u.school, u.subscription_status, u.is_admin,
                  u.is_blocked, u.blocked_at, u.created_at,
-                 u.custom_weekly_token_cap, u.beta_expires_at, ue7.tokens, ue30.tokens, ueburst.tokens
+                 u.custom_weekly_token_cap, u.beta_expires_at,
+                 u.last_login_at, u.last_seen_at, ue7.tokens, ue30.tokens, ueburst.tokens
         ORDER BY u.created_at DESC
         """,
         (since_7d, since_30d, since_burst),

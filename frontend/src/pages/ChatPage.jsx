@@ -3906,9 +3906,10 @@ export function ChatPage() {
      are a small pill leaving the page, not a panel. */
   const latestPill = useExitTransition(!atBottom && !isEmpty, 150)
 
-  /* When this chat already has a week, open it on the right and keep Outputs
-     ready underneath. First build uses the same path. Once per chat so a
-     later close stays closed through revisions. Switching chats resets. */
+  /* When this chat already has a week, surface it in Outputs on the right and
+     keep the conversation itself as the main view. First build uses the same
+     path. Once per chat so a later close stays closed through revisions.
+     Switching chats resets. */
   useEffect(() => {
     if (railAutoOpenedRef.current) return
     if (hasArtifact) {
@@ -3918,7 +3919,8 @@ export function ChatPage() {
          recruiter showcase is the exception on a portrait phone: it should
          open on the evidence, not make a visitor hunt for the lesson plan. */
       setRailOpen(roomyWorkspace && !isLandscapePhone && !isTabletLandscape)
-      if (!isPhone && !isLandscapePhone && !isTabletLandscape) setExpanded(true)
+      // Keep the conversation visible until the teacher opens the lesson.
+      // The read-only phone showcase still opens directly on its evidence.
       if (user?.read_only && isPhone) setExpanded(true)
       railAutoOpenedRef.current = true
     }

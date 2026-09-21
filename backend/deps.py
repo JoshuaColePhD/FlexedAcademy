@@ -53,6 +53,10 @@ def verified_user(flexed_session: str | None) -> dict | None:
     expires = user.get("beta_expires_at")
     if expires and expires <= datetime.now(UTC).isoformat(timespec="seconds"):
         return None
+    # Keep the presence update after verification and inside its owner context.
+    # It runs in the same worker thread as the account lookup.
+    with db.as_user(user["id"]):
+        db.touch_last_seen(user)
     return user
 
 
