@@ -128,7 +128,10 @@ def _register_vector_once(conn) -> None:
     if conn._vector_registered:
         return
     try:
-        register_vector(conn)
+        # pgvector expects (type_name, oid) tuples. A RealDictCursor makes
+        # dict(fetchall()) consume column names instead of the type values.
+        with conn.cursor(cursor_factory=psycopg2.extensions.cursor) as cur:
+            register_vector(cur)
     except psycopg2.ProgrammingError:
         # A fresh database may not have the vector extension until migrate().
         conn.rollback()
@@ -4313,10 +4316,7 @@ def migrate(conn: psycopg2.extensions.connection) -> None:
                 cur.execute("INSERT INTO schema_version (version) VALUES (%s) ON CONFLICT (version) DO NOTHING", (i + 1,))
                 conn.commit()
 
-            try:
-                register_vector(conn)
-            except psycopg2.ProgrammingError:
-                pass
+            _register_vector_once(conn)
     finally:
         try:
             with conn.cursor() as cur:

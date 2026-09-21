@@ -61,8 +61,7 @@ async function expectMessageActionsClear(page) {
 
 test('desktop latest reply and actions clear a multiline composer with the lesson closed and open', async ({ page }) => {
   await openLongConversation(page, { width: 1280, height: 800 })
-  await expect(page.locator('.is-composer-overlay')).toBeVisible()
-  await page.getByRole('button', { name: 'Close document', exact: true }).click()
+  // Saved chats land on the conversation; opening a lesson is explicit.
   await expect(page.locator('.is-composer-overlay')).toHaveCount(0)
   await page.locator('#composer-input').fill(multilineDraft)
   await expect(page.locator('.composer-shell')).toHaveClass(/is-expanded/)
@@ -78,7 +77,6 @@ test('desktop latest reply and actions clear a multiline composer with the lesso
 
 test('composer growth follows the latest reply but preserves an older reading position', async ({ page }) => {
   await openLongConversation(page, { width: 1280, height: 800 })
-  await page.getByRole('button', { name: 'Close document', exact: true }).click()
   await expect(page.locator('.is-composer-overlay')).toHaveCount(0)
   const input = page.locator('#composer-input')
   const scroll = page.locator('.chat-transcript-scroll')

@@ -26,11 +26,16 @@ def no_real_database(monkeypatch):
 
 def test_real_psycopg_connection_subclass_initializes_vector_only_once(monkeypatch):
     connection = db.DatabaseConnection.__new__(db.DatabaseConnection)
+    cursor = MagicMock()
+    def tuple_cursor(_connection, *, cursor_factory):
+        assert cursor_factory is db.psycopg2.extensions.cursor
+        return nullcontext(cursor)
+    monkeypatch.setattr(db.DatabaseConnection, "cursor", tuple_cursor)
     registered = []
-    monkeypatch.setattr(db, "register_vector", lambda conn: registered.append(conn))
+    monkeypatch.setattr(db, "register_vector", lambda cur: registered.append(cur))
     db._register_vector_once(connection)
     db._register_vector_once(connection)
-    assert registered == [connection]
+    assert registered == [cursor]
     assert connection._vector_registered is True
 
 

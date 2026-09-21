@@ -150,8 +150,7 @@ test('the new question pins to the top and the reply fills in beneath it', async
   await send(page, 'a question I should still be able to see')
 
   const topOf = async () => page.evaluate(() => {
-    const scroller = document.querySelector('[data-message-id]')?.closest('div[class*="overflow"]')
-      || [...document.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 40)
+    const scroller = document.querySelector('.chat-transcript-scroll')
     const rows = [...document.querySelectorAll('[data-message-id]')]
     const mine = rows.reverse().find((r) => r.textContent.includes('a question I should still'))
     if (!scroller || !mine) return null

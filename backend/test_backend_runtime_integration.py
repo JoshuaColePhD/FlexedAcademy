@@ -49,7 +49,11 @@ def operational_database(local_pg_database):
 @pytest.fixture
 def teaching_database(operational_database):
     db._write("CREATE TABLE curriculum_maps(id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id))")
-    db._write(SCHEMA_SQL)
+    # Migrations run as raw SQL, not as a parameterized data write. The schema
+    # contains PostgreSQL format('%I'), which must not be adapted by psycopg.
+    with db.borrow() as conn, conn.cursor() as cur:
+        cur.execute(SCHEMA_SQL)
+        conn.commit()
     return operational_database
 
 
@@ -57,6 +61,9 @@ def test_real_pool_and_revision_queue_publish_only_latest(operational_database):
     with db.borrow() as conn:
         assert isinstance(conn, db.DatabaseConnection)
         assert conn._vector_registered is True
+        with conn.cursor() as cur:
+            cur.execute("SELECT '[1,2,3]'::vector AS embedding")
+            assert cur.fetchone()["embedding"].tolist() == [1, 2, 3]
     first = db.claim_next_document_build()
     assert first and first["plan_revision"] == 1
     db._write("UPDATE plans SET plan_json = ? WHERE id = ?", ('{"changed":true}', first["plan_id"]))

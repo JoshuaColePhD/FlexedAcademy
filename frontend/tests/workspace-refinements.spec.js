@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const seed = '/preview.html?fresh=0&trial=7&at=/c/c1/chat/seed1'
+const seed = '/preview.html?fresh=0&trial=7&at=/c/c1/chat/seed1%3Fplan=plan1'
 
 async function lightWorkspace(page, width = 1100) {
   await page.setViewportSize({ width, height: 800 })

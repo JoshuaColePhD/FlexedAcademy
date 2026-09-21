@@ -206,10 +206,8 @@ test('an unsent voice idea returns to its own chat after navigation', async ({ p
   await page.getByRole('link', { name: /Week 02 · Close Reading/ }).click()
   await expect(page.getByRole('heading', { name: 'Teaching conversation', exact: true })).toHaveCount(0)
   await expect(composer(page)).toHaveValue('')
-  // Opening another saved chat opens its reader; close it before using the
-  // navigation that is intentionally inert underneath the document.
-  await expect(page.getByRole('button', { name: 'Close document', exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Close document', exact: true }).click()
+  // Saved-chat navigation keeps the conversation and navigation available.
+  await expect(page.locator('.artifact-overlay')).toHaveCount(0)
   await page.getByRole('link', { name: /Week 03 · Rhetorical Devices/ }).click({ timeout: 5000 })
   await expect(page.getByRole('button', { name: 'Plan with voice', exact: true }).last()).toBeVisible()
   await page.getByRole('button', { name: 'Plan with voice', exact: true }).last().click()
@@ -230,6 +228,8 @@ test('sidebar has one scroll region, prioritizes planning, and follows history o
       window.__mock.state.messages.seed1.unshift(...history)
     })
     await page.getByRole('link', { name: /Week 03 · Rhetorical Devices/ }).click()
+    await page.locator('.artifact-drawer').getByRole('button', { name: /^Open Week 03/ }).first().click()
+    await expect(page.locator('.artifact-overlay')).toBeVisible()
   })
   const sidebar = details(page)
   const scroll = sidebar.getByRole('region', { name: 'Lesson details and conversation', exact: true })

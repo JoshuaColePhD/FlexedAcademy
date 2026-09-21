@@ -16,6 +16,10 @@ def test_production_upgrade_preserves_plans_presence_and_version_history(local_p
             created_roles.append(role)
     try:
         db._write("CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public")
+        # Migration 56 documents this legacy table as provisioned by a
+        # one-off corpus load outside MIGRATIONS. Its security migration only
+        # needs the table to exist; no corpus data is needed for this upgrade.
+        db._write("CREATE TABLE global_standards(id TEXT PRIMARY KEY)")
         migrations = db.MIGRATIONS
         production_version = 88
         assert "last_login_at TEXT" in migrations[production_version - 1]

@@ -11,7 +11,7 @@ import openai
 import pytest
 from fastapi import BackgroundTasks
 
-from backend import llm, service
+from backend import llm, retrieval, service
 from backend.generation_jobs import CancellationToken
 from backend.generation_queue import GenerationQueue
 from backend.routes import generate
@@ -22,6 +22,18 @@ ALIGNMENT = (
     "E.TOD.301 Determine whether material is relevant to the focus of the paragraph. "
     "Supports primary [RHS-1A]: both assess relevant evidence."
 )
+
+
+@pytest.fixture(autouse=True)
+def offline_corpus(monkeypatch):
+    """The audit uses a reference inventory, never gitignored local files."""
+    primary = frozenset({"RHS-1A", "SKILL CATEGORY 7"})
+    act = frozenset({"E.TOD.301", "R.WME.701"})
+    inventory = retrieval._CodeInventory(
+        anywhere=primary | act, by_course={"AP_Lang": primary},
+        by_course_and_grade={}, act=act,
+    )
+    monkeypatch.setattr(retrieval, "_code_inventory", lambda: inventory)
 
 
 def audit(plan):
