@@ -38,7 +38,7 @@ These preview routes use deterministic sample responses. Opt-in `persist=1` reta
 
 ## Verification and remaining release work
 
-The integrated backend suite passed **307 tests** locally; **16 database-dependent tests skipped** without a disposable PostgreSQL server. The offline evaluator passed all 15 suites. Frontend unit checks, lint, token/class checks and production compilation passed. The complete browser suite and disposable PostgreSQL checks run against the final release revision; their authoritative results are recorded in the release PR. Dependency deprecation warnings and existing frontend lint warnings remain.
+The integrated backend suite passed **307 tests** locally; **17 database-dependent tests skipped** without a disposable PostgreSQL server. The offline evaluator passed all 15 suites. Frontend unit checks, lint, token/class checks and production compilation passed. All 13 disposable PostgreSQL checks, including the full production-schema upgrade, passed in CI. The complete browser suite and all checks run again against the final release revision; their authoritative results are recorded in the release PR. Dependency deprecation warnings and existing frontend lint warnings remain.
 
 Before deployment, run the PostgreSQL CI job against the exact final changes and review its migration, tenant-isolation and concurrency results. No local mock is evidence that a production migration or paid model run succeeded. Sentry collection requires the deployment's public DSN. Live Google/Stripe account flows require the existing disposable staging credentials. Process-local admission limits still require a distributed design before horizontally scaling model workers.
 

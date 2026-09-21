@@ -2,11 +2,11 @@ import { expect, test } from '@playwright/test'
 
 const seed = '/preview.html?fresh=0&at=/c/c1/chat/seed1'
 
-/* Materials is an in-flow column with an explicit header toggle. */
+/* A saved chat opens Materials once its plan has loaded. Wait for that
+   transition; clicking a generic Show/Hide locator can close the panel if
+   the plan arrives between inspecting the label and dispatching the click. */
 async function openArtifactsPanel(page) {
-  const toggle = page.getByRole('button', { name: /^(Show|Hide) materials$/ })
-  await expect(toggle).toBeVisible()
-  if (await page.getByRole('button', { name: 'Show materials', exact: true }).count()) await toggle.click()
+  await expect(page.getByRole('button', { name: 'Hide materials', exact: true })).toBeVisible()
   await expect(page.locator('.artifact-drawer')).toBeVisible()
 }
 
