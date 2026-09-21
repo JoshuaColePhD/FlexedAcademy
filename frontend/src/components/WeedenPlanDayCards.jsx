@@ -105,7 +105,7 @@ export function WeedenPlanDayCards({
   const [active, setActive] = useState(() => initialDayIndex(days, plan.week_of))
   const scrollerRef = useRef(null)
   const syncing = useRef(false)
-  const offsetOf = (el, i) => el.children[i]?.offsetLeft ?? i * el.clientWidth
+  const offsetOf = (el, i) => el.children[i] ? el.children[i].offsetLeft - el.children[0].offsetLeft : i * el.clientWidth
   const goTo = useCallback((i) => {
     const el = scrollerRef.current
     if (!el) return
@@ -126,11 +126,15 @@ export function WeedenPlanDayCards({
     let nearest = 0
     let best = Infinity
     for (let i = 0; i < el.children.length; i += 1) {
-      const distance = Math.abs((el.children[i].offsetLeft || 0) - el.scrollLeft)
+      const distance = Math.abs(offsetOf(el, i) - el.scrollLeft)
       if (distance < best) { best = distance; nearest = i }
     }
     if (nearest !== active) setActive(nearest)
   }
+  useEffect(() => {
+    const index = openTweak?.dayIndex
+    if (Number.isInteger(index) && index >= 0) goTo(index)
+  }, [openTweak?.dayIndex, goTo])
   return (
     <div className="plan-deck">
       <p className="weeden-week-label">{plan.course} · {plan.week_of}</p>

@@ -225,6 +225,7 @@ export function ArtifactRail({
   updating = false,
   planSaveState = 'idle',
   documents,
+  conversationSources = [],
   onManageMaterials,
   onOpenDocument,
   // Opens the same embossed panel the plan card does (see onExpand above),
@@ -397,6 +398,10 @@ export function ArtifactRail({
         ) : null
       )}
 
+      {!isBar && conversationSources.length ? <details className="materials-class-files">
+        <summary>Conversation sources<ChevronRight size={14} aria-hidden="true" /></summary>
+        <div className="materials-file-list">{conversationSources.map((source) => <RailRow key={source.id} icon={FileText} label={source.filename} sub="Available throughout this conversation" />)}</div>
+      </details> : null}
       {!isBar && (classDocuments?.length || onManageMaterials) ? <details className="materials-class-files">
         <summary>Class files<ChevronRight size={14} aria-hidden="true" /></summary>
         {classDocuments?.length ? <div className="materials-file-list">{classDocuments.slice(0, 3).map((doc) => <RailRow key={doc.id} icon={FileText} label={doc.original_name || doc.title || 'Class document'} sub={doc.processing_status === 'queued' ? 'Waiting to be read' : doc.processing_status === 'processing' ? 'Processing' : doc.processing_status === 'needs_attention' ? 'Needs attention' : null} flag={doc.processing_status === 'needs_attention'} onClick={onOpenDocument ? () => onOpenDocument(doc) : undefined} />)}</div> : null}

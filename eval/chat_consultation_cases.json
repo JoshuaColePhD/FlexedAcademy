@@ -1,0 +1,474 @@
+[
+  {
+    "id": "compare_methods",
+    "turns": [
+      "Compare a seminar and a writing workshop for teaching commentary. Give your recommendation.",
+      "We have 42 minutes and no laptops. Revise your recommendation, but do not edit the lesson."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "42 minutes",
+      "no laptops"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "exact_day",
+    "turns": [
+      "Keep the existing week and Friday assessment.",
+      "Change only Wednesday’s during activity to a claim-evidence rehearsal."
+    ],
+    "expected_final": "revision",
+    "must_preserve": [
+      "Wednesday",
+      "during",
+      "Friday unchanged"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "request_depth",
+    "turns": [
+      "Explain why students summarize instead of analyze.",
+      "Give a detailed explanation with three worked student examples. Do not save changes."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "worked examples",
+      "no edit"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "hypothetical",
+    "turns": [
+      "Our plan uses paired annotation.",
+      "What if I replaced Tuesday with a fishbowl? Compare the tradeoffs first."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "hypothetical",
+      "no edit"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "constraint_correction",
+    "turns": [
+      "I have 55-minute periods this week.",
+      "Correction: only 35 minutes on Wednesday. Build the week using that correction."
+    ],
+    "expected_final": "build",
+    "must_preserve": [
+      "Wednesday 35 minutes"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "paper_only",
+    "turns": [
+      "Our devices are unavailable all week.",
+      "Suggest a way to gather immediate evidence of understanding without technology."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "paper only"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "language_support",
+    "turns": [
+      "My multilingual learners understand the ideas but struggle to express commentary.",
+      "Revise Wednesday’s lesson with sentence frames, oral rehearsal and a route to independent writing."
+    ],
+    "expected_final": "revision",
+    "must_preserve": [
+      "Wednesday",
+      "language support"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "advanced_students",
+    "turns": [
+      "Several students already meet the writing target.",
+      "Recommend an extension that deepens reasoning rather than adding more questions."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "depth over quantity"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "preserve_anchor",
+    "turns": [
+      "Keep the same short story and weekly learning target.",
+      "Revise Thursday’s assessment only to measure commentary rather than plot recall."
+    ],
+    "expected_final": "revision",
+    "must_preserve": [
+      "Thursday",
+      "assessment",
+      "same text"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "change_anchor",
+    "turns": [
+      "We have already taught Poe this semester.",
+      "Recommend three different short texts for rhetorical analysis and explain the tradeoffs."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "avoid Poe",
+      "three texts"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "missing_detail",
+    "turns": [
+      "I need a new lesson.",
+      "It is an 11th-grade English lesson on evaluating evidence, 45 minutes. Go ahead and build it."
+    ],
+    "expected_final": "build",
+    "must_preserve": [
+      "11th-grade English",
+      "45 minutes"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "four_day",
+    "turns": [
+      "Monday is a school holiday; use Tuesday through Friday.",
+      "Build the week around making defensible claims."
+    ],
+    "expected_final": "build",
+    "must_preserve": [
+      "Monday no school",
+      "four days"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "refuse_fake_sources",
+    "turns": [
+      "I need research on feedback in writing instruction.",
+      "Explain what you can support with the sources provided here, and distinguish your professional judgment."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "no invented studies"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "teacher_draft",
+    "turns": [
+      "Help me explain commentary to students.",
+      "Draft the exact two-minute explanation I can say in class, with an example. Do not build a plan."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "student-facing draft",
+      "no plan mutation"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "followup_reference",
+    "turns": [
+      "Use the attached Reading.txt: paragraph one introduces the narrator; paragraph two contradicts the narrator’s claim.",
+      "Use that second paragraph to suggest a close-reading question."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "second paragraph",
+      "contradiction"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "brief_voice",
+    "turns": [
+      "Let’s talk through tomorrow’s lesson.",
+      "I am thinking aloud. Give one concise recommendation and let me respond."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "one spoken recommendation"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "voice_correction",
+    "turns": [
+      "Change Tuesday to a debate.",
+      "Actually, pause. Compare a debate and a structured discussion before changing anything."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "latest correction",
+      "no edit"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "ambiguous_reference",
+    "turns": [
+      "The class struggled with both the opening and closing activities.",
+      "Change that activity."
+    ],
+    "expected_final": "clarify",
+    "must_preserve": [
+      "which activity"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "explicit_assumptions",
+    "turns": [
+      "Build a writing lesson; make reasonable assumptions for missing routine details.",
+      "Use ninth-grade English, 50 minutes, and state any remaining assumptions briefly."
+    ],
+    "expected_final": "build",
+    "must_preserve": [
+      "do not interview unnecessarily"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "math_consultation",
+    "turns": [
+      "My Algebra 2 students can factor but do not connect roots and graphs.",
+      "Recommend a 20-minute diagnostic task and tell me how to interpret three likely responses."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "Algebra 2",
+      "20 minutes",
+      "diagnostic interpretation"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "elementary_consultation",
+    "turns": [
+      "Grade 3 students need practice distinguishing a main idea from a detail.",
+      "Give a short model and partner routine appropriate for eight-year-olds."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "grade 3",
+      "age appropriate"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "science_safety",
+    "turns": [
+      "We have no laboratory equipment for the lesson on conservation of mass.",
+      "Suggest a paper-based evidence task instead of an experiment."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "no equipment",
+      "paper evidence"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "multi_day_scope",
+    "turns": [
+      "Keep the opening and exit tickets on every day.",
+      "Revise only the during activities on Tuesday and Thursday for more independent practice."
+    ],
+    "expected_final": "revision",
+    "must_preserve": [
+      "Tuesday",
+      "Thursday",
+      "during only"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "conflicting_constraints",
+    "turns": [
+      "The assessment must stay on Friday, and Thursday is a holiday.",
+      "Fit two practice sessions before the assessment; explain how the sequence works."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "Thursday holiday",
+      "Friday assessment"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  },
+  {
+    "id": "success_criteria",
+    "turns": [
+      "Students write claims that are too broad to defend.",
+      "Recommend a success criterion and show a weak and improved example without lowering rigor."
+    ],
+    "expected_final": "discussion",
+    "must_preserve": [
+      "defensible claim",
+      "two examples"
+    ],
+    "rubric": [
+      "Instructional usefulness (0-2)",
+      "Constraint retention (0-2)",
+      "Evidence and honesty (0-2)",
+      "Correct action and scope (0-2)",
+      "Conversation quality (0-2)"
+    ]
+  }
+]

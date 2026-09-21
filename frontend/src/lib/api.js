@@ -353,6 +353,8 @@ export const api = {
       },
     }),
   getChat: (id, { signal } = {}) => request(`/api/chats/${id}`, { signal }),
+  saveChatSources: (id, sources) => request(`/api/chats/${id}/sources`, { method: 'POST', body: { sources } }),
+  branchChat: (id, payload) => request(`/api/chats/${id}/branches`, { method: 'POST', body: payload }),
   renameChat: (id, title) => request(`/api/chats/${id}`, { method: 'PATCH', body: { title } }),
   togglePin: (id, isPinned) => request(`/api/chats/${id}/pin`, { method: 'PATCH', body: { is_pinned: isPinned } }),
   /** Re-point an existing conversation at a different week — the composer's
@@ -601,6 +603,8 @@ export const api = {
   adminGetPlan: (id, { signal } = {}) => request(`/api/admin/plans/${encodeURIComponent(id)}`, { signal }),
   adminDownloadPlan: (id, options = {}) =>
     downloadFile(`${API_BASE}/api/admin/plans/${encodeURIComponent(id)}/download`, options),
+  adminChatQuality: ({ signal } = {}) => request('/api/admin/chat-quality', { signal }),
+  reportVoiceMetric: (sample) => request('/api/voice/metrics', { method: 'POST', body: sample }),
   adminUsageTrend: ({ signal } = {}) => request('/api/admin/usage-trend', { signal }),
   adminUsageCosts: ({ days = 30, signal } = {}) =>
     request(`/api/admin/usage-costs?days=${days}`, { signal }),

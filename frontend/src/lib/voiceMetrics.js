@@ -7,8 +7,8 @@
  * llmTtft: final transcript -> first grounded reply token
  * ttsTtfb: first queued sentence -> output starts
  *
- * In-memory diagnostics only. Synthetic preview responses are excluded by the
- * provider. No transcript, audio, or teacher identifiers enter these samples.
+ * Content-free samples are reported for real sessions. Synthetic preview
+ * responses are excluded by the provider. No transcript, audio, or teacher identifiers enter these samples.
  */
 
 const LIMIT = 200
@@ -19,6 +19,11 @@ const LIMIT = 200
 let current = null
 
 const turns = []
+let reporter = null
+export function setReporter(report) { reporter = report }
+function report(sample) {
+  try { reporter?.(sample)?.catch?.(() => {}) } catch { /* telemetry never blocks voice */ }
+}
 
 function nowMs() {
   return performance.now()
@@ -58,6 +63,8 @@ export function firstAudio() {
     llmTtft: t.firstTokenAt != null && t.sttAt != null ? Math.round(t.firstTokenAt - t.sttAt) : null,
     ttsTtfb: t.queuedAt != null ? Math.round(nowMs() - t.queuedAt) : null,
   }
+  report({ outcome: 'completed', duration_ms: rec.endToEnd,
+    stt_ms: rec.stt, llm_ms: rec.llmTtft, speech_ms: rec.ttsTtfb })
   turns.push(rec)
   if (turns.length > LIMIT) turns.shift()
   current = null
@@ -74,7 +81,8 @@ export function firstAudio() {
 /** The turn was abandoned — barge-in, an error, a closed panel. Dropped rather
  *  than recorded: a turn nobody waited for the end of is not a latency sample,
  *  and leaving it open would attribute the next turn's wait to this one. */
-export function turnAbandoned() {
+export function turnAbandoned(outcome = 'cancelled') {
+  if (current) report({ outcome, duration_ms: Math.round(nowMs() - current.t0) })
   current = null
 }
 

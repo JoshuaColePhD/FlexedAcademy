@@ -14,6 +14,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from . import (
+    chat_metrics,
     curriculum,
     db,
     docx_build,
@@ -851,6 +852,7 @@ def persist_revised_plan(
     return saved or db.get_plan(user_id, plan_id)
 
 
+@chat_metrics.measured("plan")
 def generate(
     user_id: str,
     query: str,
@@ -974,6 +976,7 @@ def rebuild(user_id: str, plan_id: str, bg_tasks: BackgroundTasks | None = None)
         )  # type: ignore[return-value]
 
 
+@chat_metrics.measured("revision")
 def revise_day(
     user_id: str,
     plan_id: str,
@@ -1006,6 +1009,9 @@ def revise_day(
     row = db.get_plan(user_id, plan_id)
     if not row:
         raise AppError("plan_not_found", "No such plan.", status=404)
+
+    from .conversation import with_saved_sources
+    feedback = with_saved_sources(user_id, row.get("chat_id"), feedback)
 
     plan = row["plan_json"]
     days = plan.get("days", [])
@@ -1402,6 +1408,7 @@ def edit_day_field(
     return updated_row  # type: ignore[return-value]
 
 
+@chat_metrics.measured("revision")
 def revise_days(
     user_id: str,
     plan_id: str,
@@ -1428,6 +1435,9 @@ def revise_days(
     row = db.get_plan(user_id, plan_id)
     if not row:
         raise AppError("plan_not_found", "No such plan.", status=404)
+
+    from .conversation import with_saved_sources
+    feedback = with_saved_sources(user_id, row.get("chat_id"), feedback)
 
     plan = row["plan_json"]
     days = plan.get("days", [])

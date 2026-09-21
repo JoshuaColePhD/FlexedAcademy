@@ -1174,13 +1174,49 @@ export function installMockApi() {
       return json({ ...chat })
     }
 
+    const sourceMatch = path.match(/^\/api\/chats\/([^/]+)\/sources$/)
+    if (sourceMatch && method === 'POST') {
+      const id = sourceMatch[1]
+      state.chatSources ||= {}
+      const saved = state.chatSources[id] ||= []
+      const sources = body.sources.map((source) => {
+        let record = saved.find((item) => item.filename === source.filename && item.text === source.text)
+        if (!record) { record = { ...source, id: uid('source'), characters: source.text.length }; saved.push(record) }
+        return { id: record.id, filename: record.filename, characters: record.characters }
+      })
+      return json({ sources })
+    }
+    const branchMatch = path.match(/^\/api\/chats\/([^/]+)\/branches$/)
+    if (branchMatch && method === 'POST') {
+      const original = state.chats.find((chat) => chat.id === branchMatch[1])
+      const history = state.messages[original.id] || []
+      const index = history.findIndex((message, index) => (message.id || index + 1) === body.message_id || (body.client_id && message.client_id === body.client_id))
+      if (index < 0) return json({ error: { message: 'Message not saved', code: 'message_not_saved' } }, 409)
+      const child = { ...original, id: body.branch_id, title: `${original.title} · Alternative`, parent_chat_id: original.id }
+      state.chats.push(child)
+      state.messages[child.id] = structuredClone(history.slice(0, index))
+      const sourceIds = new Set(history.slice(0, index + 1).flatMap((message) => message.source_ids_json || []))
+      state.chatSources ||= {}
+      state.chatSources[child.id] = (state.chatSources[original.id] || []).filter((source) => sourceIds.has(source.id))
+      const receipt = [...state.messages[child.id]].reverse().find((message) => message.plan_id)
+      if (receipt?.plan_id && state.plans[receipt.plan_id]) {
+        const planId = uid('plan')
+        state.plans[planId] = structuredClone(state.plans[receipt.plan_id])
+        state.planChat[planId] = child.id
+        state.ownedPlanIds.push(planId)
+        state.messages[child.id].forEach((message) => { message.plan_id = message === receipt ? planId : null })
+      }
+      return json({ ...child, source_ids: [...sourceIds] })
+    }
     const chatMatch = path.match(/^\/api\/chats\/([^/]+)$/)
     if (chatMatch) {
       const id = chatMatch[1]
       if (method === 'GET') {
         await wait(latency.getChat)
         if (!state.chats.find((c) => c.id === id)) return new Response('{}', { status: 404 })
-        return json({ id, messages: state.messages[id] || [] })
+        return json({ ...state.chats.find((chat) => chat.id === id), id,
+          messages: (state.messages[id] || []).map((message, index) => ({ ...message, id: message.id || index + 1 })),
+          sources: (state.chatSources?.[id] || []).map(({ id, filename, characters }) => ({ id, filename, characters })) })
       }
       if (method === 'PATCH') {
         await wait(latency.renameChat)
@@ -1200,12 +1236,19 @@ export function installMockApi() {
     if (msgMatch && method === 'POST') {
       await wait(latency.addMessage)
       const id = msgMatch[1]
-      ;(state.messages[id] ||= []).push({
+      const messages = state.messages[id] ||= []
+      const prior = body.client_id && messages.find((message) => message.client_id === body.client_id)
+      if (prior) return json(prior)
+      const saved = {
+        id: messages.length + 1,
+        client_id: body.client_id,
+        source_ids_json: body.source_ids || [],
         role: body.role,
         content: body.content,
         plan_id: body.plan_id || null,
-      })
-      return json({ ok: true })
+      }
+      messages.push(saved)
+      return json(saved)
     }
 
     if (path === '/api/plans' && method === 'GET') {

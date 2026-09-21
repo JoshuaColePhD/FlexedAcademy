@@ -242,6 +242,7 @@ def test_chat_cancellation_closes_provider_socket_and_stops_consumption(monkeypa
         def close(self):
             closed.set()
 
+    monkeypatch.setattr(llm.settings, "chat_api", "chat_completions")
     monkeypatch.setattr(llm, "client", lambda: N(chat=N(completions=N(create=lambda **kw: Stream()))))
     monkeypatch.setattr(llm, "beta_features_for", lambda _: False)
     monkeypatch.setattr(llm, "_chat_tools_for", lambda *a, **kw: [])

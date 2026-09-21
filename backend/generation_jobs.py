@@ -16,7 +16,7 @@ import time
 import uuid
 from collections.abc import Callable, Iterator
 
-from . import db, generation_store
+from . import chat_metrics, db, generation_store
 from .errors import AppError
 
 log = logging.getLogger(__name__)
@@ -105,6 +105,10 @@ class GenerationJob:
                 # The deterministic plan ID supports reconciliation after a
                 # transient ledger outage; never discard a successfully saved week.
                 log.exception("could not persist generation completion request=%s", self.request_id)
+
+        chat_metrics.record(self.user_id, kind="plan",
+            outcome={"done": "saved", "error": "failed", "cancelled": "cancelled"}[self.status],
+            duration_ms=(time.monotonic() - self.created_at) * 1000)
 
     def refresh(self):
         if not self.remote:

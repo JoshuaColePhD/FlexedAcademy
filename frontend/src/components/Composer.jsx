@@ -624,7 +624,8 @@ export function Composer({
   )
 
   const handleFile = (e) => {
-    const files = e.target.files
+    // FileList is live: clearing the input can empty it before extraction.
+    const files = Array.from(e.target.files || [])
     e.target.value = ''
     void attachFiles(files)
   }

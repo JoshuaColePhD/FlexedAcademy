@@ -35,6 +35,7 @@ from psycopg2.pool import ThreadedConnectionPool
 
 from . import storage
 from .config import settings
+from .conversation_schema import SCHEMA_SQL as CONVERSATION_SCHEMA_SQL
 from .errors import AppError
 from .teaching_schema import SCHEMA_SQL as TEACHING_SCHEMA_SQL
 
@@ -4047,6 +4048,7 @@ MIGRATIONS: list[str] = [
       RETURN NEW;
     END; $$;
     """,
+    CONVERSATION_SCHEMA_SQL,
 ]
 
 
@@ -6980,7 +6982,7 @@ def list_chats(user_id: str, limit: int = 100, class_id: str | None = None) -> l
         dict(r)
         for r in _rows(
             f"""
-            SELECT c.*,
+            SELECT c.id,c.user_id,c.title,c.class_id,c.week_number,c.mode,c.created_at,c.updated_at,c.is_pinned,c.parent_chat_id,
               (SELECT m.content FROM messages m WHERE m.chat_id = c.id ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_preview,
               (SELECT m.created_at FROM messages m WHERE m.chat_id = c.id ORDER BY m.created_at DESC, m.id DESC LIMIT 1) AS last_message_at
             FROM chats c
@@ -7044,6 +7046,7 @@ def add_message(
     client_id: str | None = None,
     source: str | None = None,
     research_sources: list[dict] | None = None,
+    source_ids: list[str] | None = None,
 ) -> dict:
     """Not user-scoped: callers must already have verified (via get_chat) that
     this chat belongs to the requesting user. Messages have no user_id column
@@ -7085,8 +7088,15 @@ def add_message(
                     (chat_id, role, content, plan_id, source, sources_json, now()),
                 )
                 row = cur.fetchone()
+            if source_ids:
+                cur.execute("UPDATE messages SET source_ids_json=%s::jsonb WHERE id=%s AND chat_id=%s", (json.dumps(source_ids), row["id"], chat_id))
+            if plan_id:
+                cur.execute("UPDATE messages SET plan_revision=COALESCE(plan_revision,(SELECT revision FROM plans WHERE id=%s)) WHERE id=%s AND chat_id=%s", (plan_id, row["id"], chat_id))
+            cur.execute("SELECT * FROM messages WHERE id=%s AND chat_id=%s", (row["id"], chat_id))
+            row = cur.fetchone()
             cur.execute("UPDATE chats SET updated_at = %s WHERE id = %s", (now(), chat_id))
-        conn.commit()
+        if _transaction_connection.get() is None:
+            conn.commit()
     return dict(row)
 
 

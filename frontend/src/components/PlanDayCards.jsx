@@ -215,7 +215,7 @@ export function PlanDayCards({
      at i * (clientWidth + 12) — the arithmetic version landed 48px short on
      Friday and scroll-snap yanked it into place, which is the visible jump on
      open and the mis-targeted animation when tapping a day. */
-  const offsetOf = (el, i) => el.children[i]?.offsetLeft ?? i * el.clientWidth
+  const offsetOf = (el, i) => el.children[i] ? el.children[i].offsetLeft - el.children[0].offsetLeft : i * el.clientWidth
 
   const goTo = useCallback((i) => {
     const el = scrollerRef.current
@@ -244,7 +244,7 @@ export function PlanDayCards({
     let nearest = 0
     let best = Infinity
     for (let i = 0; i < el.children.length; i += 1) {
-      const d = Math.abs((el.children[i].offsetLeft || 0) - el.scrollLeft)
+      const d = Math.abs(offsetOf(el, i) - el.scrollLeft)
       if (d < best) {
         best = d
         nearest = i
@@ -252,6 +252,11 @@ export function PlanDayCards({
     }
     if (nearest !== active) setActive(nearest)
   }
+
+  useEffect(() => {
+    const index = openTweak?.dayIndex
+    if (Number.isInteger(index) && index >= 0) goTo(index)
+  }, [openTweak?.dayIndex, goTo])
 
   useEffect(() => {
     if (!workingCells?.size) return

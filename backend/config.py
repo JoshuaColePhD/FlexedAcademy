@@ -10,6 +10,7 @@ import logging
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -48,6 +49,9 @@ class Settings(BaseSettings):
     # matches openai_model, so this is a no-op until an operator overrides it
     # via .env — flipping it later is a config change, not a code deploy.
     openai_fast_model: str = "gpt-5.6-luna"
+    # Responses supports reasoning together with function tools. The legacy
+    # transport remains an explicit rollback setting, never a silent fallback.
+    chat_api: Literal["responses", "chat_completions"] = "responses"
     # Operating guardrails. These thresholds are surfaced in the admin usage
     # report; configure matching notifications in the OpenAI billing dashboard.
     openai_monthly_alert_usd: float = Field(default=50.0, ge=0)
@@ -83,6 +87,7 @@ class Settings(BaseSettings):
     # configurable one now.
     realtime_model: str = "gpt-realtime-2.1"
     realtime_voice: str = "alloy"
+    realtime_transcription_model: str = "gpt-4o-mini-transcribe"
     realtime_session_timeout_s: float = 10.0
 
     # ── email (password reset) ────────────────────────────────────────────────

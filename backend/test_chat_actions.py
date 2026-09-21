@@ -22,6 +22,12 @@ from backend.chat_policy import (
 from backend.errors import AppError
 
 
+@pytest.fixture(autouse=True)
+def legacy_stream_contract(monkeypatch):
+    # The normalized action parser still supports the explicit rollback transport.
+    monkeypatch.setattr(llm.settings, "chat_api", "chat_completions")
+
+
 def action(**overrides):
     return dict(
         action="create",
@@ -110,7 +116,7 @@ def test_shared_tools_preserve_base_definitions_and_questions_are_single():
         assert "preamble" in typed[name]["parameters"]["required"], name
     purpose = typed["ask_clarifying_questions"]["parameters"]["properties"]["purpose"]
     assert purpose["enum"] == ["clarify", "suggest"]
-    assert "choice box above the composer" in typed["ask_clarifying_questions"]["description"]
+    assert "a choice card is not required" in typed["ask_clarifying_questions"]["description"]
     # Voice keeps the legacy shapes, with no preamble anywhere.
     for tool in llm.CHAT_TOOLS:
         assert "preamble" not in (tool["function"].get("parameters") or {}).get("properties", {})
@@ -161,32 +167,6 @@ def test_typed_tool_enums_do_not_include_null():
 
     walk(payload, "$")
     assert bad == [], bad
-
-
-def test_single_persona_carries_the_behavior_the_regex_gate_used_to():
-    from backend.chat_policy import CHAT_PARTNER_POLICY, PLAN_OPEN_OVERLAY
-
-    # Normalized, so rewrapping the prompt does not fail this for no reason.
-    text = " ".join(CHAT_PARTNER_POLICY.split())
-    raw = CHAT_PARTNER_POLICY
-    # One voice, and the scope guard that CONVERSATIONAL_CHAT_POLICY used to own.
-    assert "Do not offer assessment design, instructional coaching" in text
-    assert "invite them to say what they need" in text
-    assert "no question card on that turn" in text
-    assert "A visible plan is context, not permission to edit it." in text
-    assert "mixed another course into this class" in text
-    assert "choice box above the composer" in text
-    assert "any ideas" in text
-    # The rule the whole change exists for.
-    assert "NEVER WRITE THE ARTIFACT INTO THE CHAT" in raw
-    assert "Never type Monday through Friday" in text
-    # Continuation across turns, which had no equivalent before.
-    assert "this message answers it" in text
-    # The route asserts these strings stay absent; keep that true at the source.
-    assert "Do NOT call" not in raw
-    assert "call generate_lesson_plan (or" not in raw
-    assert "`generate_quiz`" not in raw
-    assert "interview the teacher" in " ".join(PLAN_OPEN_OVERLAY.split())
 
 
 def test_math_course_lock_rejects_literary_mashups():
@@ -496,25 +476,12 @@ def _prose_stream(monkeypatch, text, *, chunk=200):
     monkeypatch.setattr(llm, "beta_features_for", lambda _: False)
 
 
-def test_prose_dump_is_cut_off_when_a_tool_was_available(monkeypatch):
-    """The deterministic backstop against the original failure.
-
-    A five-day plan typed as prose runs 6,000-10,000 characters. Everything
-    else keeping it out of the transcript is probabilistic; this is not.
-    """
-    _prose_stream(monkeypatch, "Monday: do the thing. " * 300)
-    events = list(llm.stream_chat("u", []))
-    assert events[-1] == {"chunk": llm._PROSE_CUTOFF_NOTE}
-    streamed = sum(len(e["chunk"]) for e in events[:-1])
-    assert streamed < 10_000
-
-
-def test_prose_backstop_leaves_a_toolless_turn_alone(monkeypatch):
-    # With no tools in the array there is no artifact to divert to, so a long
-    # answer is just a long answer.
-    _prose_stream(monkeypatch, "Monday: do the thing. " * 300)
-    events = list(llm.stream_chat("u", [], actions_enabled=False))
-    assert llm._PROSE_CUTOFF_NOTE not in [e.get("chunk") for e in events]
+@pytest.mark.parametrize("actions_enabled", [True, False])
+def test_requested_detailed_answer_is_not_interrupted(monkeypatch, actions_enabled):
+    explanation = "Compare modeling with independent practice. " * 300
+    _prose_stream(monkeypatch, explanation)
+    events = list(llm.stream_chat("u", [], actions_enabled=actions_enabled))
+    assert "".join(event.get("chunk", "") for event in events) == explanation
 
 
 @pytest.mark.parametrize(
@@ -688,6 +655,7 @@ def chat_client(monkeypatch):
         generate, "_build_chat_system_prompt", lambda *a, **kw: "BASE CLASS CONTEXT"
     )
     monkeypatch.setattr(generate.db, "list_plans", lambda *a, **kw: {"items": [{"id": "p1"}]})
+    monkeypatch.setattr(generate.db, "get_chat", lambda *a, **kw: {"id": "chat1", "sources_json": []})
     monkeypatch.setattr(generate.db, "get_plan", lambda user, id: plan if id == "p1" else None)
     monkeypatch.setattr(generate.db, "list_quizzes_for_plan", lambda *a: [])
     monkeypatch.setattr(generate, "beta_features_for", lambda uid: False)
@@ -951,8 +919,8 @@ def test_open_plan_uses_command_surface(chat_client):
     )
     assert response.status_code == 200
     system = captured[0][0]["content"]
-    assert "Terse instructions are edits to apply now" in system
-    assert "interview the teacher" in system
+    from backend.chat_policy import PLAN_OPEN_OVERLAY
+    assert PLAN_OPEN_OVERLAY in system
 
 
 def test_route_rejects_foreign_plan_before_model_call(chat_client):

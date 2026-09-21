@@ -29,12 +29,8 @@ import { Skeleton, SkeletonText, SkeletonRows } from './Skeleton'
  *  - Edit. An edit mode is a second writer of the same artifact and would drift
  *    against chat-driven revision. Every revision goes through the composer or a
  *    cell tweak, so there is exactly one path a change can take.
- *  - A Days/Fit/Print toggle. Three ways to read one week was two more
- *    decisions than a teacher opening this panel actually has: what a plan
- *    "really" looks like is the district table it prints to, so that is the
- *    only shape a non-phone screen ever shows now — see PRINT below. Fit's
- *    own compact grid is gone with it, not just hidden, since nothing can
- *    reach it anymore.
+ * Narrow inspectors open one readable day at a time. The complete district
+ * table remains available for comparing days and for printing.
  *
  * The page fits the container and is never a fixed 900px sheet: a fixed page in
  * a narrow canvas clips its own title, which is the defect this replaces.
@@ -105,6 +101,15 @@ export function ArtifactPanel({
   const isPendingTemplate = ['pending', 'in_progress', 'blocked'].includes(school?.builder_readiness)
 const location = useLocation()
   const panelRef = useRef(null)
+  const [panelWidth, setPanelWidth] = useState(0)
+  const [preferredView, setPreferredView] = useState(null)
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+    const observer = new ResizeObserver(([entry]) => setPanelWidth(entry.contentRect.width))
+    observer.observe(panel)
+    return () => observer.disconnect()
+  }, [])
   const titleRef = useRef(null)
   const color = classColor(classId)
 
@@ -128,14 +133,7 @@ const location = useLocation()
   const isOverlay = !mobileReader && (!readerMode || isFullscreen)
   const isPhone = useLayoutMode() === 'phone'
 
-  // Days is the phone shape — the district table has a min-width and a
-  // teacher on a phone reads one day at a time anyway. Everyone else gets
-  // Print, the actual district table: no picking required, because there is
-  // nothing left to pick between.
-  // Desktop inspectors keep the complete district table in view so standards
-  // and lesson fields can be compared across the week without horizontal day
-  // paging. Only the phone reader uses the compact swipeable day cards.
-  const view = isPhone ? 'days' : 'print'
+  const view = isPhone ? 'days' : preferredView || (panelWidth < 900 ? 'days' : 'print')
   /* Escape peels one layer at a time, innermost first: an open cell tweak, then
      the document. It has to be decided HERE rather than in the tweak input,
      because useFocusTrap binds a native listener on this container — which runs
@@ -218,6 +216,13 @@ const location = useLocation()
         <span className="flex-1" />
 
         <div className="flex items-center gap-2">
+          {!isPhone && plan && (
+            <button type="button" className="rounded-md px-2 py-1 text-xs text-ink-muted hover:bg-paper-inset whitespace-nowrap"
+              aria-label={view === 'days' ? 'Show full week' : 'Show one day at a time'}
+              onClick={() => setPreferredView(view === 'days' ? 'print' : 'days')}>
+              {view === 'days' ? 'Full week' : 'Day view'}
+            </button>
+          )}
           {planId ? (
             <>
               {/* The one "more options" entry now — share link and Drive

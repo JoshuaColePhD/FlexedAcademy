@@ -1863,6 +1863,26 @@ function AutoVerifiedBuilders() {
    subscription happens on Stripe's own hosted pages (checkout, portal), and
    this app never touches a card. MRR is an estimate (routes/admin.py's own
    comment explains why), not a Stripe-reported figure. */
+function ChatQualitySummary() {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['admin', 'chat-quality'], queryFn: () => api.adminChatQuality(),
+  })
+  const seconds = (ms) => ms == null ? '—' : `${(ms / 1000).toFixed(1)}s`
+  return <section className="neo-world neo-panel rounded-xl p-4">
+    <h2 className="text-sm font-semibold text-ink">Conversation reliability · last 30 days</h2>
+    <p className="mt-1 text-2xs text-ink-muted">Server outcomes and first response latency. Voice playback timing is reported by the browser; it does not verify sound at the speaker. No lesson text or audio is collected here.</p>
+    {isLoading ? <p className="mt-3 text-sm">Loading measurements…</p> : isError ? <p className="mt-3 text-sm text-mark">Could not load measurements.</p> : !data?.samples?.length ? <p className="mt-3 text-sm text-ink-muted">No measurements yet.</p> :
+      <div className="mt-3 overflow-x-auto"><table className="w-full text-left text-xs">
+        <thead><tr>{['Work', 'Outcome', 'Count', 'Median', '95th percentile', 'First response (median)'].map((label) => <th key={label} className="p-2 font-medium">{label}</th>)}</tr></thead>
+        <tbody>{data.samples.map((sample) => <tr key={`${sample.kind}:${sample.channel}:${sample.outcome}:${sample.client_reported}`} className="border-t border-paper-sunken">
+          <td className="p-2">{sample.kind} · {sample.channel}{sample.client_reported ? ' (browser)' : ''}</td>
+          <td className="p-2">{sample.outcome.replaceAll('_', ' ')}</td><td className="p-2">{sample.count}</td>
+          <td className="p-2">{seconds(sample.p50_ms)}</td><td className="p-2">{seconds(sample.p95_ms)}</td><td className="p-2">{seconds(sample.first_response_p50_ms)}</td>
+        </tr>)}</tbody>
+      </table></div>}
+  </section>
+}
+
 function BillingAdmin() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['admin', 'billing'],
@@ -1882,6 +1902,7 @@ function BillingAdmin() {
 
   return (
     <div className="mt-8 space-y-6">
+      <ChatQualitySummary />
       <div className="neo-world neo-panel rounded-xl p-4">
         <h2 className="text-sm font-semibold text-ink">Revenue</h2>
         {!data.billing_enabled ? (

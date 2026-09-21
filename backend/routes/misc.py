@@ -516,10 +516,38 @@ def create_chat(body: ChatBody, user_id: str = Depends(get_current_user)):
 
 @router.get("/chats/{chat_id}")
 def get_chat(chat_id: str, user_id: str = Depends(get_current_user)):
+    from ..conversation import public_chat
     chat = db.get_chat(user_id, chat_id, with_messages=True)
     if not chat:
         raise AppError("chat_not_found", "No such chat.", status=404)
-    return chat
+    return public_chat(chat)
+
+
+class ChatSourceBody(BaseModel):
+    filename: str = Field(min_length=1, max_length=240)
+    text: str = Field(min_length=1, max_length=100_000)
+
+
+class ChatSourcesBody(BaseModel):
+    sources: list[ChatSourceBody] = Field(min_length=1, max_length=8)
+
+
+@router.post("/chats/{chat_id}/sources")
+def save_chat_sources(chat_id: str, body: ChatSourcesBody, user_id: str = Depends(get_current_user)):
+    from ..conversation import save_sources
+    return {"sources": save_sources(user_id, chat_id, [source.model_dump() for source in body.sources])}
+
+
+class ChatBranchBody(BaseModel):
+    message_id: int | None = Field(default=None, ge=1)
+    client_id: str | None = Field(default=None, max_length=128)
+    branch_id: str = Field(min_length=1, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+@router.post("/chats/{chat_id}/branches")
+def branch_chat(chat_id: str, body: ChatBranchBody, user_id: str = Depends(get_current_user)):
+    from ..conversation import branch_chat as fork
+    return fork(user_id, chat_id, **body.model_dump())
 
 
 @router.patch("/chats/{chat_id}")
@@ -527,7 +555,8 @@ def rename_chat(chat_id: str, body: ChatBody, user_id: str = Depends(get_current
     chat = db.rename_chat(user_id, chat_id, body.title)
     if not chat:
         raise AppError("chat_not_found", "No such chat.", status=404)
-    return chat
+    from ..conversation import public_chat
+    return public_chat(chat)
 
 class PinBody(BaseModel):
     is_pinned: bool
@@ -537,7 +566,8 @@ def pin_chat(chat_id: str, body: PinBody, user_id: str = Depends(get_current_use
     chat = db.toggle_chat_pin(user_id, chat_id, body.is_pinned)
     if not chat:
         raise AppError("chat_not_found", "No such chat.", status=404)
-    return chat
+    from ..conversation import public_chat
+    return public_chat(chat)
 
 
 class ChatWeekBody(BaseModel):
