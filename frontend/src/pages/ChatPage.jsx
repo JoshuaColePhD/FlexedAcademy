@@ -2162,6 +2162,7 @@ export function ChatPage() {
      same creation block; kept separate rather than shared so neither
      path's error handling has to account for the other's caller. */
   const openVoice = useCallback(() => {
+    if (!betaFeaturesRef.current) return
     // This is the deliberate user gesture that creates the one Realtime
     // session. Speech queued immediately afterward waits for the data channel.
     voice.startSession({ chatId: chatId ?? null, classId: classId ?? null, weekNumber: conversationWeek ?? null, mode: 'brainstorm' })
@@ -2188,6 +2189,13 @@ export function ChatPage() {
     }
     setDecisions([])
   }, [voice, voiceDraft, draftKey, user?.id])
+
+  // A teacher may turn Beta Features off from another tab while a session is
+  // open. End the realtime connection immediately instead of leaving a
+  // no-longer-authorized microphone running until the next navigation.
+  useEffect(() => {
+    if (!betaFeaturesEnabled && voiceOpen) closeVoice()
+  }, [betaFeaturesEnabled, voiceOpen, closeVoice])
 
   /* VoiceProvider is mounted once at the app root (App.jsx), above the
      router — it never unmounts on navigation, so nothing was ever stopping
@@ -4499,7 +4507,7 @@ export function ChatPage() {
       {voiceOpen ? voiceDetails : isEmpty ? (
         <Greeting
           className={activeClass?.name}
-          onOpenVoice={openVoice}
+          onOpenVoice={betaFeaturesEnabled ? openVoice : undefined}
           week={displayWeek}
           hint={emptyStateHint}
           onOpenSettings={handleOpenSettings}
@@ -4947,7 +4955,7 @@ export function ChatPage() {
             selectedStandardStatus={selectedStandardStatus}
             onSaveAttachmentAsDocument={activeClass && !hasPacingGuide ? saveAttachmentAsDocument : undefined}
             voiceModeActive={voiceOpen}
-            onOpenVoice={openVoice}
+            onOpenVoice={betaFeaturesEnabled ? openVoice : undefined}
             mode={chatMode}
             onModeChange={changeChatMode}
             ghostContext={composerGhostContext}
@@ -5024,7 +5032,7 @@ export function ChatPage() {
     return (
       <main className={`mobile-plan-reader${overlayExit.closing ? ' is-closing' : ''}`}>
         {artifactEl}
-        <button type="button" className="voice-reader-entry" onClick={() => { setExpanded(false); setPlanPeekOpen(false); openVoice() }}>Plan with voice</button>
+        {betaFeaturesEnabled ? <button type="button" className="voice-reader-entry" onClick={() => { setExpanded(false); setPlanPeekOpen(false); openVoice() }}>Plan with voice</button> : null}
       </main>
     )
   }

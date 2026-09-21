@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const preview = '/preview.html?fresh=0&voice=1&trial=7&at=/c/c1/chat/seed1%3Fplan=plan1'
+const preview = '/preview.html?fresh=0&voice=1&beta=1&trial=7&at=/c/c1/chat/seed1%3Fplan=plan1'
 
 async function sampleDuring(page, action) {
   const sampling = page.evaluate(() => new Promise((resolve) => {

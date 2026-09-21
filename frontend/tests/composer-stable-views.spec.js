@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const preview = '/preview.html?fresh=0&voice=1&trial=7&at=/c/c1/chat/seed1%3Fplan=plan1'
+const preview = '/preview.html?fresh=0&voice=1&beta=1&trial=7&at=/c/c1/chat/seed1%3Fplan=plan1'
 const rect = (page) => page.locator('.composer-shell').evaluate((element) => {
   const { left, bottom, width, height } = element.getBoundingClientRect()
   return { left, bottom, width, height }
