@@ -15,6 +15,9 @@
 FROM node:22-slim AS web
 WORKDIR /app/frontend
 
+ARG VITE_SENTRY_DSN=""
+ENV VITE_SENTRY_DSN=$VITE_SENTRY_DSN
+
 # Vite INLINES this at build time — it is not readable at runtime, so it has to
 # be present here or the Google button renders and silently fails.
 ARG VITE_GOOGLE_CLIENT_ID=""
@@ -42,6 +45,12 @@ RUN npm run build
 # ── stage 2: the app ────────────────────────────────────────────────────────
 FROM python:3.12-slim AS app
 WORKDIR /app
+
+# Render supplies RENDER_GIT_COMMIT as a build argument; local builds may
+# supply RELEASE_SHA explicitly. This is a public build identifier, not a key.
+ARG RENDER_GIT_COMMIT=""
+ARG RELEASE_SHA=$RENDER_GIT_COMMIT
+ENV RELEASE_SHA=$RELEASE_SHA
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

@@ -45,9 +45,9 @@ function formatDate(iso) {
 
 function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, selected, onToggleSelect }) {
   const toast = useToast()
-  // Plans built before chat_id was tracked (or ever) have nowhere for a
-  // click to go — same fallback ClassWeeks uses for an orphaned week.
-  const openable = Boolean(plan.chat_id)
+  // Select the plan itself, including older plans with no attached chat.
+  const openable = Boolean(plan.id)
+  const planPath = `/c/${classId}${plan.chat_id ? `/chat/${plan.chat_id}` : ''}?plan=${encodeURIComponent(plan.id)}`
   const label = plan.week_label || 'Untitled week'
 
   const content = (
@@ -84,6 +84,8 @@ function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, se
         <button
           type="button"
           onClick={() => onToggleSelect(plan.id)}
+          aria-pressed={selected}
+          aria-label={`Select ${label}`}
           className={`flex min-h-touch min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-1.5 text-left transition-all ${
             selected ? 'bg-accent/10 border-accent/30' : 'hover:bg-paper-sunken'
           }`}
@@ -98,7 +100,7 @@ function PlanRow({ plan, classId, onDelete, deleting, closing, selectionMode, se
     <li className={`group flex items-center gap-1 px-3 py-2.5 transition-colors hover:bg-paper/30 border-b border-edge/10 last:border-0 ${closing ? ' fa-row-exit' : ''}`}>
       {openable ? (
         <Link
-          to={`/c/${classId}/chat/${plan.chat_id}`}
+          to={planPath}
           className="flex min-h-touch min-w-0 flex-1 items-center gap-3 rounded-lg px-2 transition-colors"
         >
           {content}
@@ -164,7 +166,8 @@ function CardContent({ plan, label }) {
 
 function PlanCard({ plan, classId, onDelete, deleting, closing, selectionMode, selected, onToggleSelect }) {
   const toast = useToast()
-  const openable = Boolean(plan.chat_id)
+  const openable = Boolean(plan.id)
+  const planPath = `/c/${classId}${plan.chat_id ? `/chat/${plan.chat_id}` : ''}?plan=${encodeURIComponent(plan.id)}`
   const label = plan.week_label || 'Untitled week'
 
   return (
@@ -174,6 +177,8 @@ function PlanCard({ plan, classId, onDelete, deleting, closing, selectionMode, s
           type="button"
           onClick={() => onToggleSelect(plan.id)}
           className="absolute top-3 right-3 z-10"
+          aria-label={`${selected ? 'Deselect' : 'Select'} ${label}`}
+          aria-pressed={selected}
         >
           {selected ? (
             <CheckSquare size={18} className="text-accent bg-paper rounded" />
@@ -184,7 +189,7 @@ function PlanCard({ plan, classId, onDelete, deleting, closing, selectionMode, s
       )}
 
       {openable ? (
-        <Link to={`/c/${classId}/chat/${plan.chat_id}`} className="flex-1 outline-none">
+        <Link to={planPath} className="flex-1 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
           <CardContent plan={plan} label={label} />
         </Link>
       ) : (
@@ -472,6 +477,7 @@ export function PlansPage() {
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1.5 bg-paper-raised/50 rounded-lg p-1 border border-edge/30">
                 <select
+                  aria-label="Sort plans"
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value)}
                   className="bg-transparent text-xs font-semibold text-ink pl-2 pr-6 py-1 outline-none cursor-pointer appearance-none"

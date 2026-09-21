@@ -499,13 +499,7 @@ def revise_whole_plan(
 
 @router.delete("/{plan_id}", status_code=204)
 def delete_plan(plan_id: str, user_id: str = Depends(get_current_user)):
-    row = _require_plan(user_id, plan_id)
-    path_str = row.get("docx_path")
-    if path_str:
-        p = Path(path_str).resolve()
-        # Only ever unlink inside PLANS_DIR, whatever the DB happens to hold.
-        if p.is_relative_to(Path(settings.plans_dir).resolve()):
-            storage.remove_file(p)
+    _require_plan(user_id, plan_id)
     db.delete_plan(user_id, plan_id)
 
 

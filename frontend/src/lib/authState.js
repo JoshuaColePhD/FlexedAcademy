@@ -24,9 +24,16 @@
  *  form mid-session on a cold Render instance. See AuthProvider's fetchMe: a
  *  401 becomes null, everything else rethrows so react-query retries.
  */
-export function deriveAuthStatus(me) {
-  if (me === undefined) return 'loading'
+export function deriveAuthStatus(me, { isError = false, isFetching = false } = {}) {
+  if (me === undefined) return isError && !isFetching ? 'unavailable' : 'loading'
   return me ? 'authed' : 'anon'
+}
+
+/** Query writes finish before batched observers publish their next render. */
+export function hasCompletedOnboarding(user, cachedUser) {
+  return Boolean(user?.onboarding_seen_at || (
+    user?.id && cachedUser?.id === user.id && cachedUser.onboarding_seen_at
+  ))
 }
 
 /** Swap the cache over to a new identity: seed qk.me, drop everything else.

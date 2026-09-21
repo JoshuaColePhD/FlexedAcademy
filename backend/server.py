@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import ClassVar
@@ -18,10 +19,11 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from starlette.concurrency import run_in_threadpool
 
-from . import db, demo, service
+from . import db, demo, material_jobs, service
 from .config import settings
-from .deps import COOKIE_NAME, _verify_current
+from .deps import COOKIE_NAME, verified_user
 from .docx_build import assert_builder_contract
 from .errors import AppError, app_error_handler, unhandled_handler
 from .mcp_server import mcp, mcp_app, oauth_router
@@ -45,6 +47,7 @@ from .routes import (
     quizzes,
     school_calendars,
     standards,
+    teaching,
 )
 from .routes import (
     mcp as mcp_routes,
@@ -60,6 +63,7 @@ log = logging.getLogger("flexedacademy")
 _codegen_worker_task: asyncio.Task | None = None
 _CODEGEN_POLL_INTERVAL_S = 15
 _DOCUMENT_BUILD_POLL_INTERVAL_S = 2
+_DOCUMENT_BUILD_SWEEP_INTERVAL_S = 30
 
 
 async def _builder_codegen_worker_loop() -> None:
@@ -112,8 +116,12 @@ async def _document_build_worker_loop() -> None:
         log.exception("document build worker: startup database sweep failed; will retry")
     log.info("document build worker loop started")
     consecutive_pool_timeouts = 0
+    next_sweep = loop.time() + _DOCUMENT_BUILD_SWEEP_INTERVAL_S
     while True:
         try:
+            if loop.time() >= next_sweep:
+                await loop.run_in_executor(None, db.reset_stale_document_builds)
+                next_sweep = loop.time() + _DOCUMENT_BUILD_SWEEP_INTERVAL_S
             job = await loop.run_in_executor(None, db.claim_next_document_build)
             consecutive_pool_timeouts = 0
             if job:
@@ -267,6 +275,7 @@ async def lifespan(app: FastAPI):
         )
 
     document_build_worker_task = asyncio.create_task(_document_build_worker_loop())
+    material_worker_task = asyncio.create_task(material_jobs.worker_loop())
 
     # One-time, idempotent repair for the records produced while Weeden's
     # rejected generated spec was incorrectly marked verified.
@@ -288,6 +297,9 @@ async def lifespan(app: FastAPI):
     document_build_worker_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await document_build_worker_task
+    material_worker_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await material_worker_task
     db.close()
 
 
@@ -371,14 +383,25 @@ class ReadOnlyDemoMiddleware:
             return await self.app(scope, receive, send)
         method = scope.get("method", "GET").upper()
         path = scope.get("path", "")
-        if method in {"GET", "HEAD", "OPTIONS"} or path in self._SAFE_MUTATIONS:
+        if not path.startswith(("/api/", "/mcp/")):
             return await self.app(scope, receive, send)
 
         request = Request(scope, receive=receive)
-        user_id = _verify_current(request.cookies.get(COOKIE_NAME))
-        user = db.get_user_by_id(user_id) if user_id else None
-        if not user or not user.get("is_read_only"):
-            return await self.app(scope, receive, send)
+        # Keep blocking auth I/O off the event loop and share its result with
+        # dependencies. Bind identity here, in the ASGI task, so child async
+        # calls and FastAPI's sync route workers inherit the same RLS context.
+        user = await run_in_threadpool(verified_user, request.cookies.get(COOKIE_NAME))
+        request.state.auth_user = user
+        request.state.auth_checked = True
+        identity = db.current_user_id.set(user["id"] if user else None)
+        if (
+            not user or not user.get("is_read_only")
+            or method in {"GET", "HEAD", "OPTIONS"} or path in self._SAFE_MUTATIONS
+        ):
+            try:
+                return await self.app(scope, receive, send)
+            finally:
+                db.current_user_id.reset(identity)
         response = JSONResponse(
             status_code=403,
             content={
@@ -394,7 +417,10 @@ class ReadOnlyDemoMiddleware:
             },
             headers={"Cache-Control": "private, no-store"},
         )
-        await response(scope, receive, send)
+        try:
+            await response(scope, receive, send)
+        finally:
+            db.current_user_id.reset(identity)
 
 
 class SecurityHeadersMiddleware:
@@ -457,6 +483,13 @@ class SecurityHeadersMiddleware:
 
 app = FastAPI(title="FlexEd Academy", version="2.0.0", lifespan=lifespan)
 
+
+@app.get("/api/version")
+def version():
+    """Non-secret deployment identity for support and release verification."""
+    return {"release_sha": os.environ.get("RELEASE_SHA", "local")}
+
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
@@ -518,6 +551,7 @@ app.include_router(drive.router)
 app.include_router(bell_ringer.router)
 app.include_router(coaching.router)
 app.include_router(onboarding.router)
+app.include_router(teaching.router)
 if settings.mcp_enabled:
     app.include_router(mcp_routes.router)
     app.include_router(mcp_artifacts.router)
@@ -542,8 +576,6 @@ else:
     @app.api_route("/mcp/{path:path}", methods=["GET", "POST", "DELETE"], include_in_schema=False)
     def mcp_disabled():
         raise AppError("mcp_disabled", "The FlexEd MCP connector is disabled.", status=404)
-import os
-
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 

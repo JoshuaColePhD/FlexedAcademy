@@ -73,6 +73,7 @@ def main() -> int:
             # directly in the end-to-end latency budget on every turn.
             "silence_duration_ms": 350,
             "create_response": False,
+            "interrupt_response": False,
         }
 
         root = Path(__file__).resolve().parent.parent
@@ -80,20 +81,20 @@ def main() -> int:
         provider = (root / "frontend/src/components/VoiceProvider.jsx").read_text()
         panel = (root / "frontend/src/components/VoiceModePanel.jsx").read_text()
         queue = (root / "frontend/src/lib/voiceSpeechQueue.js").read_text()
+        transport = (root / "frontend/src/lib/voiceWebRTCTransport.js").read_text()
+        consultation = (root / "frontend/src/hooks/useVoiceConsultation.js").read_text()
         llm = (root / "backend/llm.py").read_text()
         config = (root / "backend/config.py").read_text()
         assert "voice:transcript" not in source
         assert "voice.speak(sentence)" in source
-        assert "submitRef.current(text, { voiceTurn: true })" in source
+        assert "useVoiceConsultation" in source and "voiceTurn: true" in consultation
         assert "startSession" in provider and "stopSession" in provider
-        assert "localStorage" not in provider
         assert "getUserMedia" not in panel and "AudioWorklet" not in panel and "MediaRecorder" not in panel
-        assert "track.enabled" in provider and "response.cancel" in queue
-        assert "Promise.all([sessionPromise, mediaPromise])" in provider
-        assert "CONNECT_TIMEOUT_MS" in provider and "connection was lost" in provider
-        assert "interrupted" in provider and "Stopped — listening to you." in panel
-        assert "Needs attention" in panel and "Hands-free" in panel
-        assert "onInterrupt" not in source and "onFalseInterrupt" not in source
+        assert "track.enabled" in transport and "response.cancel" in queue
+        assert "output_audio_buffer.clear" in queue and "conversation: 'none'" in queue
+        assert "CONNECT_TIMEOUT_MS" in provider and "signal" in transport
+        assert "onSpeechStart" in provider and "Hands-free" in panel
+        assert "VoiceTransportContext" in provider and "simulateUtterance" in provider
         assert "model=settings.openai_model" in llm
         assert "voice_chat_model" not in config
         assert "CONVERSATION HISTORY" not in generate._build_chat_system_prompt.__code__.co_consts

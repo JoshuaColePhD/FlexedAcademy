@@ -178,6 +178,7 @@ export function Cite({ code, subject, state, grounded }) {
     closeOpenPopover?.()
     closeOpenPopover = close
     setOpen(true)
+    recordActivation('citation_opened')
   }
 
   useEffect(() => () => {
@@ -237,3 +238,4 @@ export function CitedText({ text, groundedCodes, subject, state }) {
     </>
   )
 }
+import { recordActivation } from '../lib/activation'

@@ -31,6 +31,7 @@ from .generation_queue import generation_queue
 from .request_context import RequestContext
 from .retrieval import RetrievalResult
 from .template_context import day_names_for_school, has_template_field
+from .worker_context import run_as_user
 
 log = logging.getLogger("flexedacademy.service")
 
@@ -302,8 +303,8 @@ def prepare(
     # ground); expand_query already swallows its own exceptions and returns []
     # on failure (see its own docstring), so nothing extra is needed here for
     # that one.
-    base_embed_future = _prepare_pool.submit(embeddings.embed_query, contextual_query, user_id=user_id)
-    expand_future = _prepare_pool.submit(llm.expand_query, user_id, contextual_query)
+    base_embed_future = _prepare_pool.submit(run_as_user, user_id, embeddings.embed_query, contextual_query, user_id=user_id)
+    expand_future = _prepare_pool.submit(run_as_user, user_id, llm.expand_query, user_id, contextual_query)
 
     # map_context_for is independent of both of the above and used to run
     # AFTER retrieval finished entirely; launching it now lets the streaming
@@ -317,6 +318,8 @@ def prepare(
         # reference context when it differs, so map_context_for computes its
         # own embedding in that case, same as today.
         map_context_future = _prepare_pool.submit(
+            run_as_user,
+            user_id,
             llm.map_context_for,
             user_id,
             subject_code,
@@ -390,25 +393,30 @@ def run_document_build_job(job: dict) -> None:
 def _run_document_build_job(job: dict) -> None:
     """Build one claimed DOCX job; called by the durable server worker."""
     plan_id, user_id = job["plan_id"], job["user_id"]
+    claim_token, plan_revision = job["claim_token"], int(job["plan_revision"])
     row = db.get_plan(user_id, plan_id)
     if not row or not row.get("plan_json"):
-        db.finish_document_build(plan_id, user_id, error_message="The saved plan no longer exists.")
+        return
+    if int(row["revision"]) != plan_revision:
+        db.finish_document_build(plan_id, user_id, claim_token=claim_token, plan_revision=plan_revision, error_message="The plan changed while its document was queued.")
         return
     try:
         cls = db.get_class(user_id, row["class_id"]) if row.get("class_id") else None
         plan = with_subject(row["plan_json"], cls=cls)
-        if plan != row["plan_json"]:
-            db.update_plan(user_id, plan_id, plan_json=plan)
         out_path = docx_build.plan_output_path(plan, plan_id)
+        # Separate physical keys prevent an obsolete worker from overwriting a
+        # newer artifact even before its final database compare-and-set.
+        out_path = out_path.with_name(f"{out_path.stem}-r{plan_revision}-{claim_token[:12]}{out_path.suffix}")
         _build_docx_for_template(plan, out_path, cls.get("school") if cls else None, row.get("template_id"))
         _persist_docx(out_path)
-        db.update_plan(user_id, plan_id, docx_path=str(out_path))
-        db.finish_document_build(plan_id, user_id)
+        published = db.finish_document_build(plan_id, user_id, claim_token=claim_token, plan_revision=plan_revision, docx_path=str(out_path), failure_warning=DOCX_FAILED)
+        if not published:
+            storage.remove_file(out_path)
+            return
         log.info("document build ready plan_id=%s", plan_id)
     except Exception as exc:
         log.exception("failed to build document plan_id=%s", plan_id)
-        db.update_plan(user_id, plan_id, warnings=(row.get("warnings") or []) + [DOCX_FAILED])
-        db.finish_document_build(plan_id, user_id, error_message=str(exc)[:500])
+        db.finish_document_build(plan_id, user_id, claim_token=claim_token, plan_revision=plan_revision, error_message=str(exc)[:500], failure_warning=DOCX_FAILED)
 
 
 # Written into plans.warnings so the download endpoint can distinguish "not
@@ -515,6 +523,59 @@ def repair_weeden_plans() -> None:
     repair_weeden_missing_sections()
 
 
+def _record_plan_provenance(user_id: str, row: dict | None, result: RetrievalResult) -> None:
+    from .teaching import record_provenance
+
+    if not row or row.get("revision") is None:
+        return
+    try:
+        record_provenance(user_id, row["id"], result, llm.settings.openai_model, revision=row["revision"])
+    except Exception:
+        log.exception("could not save generation provenance plan=%s revision=%s", row["id"], row["revision"])
+
+
+def _audit_generated_plan(user_id: str, plan: dict, result: RetrievalResult, *, allowed: set[str], subject_code: str, act_expected: bool) -> tuple[dict, list[str]]:
+    """Repair model-generated ACT cells once, then run the same accuracy gates.
+
+    No persistence occurs here. Only ACT cells may change; an invalid repair
+    never overwrites a saved plan or turns missing evidence into a warning.
+    """
+    def audit(candidate):
+        return retrieval.audit_grounding(
+            candidate, allowed, subject_code=subject_code,
+            act_expected=act_expected, result=result,
+        )
+
+    try:
+        return plan, audit(plan)
+    except schema.SchemaError as error:
+        repairable = error.code in {
+            "act_skill_primary_link_missing", "act_skill_description_missing",
+            "act_skill_wrong_section", "act_skill_not_retrieved", "act_skill_misaligned",
+            "act_skill_missing",
+        } or (error.code == "day_empty_field" and str(error.path or "").endswith(".act_alignment"))
+        if not act_expected or not repairable:
+            raise
+        log.info("Correcting generated ACT alignment code=%s path=%s", error.code, error.path)
+        patches = llm.repair_act_alignments(
+            user_id, plan, retrieval.format_context(result), subject_code=subject_code,
+            feedback=f"{error.message} {error.hint or ''}",
+        )
+        teaching_days = {day["name"] for day in plan["days"] if not day.get("no_school")}
+        if (not isinstance(patches, list) or len(patches) != len(teaching_days)
+                or any(not isinstance(patch, dict) or set(patch) != {"name", "act_alignment"}
+                       or not isinstance(patch.get("name"), str)
+                       or not isinstance(patch.get("act_alignment"), str) for patch in patches)
+                or {patch["name"] for patch in patches} != teaching_days):
+            raise
+        by_day = {patch["name"]: " ".join(patch["act_alignment"].split()) for patch in patches}
+        repaired = {**plan, "days": [
+            {**day, "act_alignment": by_day[day["name"]]} if day["name"] in by_day else dict(day)
+            for day in plan["days"]
+        ]}
+        return repaired, audit(repaired)
+
+
 def finalize(
     *,
     user_id: str,
@@ -530,6 +591,7 @@ def finalize(
     subject: str | None = None,
     grade: str | None = None,
     ctx: RequestContext | None = None,
+    plan_id: str | None = None,
 ) -> dict:
     """Validate, stamp identity, build the .docx, persist. Returns the plan row.
 
@@ -599,14 +661,13 @@ def finalize(
     # text, no I/O) rather than having audit_grounding hand its structured
     # rows back, so this stays a pure list-of-strings function for its other
     # caller (revise_day) to keep using as before.
-    cited = retrieval.cited_standards(plan, result.codes, subject_code=subject_code)
-    warnings += retrieval.audit_grounding(
-        plan,
-        result.codes,
+    plan, audit_warnings = _audit_generated_plan(
+        user_id, plan, result, allowed=result.codes,
         subject_code=subject_code,
         act_expected=_act_row_expected(act_row, subject_code),
-        result=result,
     )
+    warnings += audit_warnings
+    cited = retrieval.cited_standards(plan, result.codes, subject_code=subject_code)
 
     unit = units.unit_for_week(plan["week_of"], subject=plan["course"])
     if week_number is not None and school_id:
@@ -618,7 +679,7 @@ def finalize(
             if map_unit and map_unit.get("unit"):
                 unit = map_unit["unit"]
 
-    plan_id = db.new_id()
+    plan_id = plan_id or db.new_id()
     plan = with_subject(plan, cls=cls, subject=subject_code)
     out_path = docx_build.plan_output_path(plan, plan_id)
 
@@ -665,13 +726,11 @@ def finalize(
         class_id=class_id,
         week_number=week_number,
     )
-    if bg_tasks is not None:
-        # Queue only after the plan row exists; the durable worker can now
-        # survive this request ending, a deploy, or a process restart.
-        db.enqueue_document_build(plan_id, user_id)
+    # The insert trigger queues any missing document in the same transaction.
     db.replace_plan_standards(
         plan_id, user_id, class_id=row.get("class_id"), subject=subject_code, grade=grade, entries=cited
     )
+    _record_plan_provenance(user_id, row, result)
     log.info(
         "plan built id=%s week=%r warnings=%d elapsed_ms=%d",
         plan_id,
@@ -762,35 +821,34 @@ def persist_revised_plan(
     )
     subject_code = (cls or {}).get("subject") or row.get("course") or ""
     allowed = set(row.get("retrieved_ids") or [])
-    warnings += retrieval.audit_grounding(
-        plan,
-        allowed,
+    plan, audit_warnings = _audit_generated_plan(
+        user_id, plan, result, allowed=allowed,
         subject_code=subject_code,
         act_expected=act_row and bool(retrieval.act_sections_for(subject_code)),
-        result=result,
     )
+    warnings += audit_warnings
     cited = retrieval.cited_standards(plan, allowed, subject_code=subject_code)
-    db.update_plan(
-        user_id,
-        plan_id,
-        plan_json=plan,
-        docx_path=None,
-        week_label=plan.get("week_of", row["week_label"]),
-        unit=units.unit_for_week(plan.get("week_of", row["week_label"])),
-        warnings=warnings,
-        course=plan.get("course", row["course"]),
-    )
-    if hasattr(db, "enqueue_document_build"):
-        db.enqueue_document_build(plan_id, user_id)
-    db.replace_plan_standards(
-        plan_id,
-        user_id,
-        class_id=row.get("class_id"),
-        subject=subject_code,
-        grade=str((cls or {}).get("grade") or ""),
-        entries=cited,
-    )
-    return db.get_plan(user_id, plan_id)
+    with db.transaction():
+        saved = db.update_plan(
+            user_id,
+            plan_id,
+            plan_json=plan,
+            docx_path=None,
+            week_label=plan.get("week_of", row["week_label"]),
+            unit=units.unit_for_week(plan.get("week_of", row["week_label"])),
+            warnings=warnings,
+            course=plan.get("course", row["course"]),
+        )
+        db.replace_plan_standards(
+            plan_id,
+            user_id,
+            class_id=row.get("class_id"),
+            subject=subject_code,
+            grade=str((cls or {}).get("grade") or ""),
+            entries=cited,
+        )
+    _record_plan_provenance(user_id, saved, result)
+    return saved or db.get_plan(user_id, plan_id)
 
 
 def generate(

@@ -21,7 +21,10 @@ everything or rejects everything, silently.
 from __future__ import annotations
 
 import logging
+import random
 import time
+
+from openai import APIConnectionError, APIStatusError
 
 from . import costs, db
 from .errors import AppError
@@ -37,7 +40,8 @@ EMBED_DIMS = 384
 # The API caps inputs per request; well under it, and small enough that a retry
 # is cheap. 26k chunks is ~104 requests.
 BATCH = 256
-_MAX_ATTEMPTS = 5
+_MAX_ATTEMPTS = 3
+_DEADLINE_SECONDS = 25.0
 
 
 def _client():
@@ -51,10 +55,14 @@ def _client():
 def _embed_batch(texts: list[str], *, user_id: str | None = None, kind: str = "embedding") -> list[list[float]]:
     """One API call, retried on transient failure with exponential backoff."""
     last: Exception | None = None
+    deadline = time.monotonic() + _DEADLINE_SECONDS
     for attempt in range(_MAX_ATTEMPTS):
         started_at = time.perf_counter()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
         try:
-            resp = _client().embeddings.create(
+            resp = _client().with_options(timeout=min(10.0, remaining), max_retries=0).embeddings.create(
                 model=EMBED_MODEL,
                 input=texts,
                 dimensions=EMBED_DIMS,
@@ -77,9 +85,14 @@ def _embed_batch(texts: list[str], *, user_id: str | None = None, kind: str = "e
             return [d.embedding for d in sorted(resp.data, key=lambda d: d.index)]
         except AppError:
             raise  # no API key — retrying will not help
-        except Exception as exc:  # noqa: BLE001 — surfaced below after retries
+        except (APIConnectionError, APIStatusError) as exc:
             last = exc
-            wait = 2**attempt
+            status = getattr(exc, "status_code", None)
+            if status is not None and status not in {408, 409, 429} and status < 500:
+                break
+            if attempt == _MAX_ATTEMPTS - 1:
+                break
+            wait = min((2**attempt) * random.uniform(0.5, 1.0), max(0.0, deadline - time.monotonic()))
             log.warning(
                 "embedding batch failed (attempt %d/%d): %s — retrying in %ds",
                 attempt + 1, _MAX_ATTEMPTS, exc, wait,

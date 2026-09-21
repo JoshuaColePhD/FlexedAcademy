@@ -1,0 +1,36 @@
+/* Editing context sits inside the composer, above the input row. */
+.composer-experience { container-type: inline-size; }
+.composer-portal.has-stable-composer { left: calc(var(--sidebar-w) + 21px); width: calc(100vw - var(--sidebar-w) - var(--materials-w) - 42px); bottom: 10px; height: auto; transition: none; }
+.composer-portal.has-stable-composer .composer-dock-surface > div { max-width: 54rem !important; padding-inline: 18px !important; }
+.composer-shell.has-context-label { min-height: 56px !important; max-height: 152px !important; }
+.composer-shell.has-context-label .composer-control-row { min-height: 38px; padding-block: 0 3px; }
+.composer-shell.has-context-label .composer-input { min-height: 32px; max-height: 128px; }
+.composer-shell.has-context-label :is(.composer-input, .composer-ghost-overlay) { padding-block: 4px; }
+.composer-context-line { display: flex; align-items: center; flex-shrink: 0; gap: 6px; height: 16px; min-height: 16px; margin: 0; padding: 3px 16px 0; color: var(--ink-muted); font-size: 10px; line-height: 13px; }
+.composer-context-line > svg { flex-shrink: 0; }
+.composer-context-line > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-shell .composer-action-cluster > .composer-voice-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 36px !important; height: 36px !important; min-width: 36px; flex-shrink: 0; border-radius: 18px; color: var(--ink-muted) !important; background: transparent !important; box-shadow: none !important; font-size: 11px; font-weight: 550; }
+.composer-voice-trigger > span { display: none; }
+.composer-shell .composer-action-cluster > .composer-voice-trigger:hover { color: var(--ink) !important; background: var(--paper-sunken) !important; }
+.composer-shell .composer-action-cluster > .composer-voice-trigger:disabled { opacity: .45; cursor: not-allowed; }
+.composer-shell .composer-action-cluster > .composer-pause-control,
+.composer-shell .composer-action-cluster > .composer-primary-action:not([data-composer-action='send']):not([data-composer-action='recording']) { background: var(--paper-sunken) !important; color: var(--ink-muted) !important; box-shadow: none !important; }
+.composer-shell .composer-action-cluster > .composer-primary-action[data-composer-action='send'] { background: var(--accent) !important; color: var(--accent-on) !important; box-shadow: none !important; }
+.composer-shell .composer-action-cluster > .composer-primary-action[data-composer-action='recording'] { background: var(--mark) !important; color: var(--accent-on) !important; box-shadow: none !important; }
+.composer-voice-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@container (min-width: 560px) {
+  .composer-shell .composer-action-cluster > .composer-voice-trigger { width: auto !important; padding-inline: 10px; }
+  .composer-voice-trigger > span { display: inline; }
+}
+@media (max-width: 767.98px) {
+  .composer-shell .composer-action-cluster > .composer-voice-trigger { min-width: 40px; width: 40px !important; height: 44px !important; }
+  .composer-context-line { padding-left: 13px; }
+}
+@media (max-width: 1023.98px), (pointer: coarse) {
+  /* Reserve the same compact footprint in either view, with room for touch
+     targets and the editing line. Longer drafts may still grow upward. */
+  .composer-experience .composer-shell { min-height: 64px !important; height: max(64px, var(--composer-content-height, 64px)) !important; }
+  .composer-shell.has-context-label .composer-input { min-height: 40px !important; }
+  .composer-shell.has-context-label :is(.composer-input, .composer-ghost-overlay) { padding-block: 4px !important; }
+  .composer-shell.has-context-label .composer-control-row { min-height: 46px; padding-block: 0; }
+}

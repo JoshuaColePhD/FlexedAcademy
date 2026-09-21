@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { api } from '../lib/api'
+import { recordActivation } from '../lib/activation'
 import { useToast } from '../lib/toastContext'
 
 /**
@@ -20,6 +21,7 @@ export function DocxDownloadButton({ planId, downloadRequest, children, classNam
     setBusy(true)
     try {
       await (downloadRequest ? downloadRequest() : api.downloadPlan(planId))
+      if (!downloadRequest) recordActivation('plan_exported')
     } catch (error) {
       toast.apiError('Could not download the DOCX', error)
     } finally {

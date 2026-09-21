@@ -21,18 +21,19 @@
 name: Uptime
 
 on:
-  # After a deploy — when breakage actually happens. The outage this exists
-  # for shipped on a routine push to master.
-  workflow_run:
-    workflows: ["Quality"]
-    types: [completed]
-    branches: [master]
+  # Keep post-deploy monitoring outside commit CI: checksPass deploy gating
+  # would otherwise wait on a smoke job that is itself waiting for the deploy.
   # And a few times a day, to catch anything that breaks without a deploy
   # (an expired cert, a dead database, a Render incident).
   schedule:
     - cron: "0 12,15,18,21 * * *" # ~6am/9am/12pm/3pm US Central
     - cron: "0 0,3 * * *" #  ~7pm/10pm US Central
   workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Optional deployed commit SHA to wait for before smoke testing"
+        required: false
+        type: string
 
 # A later run's result supersedes an in-flight one; no value in queueing them.
 concurrency:
@@ -41,13 +42,6 @@ concurrency:
 
 jobs:
   smoke:
-    # Skip when the deploy that triggered this never succeeded — Quality
-    # failing means Render didn't ship anything, so the live site is whatever
-    # it already was and a failure here would just be noise pointing at the
-    # wrong commit. Scheduled and manual runs have no workflow_run to check.
-    if: >
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     # Browsers preinstalled — avoids ~60s of `playwright install` per run,
     # which at this frequency is most of the cost.
@@ -56,12 +50,26 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Render deploys on push and takes a minute or two. Checking immediately
-      # after Quality goes green would test the OLD build and, worse, could
-      # catch the instance mid-swap and report a failure that isn't real.
-      - name: Wait for the deploy to land
-        if: github.event_name == 'workflow_run'
-        run: sleep 120
+      # Manual release verification checks the serving revision, never a
+      # guessed deploy duration. Scheduled uptime still checks the live site.
+      - name: Verify the requested release is serving
+        if: inputs.expected_sha != ''
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          node --input-type=module <<'JS'
+          const deadline = Date.now() + 600000
+          let matched = false
+          while (Date.now() < deadline) {
+            try {
+              const res = await fetch('https://flexedacademy.com/api/version', { signal: AbortSignal.timeout(5000), cache: 'no-store' })
+              const version = await res.json()
+              if (version.release_sha === process.env.EXPECTED_SHA) { matched = true; break }
+            } catch {}
+            await new Promise(resolve => setTimeout(resolve, 10000))
+          }
+          if (!matched) throw new Error('Requested release did not become ready within ten minutes')
+          JS
 
       - name: Install playwright
         run: npm install --no-save playwright@1.56.0

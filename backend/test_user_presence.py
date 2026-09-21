@@ -78,7 +78,7 @@ def _stub_http_auth(monkeypatch, user):
 
 
 def test_migration_adds_nullable_presence_columns():
-    migration = db.MIGRATIONS[-1]
+    migration = next(sql for sql in db.MIGRATIONS if "ADD COLUMN IF NOT EXISTS last_login_at TEXT" in sql)
     assert "ADD COLUMN IF NOT EXISTS last_login_at TEXT" in migration
     assert "ADD COLUMN IF NOT EXISTS last_seen_at TEXT" in migration
     assert "NOT NULL" not in migration

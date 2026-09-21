@@ -1,4 +1,4 @@
-"""Typed-chat teaching policy and validated artifact actions; voice stays legacy."""
+"""Shared teaching policy and validated artifact actions for text and voice."""
 
 import re
 from collections.abc import Sequence
@@ -215,14 +215,14 @@ def chat_turn_policy(
     typing the week into the transcript.
     """
 
-    intent = None if voice else pending_intent(messages)
+    intent = pending_intent(messages)
     last_user = next((_text(m) for m in reversed(messages) if _role(m) == "user"), "")
     return ChatTurnPolicy(
         tools_enabled=True,
-        command_surface=bool(plan_open and has_plan and not voice),
+        command_surface=bool(plan_open and has_plan),
         pending_intent=intent,
         plan_context=wants_plan_context(messages, mode=mode, plan_open=plan_open),
-        casual_opener=bool(not voice and intent is None and is_casual_opener(last_user)),
+        casual_opener=bool(intent is None and is_casual_opener(last_user)),
     )
 
 

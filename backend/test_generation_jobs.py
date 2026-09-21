@@ -45,11 +45,13 @@ def test_cancel_marks_a_registered_job_cancelled():
     live = start_or_attach("user-stop", "req-stop", worker)
     assert get_job("user-stop", "req-stop") is live
     assert cancel_job("user-stop", "req-stop") is True
+    with live.cond:
+        assert live.cond.wait_for(lambda: live.finished, timeout=1)
     assert live.status == "cancelled"
     assert cancel_job("user-stop", "missing-id") is False
 
 
-def test_cancel_releases_the_generation_lease():
+def test_cancel_releases_the_generation_lease_after_worker_exits():
     released = []
 
     class FakeLease:
@@ -67,6 +69,8 @@ def test_cancel_releases_the_generation_lease():
     live = start_or_attach("user-lease", "req-lease", worker)
     assert started.wait(timeout=1)
     assert cancel_job("user-lease", "req-lease") is True
+    with live.cond:
+        assert live.cond.wait_for(lambda: live.finished, timeout=1)
     assert released == [True]
     assert live.lease is None
     assert live.status == "cancelled"

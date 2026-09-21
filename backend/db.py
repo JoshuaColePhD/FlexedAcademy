@@ -36,10 +36,13 @@ from psycopg2.pool import ThreadedConnectionPool
 from . import storage
 from .config import settings
 from .errors import AppError
+from .teaching_schema import SCHEMA_SQL as TEACHING_SCHEMA_SQL
 
 current_user_id = contextvars.ContextVar("current_user_id", default=None)
 support_webhook_context = contextvars.ContextVar("support_webhook_context", default=False)
 support_admin_context = contextvars.ContextVar("support_admin_context", default=False)
+billing_webhook_context = contextvars.ContextVar("billing_webhook_context", default=False)
+_transaction_connection = contextvars.ContextVar("transaction_connection", default=None)
 
 
 @contextmanager
@@ -76,6 +79,34 @@ def as_support_admin():
     finally:
         support_admin_context.reset(token)
 
+
+@contextmanager
+def transaction():
+    """Compose helpers into one transaction without extra pool connections."""
+    if _transaction_connection.get() is not None:
+        yield _transaction_connection.get()
+        return
+    with borrow() as conn:
+        token = _transaction_connection.set(conn)
+        try:
+            yield conn
+            conn.commit()
+        finally:
+            _transaction_connection.reset(token)
+
+
+@contextmanager
+def stripe_webhook_transaction(object_id: str):
+    """Only entered after signature validation; serialize one Stripe object."""
+    elevated = billing_webhook_context.set(True)
+    try:
+        with transaction() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", ("stripe:" + object_id,))
+            yield
+    finally:
+        billing_webhook_context.reset(elevated)
+
 log = logging.getLogger("flexedacademy.db")
 
 # One pool per process, opened lazily. `_conn` and the global `_lock` it was
@@ -85,6 +116,28 @@ _pool: ThreadedConnectionPool | None = None
 _pool_lock = threading.Lock()
 # Bounds waiters so an over-subscribed pool queues instead of raising.
 _slots: threading.Semaphore | None = None
+
+
+class DatabaseConnection(psycopg2.extensions.connection):
+    """A connection subclass with room for per-connection initialization state."""
+
+    _vector_registered = False
+
+
+def _register_vector_once(conn) -> None:
+    if conn._vector_registered:
+        return
+    try:
+        # pgvector expects (type_name, oid) tuples. A RealDictCursor makes
+        # dict(fetchall()) consume column names instead of the type values.
+        with conn.cursor(cursor_factory=psycopg2.extensions.cursor) as cur:
+            register_vector(cur)
+    except psycopg2.ProgrammingError:
+        # A fresh database may not have the vector extension until migrate().
+        conn.rollback()
+    else:
+        conn._vector_registered = True
+
 
 MIGRATIONS: list[str] = [
     """
@@ -3909,6 +3962,91 @@ MIGRATIONS: list[str] = [
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TEXT;
     """,
+    # Revision-safe artifacts and signed billing transactions.
+    """
+    ALTER TABLE plans ADD COLUMN IF NOT EXISTS revision BIGINT NOT NULL DEFAULT 1;
+    ALTER TABLE plans ADD COLUMN IF NOT EXISTS provenance JSONB NOT NULL DEFAULT '{}'::jsonb;
+    CREATE OR REPLACE FUNCTION bump_plan_revision() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.plan_json IS DISTINCT FROM OLD.plan_json OR NEW.template_id IS DISTINCT FROM OLD.template_id
+         OR NEW.revision IS DISTINCT FROM OLD.revision THEN
+        NEW.revision := OLD.revision + 1;
+      ELSE
+        NEW.revision := OLD.revision;
+      END IF;
+      RETURN NEW;
+    END; $$;
+    DROP TRIGGER IF EXISTS plans_revision ON plans;
+    CREATE TRIGGER plans_revision BEFORE UPDATE ON plans FOR EACH ROW EXECUTE FUNCTION bump_plan_revision();
+    ALTER TABLE document_build_jobs ADD COLUMN IF NOT EXISTS plan_revision BIGINT NOT NULL DEFAULT 1;
+    ALTER TABLE document_build_jobs ADD COLUMN IF NOT EXISTS claim_token TEXT;
+    UPDATE document_build_jobs j SET plan_revision = p.revision FROM plans p WHERE p.id = j.plan_id;
+    CREATE OR REPLACE FUNCTION queue_plan_document() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE stamp TEXT := to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') || '+00:00';
+    BEGIN
+      IF NEW.docx_path IS NULL AND (TG_OP = 'INSERT' OR NEW.revision IS DISTINCT FROM OLD.revision OR OLD.docx_path IS NOT NULL) THEN
+        INSERT INTO document_build_jobs(plan_id,user_id,status,attempts,error_message,created_at,updated_at,available_at,plan_revision,claim_token)
+        VALUES (NEW.id,NEW.user_id,'queued',0,NULL,stamp,stamp,stamp,NEW.revision,NULL)
+        ON CONFLICT(plan_id) DO UPDATE SET status='queued',attempts=0,error_message=NULL,
+          updated_at=stamp,available_at=stamp,plan_revision=NEW.revision,claim_token=NULL;
+      END IF;
+      RETURN NEW;
+    END; $$;
+    DROP TRIGGER IF EXISTS plans_queue_document ON plans;
+    CREATE TRIGGER plans_queue_document AFTER INSERT OR UPDATE ON plans FOR EACH ROW EXECUTE FUNCTION queue_plan_document();
+    DROP POLICY IF EXISTS document_build_owner ON document_build_jobs;
+    CREATE POLICY document_build_owner ON document_build_jobs
+      USING (user_id = current_setting('app.user_id', true))
+      WITH CHECK (user_id = current_setting('app.user_id', true));
+    DROP POLICY IF EXISTS "Signed billing webhooks can update accounts" ON users;
+    CREATE POLICY "Signed billing webhooks can update accounts" ON users
+      USING (current_setting('app.billing_webhook', true) = '1')
+      WITH CHECK (current_setting('app.billing_webhook', true) = '1');
+    """,
+    # Shared generation ownership/recovery, consumed by generation_store.py.
+    """
+    CREATE TABLE IF NOT EXISTS generation_runs (
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      request_id TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('queued','running','done','error','cancelled')),
+      result_json JSONB,
+      error_json JSONB,
+      owner_token TEXT,
+      cancellation_requested BOOLEAN NOT NULL DEFAULT false,
+      lease_expires_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, request_id)
+    );
+    CREATE INDEX IF NOT EXISTS generation_runs_leases ON generation_runs(status, lease_expires_at);
+    ALTER TABLE generation_runs ENABLE ROW LEVEL SECURITY;
+    ALTER TABLE generation_runs FORCE ROW LEVEL SECURITY;
+    DROP POLICY IF EXISTS generation_runs_owner ON generation_runs;
+    CREATE POLICY generation_runs_owner ON generation_runs
+      USING (user_id = current_setting('app.user_id', true))
+      WITH CHECK (user_id = current_setting('app.user_id', true));
+    """,
+    TEACHING_SCHEMA_SQL,
+    # Keep one superseded artifact through an edit/retry so successful builds
+    # can reclaim immutable revision files without listing the storage bucket.
+    """
+    ALTER TABLE document_build_jobs ADD COLUMN IF NOT EXISTS previous_docx_path TEXT;
+    CREATE OR REPLACE FUNCTION queue_plan_document() RETURNS trigger LANGUAGE plpgsql AS $$
+    DECLARE stamp TEXT := to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') || '+00:00';
+    previous_path TEXT;
+    BEGIN
+      IF TG_OP = 'UPDATE' THEN previous_path := OLD.docx_path; END IF;
+      IF NEW.docx_path IS NULL AND (TG_OP = 'INSERT' OR NEW.revision IS DISTINCT FROM OLD.revision OR OLD.docx_path IS NOT NULL) THEN
+        INSERT INTO document_build_jobs(plan_id,user_id,status,attempts,error_message,created_at,updated_at,available_at,plan_revision,claim_token,previous_docx_path)
+        VALUES (NEW.id,NEW.user_id,'queued',0,NULL,stamp,stamp,stamp,NEW.revision,NULL,previous_path)
+        ON CONFLICT(plan_id) DO UPDATE SET status='queued',attempts=0,error_message=NULL,
+          updated_at=stamp,available_at=stamp,plan_revision=NEW.revision,claim_token=NULL,
+          previous_docx_path=COALESCE(EXCLUDED.previous_docx_path,document_build_jobs.previous_docx_path);
+      END IF;
+      RETURN NEW;
+    END; $$;
+    """,
 ]
 
 
@@ -3995,10 +4133,11 @@ def _dsn_with_tls() -> str:
     "require" (not "verify-full"): the pooler's cert isn't pinned here, so
     this stops passive eavesdropping without also needing a bundled CA file.
     """
-    url = settings.database_url
-    if "sslmode=" in url:
-        return url
-    return url + ("&" if "?" in url else "?") + "sslmode=require"
+    dsn = settings.database_url
+    options = psycopg2.extensions.parse_dsn(dsn)
+    if "sslmode" in options:
+        return dsn
+    return psycopg2.extensions.make_dsn(dsn, sslmode="require")
 
 
 def _new_connection() -> psycopg2.extensions.connection:
@@ -4006,7 +4145,7 @@ def _new_connection() -> psycopg2.extensions.connection:
         raise ValueError("DATABASE_URL is not set in .env")
 
     try:
-        conn = psycopg2.connect(_dsn_with_tls(), cursor_factory=RealDictCursor)
+        conn = psycopg2.connect(_dsn_with_tls(), cursor_factory=RealDictCursor, connection_factory=DatabaseConnection, connect_timeout=10)
     except psycopg2.OperationalError as exc:
         # Every data route died with a generic "Something went wrong on the
         # server" when this happened, which sent you to the logs to find out the
@@ -4030,10 +4169,7 @@ def _new_connection() -> psycopg2.extensions.connection:
 
     conn.autocommit = False
 
-    try:
-        register_vector(conn)
-    except psycopg2.ProgrammingError:
-        pass
+    _register_vector_once(conn)
 
     return conn
 
@@ -4085,6 +4221,7 @@ def _ensure_pool() -> ThreadedConnectionPool:
                 maxconn=settings.db_pool_size,
                 dsn=_dsn_with_tls(),
                 cursor_factory=RealDictCursor,
+                connection_factory=DatabaseConnection,
                 # Without this, a Supabase pooler that silently drops packets
                 # (rather than refusing the connection) leaves libpq retrying
                 # at the TCP level with no exception ever raised — the request
@@ -4100,6 +4237,10 @@ def borrow():
     """Borrow a connection for the duration of one statement, and always give it
     back — including on the error paths, which is the failure mode that turns a
     pool into an outage."""
+    existing = _transaction_connection.get()
+    if existing is not None:
+        yield existing
+        return
     pool = _ensure_pool()
     # A bounded wait: if every slot is leaked (e.g. a worker thread killed
     # mid-request never released one), callers should get a 500 instead of
@@ -4115,7 +4256,9 @@ def borrow():
         if conn.closed:
             # A pooler can drop an idle connection; don't hand a dead one out.
             pool.putconn(conn, close=True)
+            conn = None
             conn = pool.getconn()
+        _register_vector_once(conn)
         user_id = current_user_id.get()
         if user_id:
             with conn.cursor() as cur:
@@ -4126,26 +4269,23 @@ def borrow():
         if support_admin_context.get():
             with conn.cursor() as cur:
                 cur.execute("SET LOCAL app.support_admin = '1'")
-        # ONCE per physical connection, not once per query. register_vector
-        # issues its own round trip to look up the vector type's OID, and doing
-        # that on every borrow made concurrent reads SLOWER than sequential
-        # ones — the pool was winning and this was handing the win back.
-        if not getattr(conn, "_vector_registered", False):
-            try:
-                register_vector(conn)
-                conn._vector_registered = True
-            except (psycopg2.ProgrammingError, psycopg2.InterfaceError):
-                pass
+        if billing_webhook_context.get():
+            with conn.cursor() as cur:
+                cur.execute("SET LOCAL app.billing_webhook = '1'")
         yield conn
     except Exception:
         try:
-            conn.rollback()
+            if conn is not None:
+                conn.rollback()
         except Exception:  # noqa: BLE001, S110 — best-effort cleanup, the original error below still propagates
             pass
         raise
     finally:
-        pool.putconn(conn)
-        _slots.release()
+        try:
+            if conn is not None:
+                pool.putconn(conn)
+        finally:
+            _slots.release()
 
 
 def migrate(conn: psycopg2.extensions.connection) -> None:
@@ -4176,10 +4316,7 @@ def migrate(conn: psycopg2.extensions.connection) -> None:
                 cur.execute("INSERT INTO schema_version (version) VALUES (%s) ON CONFLICT (version) DO NOTHING", (i + 1,))
                 conn.commit()
 
-            try:
-                register_vector(conn)
-            except psycopg2.ProgrammingError:
-                pass
+            _register_vector_once(conn)
     finally:
         try:
             with conn.cursor() as cur:
@@ -4207,7 +4344,8 @@ def _write(sql: str, params: tuple = ()) -> int:
             # psycopg2 uses %s for placeholders instead of ?
             cur.execute(sql.replace("?", "%s"), params)
             rowcount = cur.rowcount
-        conn.commit()
+        if _transaction_connection.get() is None:
+            conn.commit()
         return rowcount
 
 
@@ -4244,6 +4382,10 @@ def active_standards_states() -> list[str]:
     return [r["state"] for r in rows]
 
 
+def _standards_partition(state: str) -> str:
+    return "National" if state.strip().casefold() == "national" else state.strip().upper()
+
+
 def list_standard_chunks(
     state: str | None = None,
     *,
@@ -4268,7 +4410,7 @@ def list_standard_chunks(
     params: list[Any] = []
     if state:
         clauses.append("metadata->>'state' = %s")
-        params.append(state.upper())
+        params.append(_standards_partition(state))
     if subject:
         clauses.append("metadata->>'course' = %s")
         params.append(subject)
@@ -4292,7 +4434,7 @@ def list_standard_chunks_page(
 ) -> tuple[list[dict], int]:
     """Fetch one filtered standards page and its total without full-corpus load."""
     clauses = ["metadata->>'state' = %s"]
-    params: list[Any] = [state.upper()]
+    params: list[Any] = [_standards_partition(state)]
     if subject:
         clauses.append("metadata->>'course' = %s")
         params.append(subject)
@@ -4339,7 +4481,7 @@ def standard_stats(
     params: list[Any] = []
     if state:
         clauses.append("metadata->>'state' = %s")
-        params.append(state.upper())
+        params.append(_standards_partition(state))
     if subject:
         clauses.append("metadata->>'course' = %s")
         params.append(subject)
@@ -4375,7 +4517,7 @@ def standard_stats(
 
 def standard_frameworks(*, state: str = "AL", include_national: bool = False) -> list[dict]:
     """Return course/grade aggregates for the framework picker."""
-    states = [state.upper()]
+    states = [_standards_partition(state)]
     if include_national:
         states.extend(["AP", "National"])
     rows = _rows(
@@ -4420,7 +4562,7 @@ def find_standard_chunks_by_code(
     if not codes:
         return []
     clauses = ["metadata->>'state' = %s", "upper(metadata->>'code') = ANY(%s)"]
-    params: list[Any] = [state.upper(), [code.upper() for code in codes]]
+    params: list[Any] = [_standards_partition(state), [code.upper() for code in codes]]
     if courses:
         clauses.append("metadata->>'course' = ANY(%s)")
         params.append(courses)
@@ -4469,7 +4611,8 @@ def _write_returning(sql: str, params: tuple = ()) -> dict | None:
         with conn.cursor() as cur:
             cur.execute(sql.replace("?", "%s"), params)
             r = cur.fetchone()
-        conn.commit()
+        if _transaction_connection.get() is None:
+            conn.commit()
         return dict(r) if r else None
 
 
@@ -5480,31 +5623,32 @@ def create_plan(
     # page does) must never have its answer overridden by what the model wrote.
     wk = week_number if week_number is not None else parse_week(week_label or "")
 
-    _write(
-        """INSERT INTO plans (id, user_id, created_at, course, week_label, unit, query, plan_json,
-                              docx_path, retrieved_ids, warnings, chat_id, template, template_id,
-                              class_id, week_number)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (
-            plan_id,
-            user_id,
-            now(),
-            course,
-            week_label,
-            unit,
-            query,
-            json.dumps(plan_json),
-            docx_path,
-            json.dumps(retrieved_ids),
-            json.dumps(warnings),
-            chat_id,
-            template,
-            template_id,
-            class_id,
-            wk,
-        ),
-    )
-    return get_plan(user_id, plan_id)  # type: ignore[return-value]
+    with transaction():
+        _write(
+            """INSERT INTO plans (id, user_id, created_at, course, week_label, unit, query, plan_json,
+                                  docx_path, retrieved_ids, warnings, chat_id, template, template_id,
+                                  class_id, week_number)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                plan_id,
+                user_id,
+                now(),
+                course,
+                week_label,
+                unit,
+                query,
+                json.dumps(plan_json),
+                docx_path,
+                json.dumps(retrieved_ids),
+                json.dumps(warnings),
+                chat_id,
+                template,
+                template_id,
+                class_id,
+                wk,
+            ),
+        )
+        return get_plan(user_id, plan_id)  # type: ignore[return-value]
 
 
 def _hydrate_plan(row: dict) -> dict:
@@ -5516,7 +5660,7 @@ def _hydrate_plan(row: dict) -> dict:
     return d
 
 
-_PLAN_LIST_COLUMNS = "id, created_at, course, week_label, unit, query, docx_path, retrieved_ids, warnings, chat_id, template, template_id, user_id, class_id, week_number, drive_file_id, drive_web_link, is_public, shared_at"
+_PLAN_LIST_COLUMNS = "id, created_at, course, week_label, unit, query, docx_path, retrieved_ids, warnings, chat_id, template, template_id, user_id, class_id, week_number, drive_file_id, drive_web_link, is_public, shared_at, revision"
 
 
 def _hydrate_plan_list(row: dict) -> dict:
@@ -5771,43 +5915,49 @@ def list_plan_weeks(user_id: str, class_id: str) -> dict:
 
 
 def update_plan(user_id: str, plan_id: str, **fields: Any) -> dict | None:
-    allowed = {"plan_json", "week_label", "unit", "docx_path", "warnings", "course", "class_id", "template"}
+    allowed = {"plan_json", "week_label", "unit", "docx_path", "warnings", "course", "class_id", "template", "template_id", "provenance"}
     sets, params = [], []
     for k, v in fields.items():
         if k not in allowed:
             continue
         sets.append(f"{k} = ?")
-        params.append(json.dumps(v) if k in ("plan_json", "warnings") else v)
+        params.append(json.dumps(v) if k in ("plan_json", "warnings", "provenance") else v)
     if sets:
         params += [plan_id, user_id]
-        _write(f"UPDATE plans SET {', '.join(sets)} WHERE id = ? AND user_id = ?", tuple(params))
-        # Every async rebuild clears docx_path before returning. Queue its
-        # durable replacement in the same request instead of trusting a
-        # FastAPI in-process background task to survive a restart.
-        if fields.get("docx_path", object()) is None:
-            enqueue_document_build(plan_id, user_id)
+        with transaction():
+            _write(f"UPDATE plans SET {', '.join(sets)} WHERE id = ? AND user_id = ?", tuple(params))
+            # The edit and its queued replacement commit together.
+            if fields.get("docx_path", object()) is None:
+                enqueue_document_build(plan_id, user_id)
+            return get_plan(user_id, plan_id)
     return get_plan(user_id, plan_id)
 
 
 def enqueue_document_build(plan_id: str, user_id: str) -> dict:
-    """Queue (or re-queue) a DOCX build after its plan transaction commits."""
+    """Ensure a current build exists without invalidating an active claim."""
     stamp = now()
     _write(
         """
-        INSERT INTO document_build_jobs (plan_id, user_id, status, attempts, error_message, created_at, updated_at, available_at)
-        VALUES (?, ?, 'queued', 0, NULL, ?, ?, ?)
+        INSERT INTO document_build_jobs (plan_id, user_id, status, attempts, error_message, created_at, updated_at, available_at, plan_revision, claim_token, previous_docx_path)
+        SELECT id, user_id, 'queued', 0, NULL, ?, ?, ?, revision, NULL, docx_path
+        FROM plans WHERE id = ? AND user_id = ?
         ON CONFLICT (plan_id) DO UPDATE SET
           status = 'queued', attempts = 0, error_message = NULL,
+          plan_revision = EXCLUDED.plan_revision, claim_token = NULL,
+          previous_docx_path = COALESCE(EXCLUDED.previous_docx_path, document_build_jobs.previous_docx_path),
           updated_at = EXCLUDED.updated_at, available_at = EXCLUDED.available_at
+        WHERE document_build_jobs.plan_revision IS DISTINCT FROM EXCLUDED.plan_revision
+          OR document_build_jobs.status = 'failed'
+          OR (document_build_jobs.status = 'ready' AND EXCLUDED.previous_docx_path IS NULL)
         """,
-        (plan_id, user_id, stamp, stamp, stamp),
+        (stamp, stamp, stamp, plan_id, user_id),
     )
     return get_document_build_status(plan_id, user_id) or {}
 
 
 def get_document_build_status(plan_id: str, user_id: str) -> dict | None:
     return _row(
-        "SELECT plan_id, status, attempts, error_message, updated_at, available_at FROM document_build_jobs WHERE plan_id = ? AND user_id = ?",
+        "SELECT plan_id, status, attempts, error_message, updated_at, available_at, plan_revision FROM document_build_jobs WHERE plan_id = ? AND user_id = ?",
         (plan_id, user_id),
     )
 
@@ -5820,7 +5970,7 @@ def claim_next_document_build() -> dict | None:
     # it to the document builder.
     return _write_returning(
         """
-        UPDATE document_build_jobs SET status = 'building', attempts = attempts + 1, updated_at = ?
+        UPDATE document_build_jobs SET status = 'building', attempts = attempts + 1, updated_at = ?, claim_token = ?
         WHERE plan_id = (
           SELECT plan_id FROM document_build_jobs
           WHERE status = 'queued' AND COALESCE(available_at, updated_at) <= ?
@@ -5828,40 +5978,91 @@ def claim_next_document_build() -> dict | None:
         )
         RETURNING *
         """,
-        (now(), now()),
+        (now(), new_id(), now()),
     )
 
 
-def finish_document_build(plan_id: str, user_id: str, *, error_message: str | None = None) -> None:
-    if error_message:
-        job = get_document_build_status(plan_id, user_id) or {}
+def finish_document_build(
+    plan_id: str, user_id: str, *, claim_token: str, plan_revision: int,
+    docx_path: str | None = None, error_message: str | None = None, failure_warning: str | None = None,
+) -> bool:
+    """Publish only a still-owned build for the exact current plan revision."""
+    with transaction():
+        # Match update_plan's lock order: plan first, then its job.
+        plan = _row("SELECT revision, warnings FROM plans WHERE id = ? AND user_id = ? FOR UPDATE", (plan_id, user_id))
+        job = _row("SELECT * FROM document_build_jobs WHERE plan_id = ? AND user_id = ? FOR UPDATE", (plan_id, user_id))
+        if not plan or not job or job.get("claim_token") != claim_token or job["status"] != "building":
+            return False
+        if int(plan["revision"]) != plan_revision or int(job["plan_revision"]) != plan_revision:
+            enqueue_document_build(plan_id, user_id)
+            return False
         attempts = int(job.get("attempts") or 0)
-        # A restart, transient storage failure, or short-lived LibreOffice
-        # issue should not require a teacher to notice and click Rebuild. Keep
-        # retries bounded so a persistently malformed document reaches a clear
-        # failed state for recovery instead of looping forever.
-        if attempts < 3:
-            delay_seconds = 15 * (2 ** max(0, attempts - 1))
-            available_at = (datetime.now(UTC) + timedelta(seconds=delay_seconds)).isoformat(timespec="seconds")
-            _write(
-                """
-                UPDATE document_build_jobs
-                SET status = 'queued', error_message = ?, updated_at = ?, available_at = ?
-                WHERE plan_id = ? AND user_id = ?
-                """,
-                (error_message, now(), available_at, plan_id, user_id),
-            )
-            return
-    _write(
-        "UPDATE document_build_jobs SET status = ?, error_message = ?, updated_at = ?, available_at = ? WHERE plan_id = ? AND user_id = ?",
-        ('failed' if error_message else 'ready', error_message, now(), now(), plan_id, user_id),
-    )
+        stamp = now()
+        status, available_at = "ready", stamp
+        if error_message:
+            status = "failed"
+            if attempts < 3:
+                delay_seconds = 15 * (2 ** max(0, attempts - 1))
+                available_at = (datetime.now(UTC) + timedelta(seconds=delay_seconds)).isoformat(timespec="seconds")
+                status = "queued"
+        else:
+            if not docx_path:
+                raise ValueError("A successful document build requires its artifact path")
+            _write("UPDATE plans SET docx_path = ? WHERE id = ? AND user_id = ? AND revision = ?", (docx_path, plan_id, user_id, plan_revision))
+        if failure_warning and status in {"ready", "failed"}:
+            warnings = json.loads(plan.get("warnings") or "[]")
+            warnings = [warning for warning in warnings if warning != failure_warning]
+            if status == "failed":
+                warnings.append(failure_warning)
+            _write("UPDATE plans SET warnings = ? WHERE id = ? AND user_id = ? AND revision = ?", (json.dumps(warnings), plan_id, user_id, plan_revision))
+        _write(
+            "UPDATE document_build_jobs SET status = ?, error_message = ?, updated_at = ?, available_at = ?, claim_token = NULL WHERE plan_id = ? AND user_id = ? AND claim_token = ?",
+            (status, error_message, stamp, available_at, plan_id, user_id, claim_token),
+        )
+        obsolete_path = job.get("previous_docx_path") if status == "ready" else None
+    # Publication must commit before reclaiming its predecessor. Nested callers
+    # leave the tracked path intact for deletion/reconciliation after their commit.
+    if obsolete_path and _transaction_connection.get() is None:
+        cleanup_obsolete_document(user_id, plan_id, obsolete_path)
+    return True
+
+
+def _remove_plan_artifacts(paths: list[str | None]) -> None:
+    """Bound deletion to stored artifacts inside PLANS_DIR, after DB commit."""
+    for value in set(filter(None, paths)):
+        path = Path(value).resolve()
+        if not path.is_relative_to(Path(settings.plans_dir).resolve()):
+            continue
+        try:
+            storage.remove_file(path)
+        except Exception:  # noqa: BLE001 — cleanup cannot invalidate a saved plan
+            log.warning("could not remove obsolete plan artifact %s", path)
+
+
+def cleanup_obsolete_document(user_id: str, plan_id: str, path_str: str) -> None:
+    """Reclaim only immutable worker outputs after checking the current pointer.
+
+    Legacy canonical names can be reused by synchronous repair code, so those
+    need offline reconciliation or explicit plan deletion. Holding the plan lock
+    prevents a concurrent publish from changing its current pointer mid-cleanup.
+    """
+    if not re.search(r"-r\d+-[0-9a-f]{12}\.docx$", Path(path_str).name):
+        return
+    try:
+        with transaction():
+            plan = _row("SELECT docx_path FROM plans WHERE id = ? AND user_id = ? FOR UPDATE", (plan_id, user_id))
+            if not plan or not plan.get("docx_path") or Path(plan["docx_path"]).resolve() == Path(path_str).resolve():
+                return
+            _remove_plan_artifacts([path_str])
+            _write("UPDATE document_build_jobs SET previous_docx_path = NULL WHERE plan_id = ? AND user_id = ? AND previous_docx_path = ?", (plan_id, user_id, path_str))
+    except Exception:  # Artifact is published even if cleanup fails.
+        log.warning("could not clean superseded artifact for plan %s", plan_id, exc_info=True)
 
 
 def reset_stale_document_builds(stale_after_seconds: int = 900) -> int:
     threshold = (datetime.now(UTC) - timedelta(seconds=stale_after_seconds)).isoformat(timespec='seconds')
     return _write(
-        "UPDATE document_build_jobs SET status = 'queued', updated_at = ?, available_at = ? WHERE status = 'building' AND updated_at < ?",
+        "UPDATE document_build_jobs SET status = 'queued', claim_token = NULL, updated_at = ?, available_at = ? WHERE status = 'building' AND updated_at < ?",
         (now(), now(), threshold),
     )
 
@@ -5905,7 +6106,17 @@ def list_plans_for_school(school_id: str) -> list[dict]:
 
 
 def delete_plan(user_id: str, plan_id: str) -> bool:
-    return _write("DELETE FROM plans WHERE id = ? AND user_id = ?", (plan_id, user_id)) > 0
+    with transaction():
+        row = _row(
+            "SELECT p.docx_path, j.previous_docx_path FROM plans p LEFT JOIN document_build_jobs j ON j.plan_id = p.id WHERE p.id = ? AND p.user_id = ? FOR UPDATE OF p",
+            (plan_id, user_id),
+        )
+        if not row:
+            return False
+        deleted = _write("DELETE FROM plans WHERE id = ? AND user_id = ?", (plan_id, user_id)) > 0
+    if deleted and _transaction_connection.get() is None:
+        _remove_plan_artifacts([row.get("docx_path"), row.get("previous_docx_path")])
+    return deleted
 
 
 def set_plan_drive_file(user_id: str, plan_id: str, *, file_id: str, web_link: str) -> None:
@@ -5979,7 +6190,8 @@ def replace_plan_standards(
                     for e in entries
                 ],
             )
-        conn.commit()
+        if _transaction_connection.get() is None:
+            conn.commit()
 
 
 def add_plan_feedback(
@@ -6375,26 +6587,27 @@ def delete_curriculum_map(user_id: str, map_id: str) -> dict | None:
 
 
 def replace_curriculum_progress(user_id: str, map_id: str, subject: str, rows: list[dict]) -> None:
-    _write("DELETE FROM curriculum_progress WHERE map_id = ? AND user_id = ?", (map_id, user_id))
-    for i, r in enumerate(rows):
-        _write(
-            """INSERT INTO curriculum_progress
-               (id, user_id, map_id, subject, sort_order, unit, week_label, target_start, target_end, standards, notes)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-            (
-                new_id(),
-                user_id,
-                map_id,
-                subject,
-                i,
-                r.get("unit"),
-                r.get("week_label"),
-                r.get("target_start"),
-                r.get("target_end"),
-                json.dumps(r.get("standards") or []),
-                r.get("notes"),
-            ),
-        )
+    with transaction():
+        _write("DELETE FROM curriculum_progress WHERE map_id = ? AND user_id = ?", (map_id, user_id))
+        for i, r in enumerate(rows):
+            _write(
+                """INSERT INTO curriculum_progress
+                   (id, user_id, map_id, subject, sort_order, unit, week_label, target_start, target_end, standards, notes)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    new_id(),
+                    user_id,
+                    map_id,
+                    subject,
+                    i,
+                    r.get("unit"),
+                    r.get("week_label"),
+                    r.get("target_start"),
+                    r.get("target_end"),
+                    json.dumps(r.get("standards") or []),
+                    r.get("notes"),
+                ),
+            )
 
 
 def list_curriculum_progress(user_id: str, subject: str) -> list[dict]:
@@ -6506,7 +6719,8 @@ DOCUMENT_KINDS = ("pacing_guide", "syllabus", "curriculum_map", "other")
 
 def list_class_documents(user_id: str, class_id: str) -> list[dict]:
     return _rows(
-        """SELECT id, class_id, subject, kind, original_name, chars, active, uploaded_at
+        """SELECT id, class_id, subject, kind, original_name, chars, active, uploaded_at,
+                  processing_status, processing_error, chunk_count, week_count
              FROM curriculum_maps
             WHERE user_id = ? AND class_id = ? AND active = 1
             ORDER BY uploaded_at DESC""",
@@ -6531,7 +6745,8 @@ def create_class_document(
 
 def list_global_documents(user_id: str) -> list[dict]:
     return _rows(
-        """SELECT id, class_id, subject, kind, original_name, chars, active, uploaded_at
+        """SELECT id, class_id, subject, kind, original_name, chars, active, uploaded_at,
+                  processing_status, processing_error, chunk_count, week_count
              FROM curriculum_maps
             WHERE user_id = ? AND class_id IS NULL AND subject = 'GLOBAL' AND active = 1
             ORDER BY uploaded_at DESC""",
@@ -6572,17 +6787,16 @@ def replace_curriculum_chunks(map_id: str, user_id: str, rows: list) -> int:
     """Swap in one map's chunks. `rows` is [(document, embedding), ...]."""
     from psycopg2.extras import execute_values
 
-    _write("DELETE FROM curriculum_chunks WHERE map_id = ?", (map_id,))
-    if not rows:
-        return 0
-    with borrow() as conn:
+    with transaction() as conn:
+        _write("DELETE FROM curriculum_chunks WHERE map_id = ? AND user_id = ?", (map_id, user_id))
+        if not rows:
+            return 0
         with conn.cursor() as cur:
             execute_values(
                 cur,
                 "INSERT INTO curriculum_chunks (id, map_id, user_id, chunk_index, document, embedding) VALUES %s",
                 [(f"{map_id}:{i}", map_id, user_id, i, doc, emb) for i, (doc, emb) in enumerate(rows)],
             )
-        conn.commit()
     return len(rows)
 
 
@@ -7356,10 +7570,11 @@ def delete_user_account(user_id: str) -> None:
     with borrow() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT docx_path FROM plans WHERE user_id = %s AND docx_path IS NOT NULL",
+                "SELECT p.docx_path, j.previous_docx_path FROM plans p LEFT JOIN document_build_jobs j ON j.plan_id = p.id WHERE p.user_id = %s FOR UPDATE OF p",
                 (user_id,),
             )
-            file_paths.extend(row["docx_path"] for row in cur.fetchall())
+            for row in cur.fetchall():
+                file_paths.extend(path for path in (row["docx_path"], row["previous_docx_path"]) if path)
 
             cur.execute(
                 "SELECT qti_path, docx_path FROM quizzes WHERE user_id = %s",
@@ -7613,7 +7828,14 @@ def stripe_object_event_is_newer(object_id: str, event_created_at: int) -> bool:
         (object_id,),
     )
     latest = row.get("latest") if row else None
-    return latest is None or int(event_created_at) > int(latest)
+    return latest is None or int(event_created_at) >= int(latest)
+
+
+def stripe_object_event_has_timestamp(object_id: str, event_created_at: int) -> bool:
+    return _row(
+        "SELECT 1 FROM stripe_webhook_events WHERE object_id = ? AND event_created_at = ? LIMIT 1",
+        (object_id, event_created_at),
+    ) is not None
 
 
 def record_stripe_webhook_event(

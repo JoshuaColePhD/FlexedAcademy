@@ -2176,7 +2176,7 @@ export function SettingsPage() {
                 <div className="max-w-xl border border-edge rounded-xl p-4">
                   <Toggle
                     label="Enable Beta Features"
-                    description="Opt-in to experimental features before they are widely released — Voice Mode and quizzes."
+                    description="Opt-in to experimental features before they are widely released, including quizzes."
                     checked={betaFeatures}
                     onChange={toggleBetaFeatures}
                   />

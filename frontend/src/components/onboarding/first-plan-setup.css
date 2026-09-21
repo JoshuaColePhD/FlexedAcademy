@@ -1,0 +1,61 @@
+.first-plan-setup { width: 100%; height: 100%; overflow-y: auto; background: var(--paper); color: var(--ink); }
+.first-plan-header { max-width: 1180px; margin: auto; padding: 25px 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--edge); }
+.first-plan-layout { max-width: 1180px; margin: 0 auto; padding: 56px 32px 64px; display: grid; grid-template-columns: minmax(240px, .8fr) minmax(0, 1.2fr); gap: 64px; align-items: start; }
+.first-plan-intro { padding-top: 20px; }
+.first-plan-intro h1 { font-size: clamp(30px, 3.1vw, 45px); line-height: 1.12; letter-spacing: -.035em; margin: 18px 0; font-weight: 600; }
+.first-plan-intro > p:not(.eyebrow) { max-width: 29ch; line-height: 1.65; color: var(--ink-muted); }
+.first-plan-steps { list-style: none; padding: 0; display: grid; gap: 20px; margin: 34px 0; }
+.first-plan-steps li { display: flex; align-items: center; gap: 12px; color: var(--ink-muted); font-size: 14px; }
+.first-plan-steps li[aria-current] { color: var(--ink); font-weight: 600; }
+.first-plan-steps li > span { width: 30px; height: 30px; border: 1px solid var(--edge); border-radius: 50%; display: grid; place-items: center; font-size: 12px; }
+.first-plan-steps li[aria-current] > span { background: var(--accent); color: var(--accent-on); border-color: var(--accent); }
+.first-plan-person { display: flex; gap: 12px; align-items: center; padding-top: 24px; border-top: 1px solid var(--edge); font-size: 13px; }
+.first-plan-person > span { flex-shrink: 0; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 12px; background: var(--paper-sunken); font-weight: 600; }
+.first-plan-person small { display: block; max-width: 28ch; color: var(--ink-muted); margin-top: 3px; line-height: 1.5; }
+.first-plan-card { background: var(--paper-raised); border: 1px solid var(--edge); border-radius: 22px; padding: 30px; box-shadow: 0 8px 32px rgb(0 0 0 / 3%); }
+.first-plan-card h2 { font-size: 25px; line-height: 1.2; letter-spacing: -.025em; font-weight: 600; margin: 13px 0 10px; }
+.first-plan-card h2:focus { outline: none; }
+.first-plan-lead { font-size: 14px; line-height: 1.6; color: var(--ink-muted); margin-bottom: 24px; }
+.first-plan-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.first-plan-fields label, .first-plan-field, .first-plan-course legend { display: block; font-size: 13px; font-weight: 600; }
+.first-plan-field { margin-top: 22px; }
+.first-plan-card select, .first-plan-card input:not([type=radio]), .first-plan-card textarea { display: block; width: 100%; margin-top: 8px; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--edge); background: var(--paper); color: var(--ink); font-size: 14px; font-weight: 400; min-height: 44px; }
+.first-plan-card :is(input, select, textarea, button, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.first-plan-card textarea { resize: vertical; min-height: 110px; }
+.first-plan-course { margin-top: 23px; }
+.first-plan-course-options { display: grid; gap: 6px; max-height: 240px; overflow-y: auto; padding: 4px; margin: 10px -4px 0; }
+.first-plan-course-options label { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid var(--edge); border-radius: 10px; min-height: 46px; cursor: pointer; font-size: 13px; }
+.first-plan-course-options label.is-selected { border-color: var(--accent); background: var(--accent-tint); }
+.first-plan-course-options input { accent-color: var(--accent); flex-shrink: 0; }
+.first-plan-course > p { margin-top: 12px; color: var(--ink-muted); font-size: 13px; }
+.first-plan-school { margin-top: 24px; border-top: 1px solid var(--edge); padding-top: 18px; font-size: 12px; }
+.first-plan-school summary { cursor: pointer; min-height: 30px; font-weight: 500; }
+.first-plan-school summary span { color: var(--ink-muted); font-weight: 400; margin-left: 6px; }
+.first-plan-school p { margin-top: 10px; color: var(--ink-muted); line-height: 1.6; }
+.first-plan-notice { background: var(--paper-sunken); border-radius: 10px; margin-top: 15px; padding: 13px; font-size: 13px; line-height: 1.6; color: var(--ink-soft); }
+.first-plan-primary { width: 100%; min-height: 48px; display: flex; gap: 9px; align-items: center; justify-content: center; background: var(--accent); color: var(--accent-on); border-radius: 11px; padding: 13px 16px; margin-top: 25px; font-size: 14px; font-weight: 600; }
+.first-plan-primary:disabled { opacity: .5; cursor: not-allowed; }
+.first-plan-back { display: inline-flex; gap: 7px; align-items: center; min-height: 44px; margin: -10px 0 10px; color: var(--ink-muted); font-size: 12px; }
+.first-plan-proof { display: flex; gap: 11px; padding: 15px; border-radius: 12px; background: var(--paper-sunken); margin-top: 22px; }
+.first-plan-proof > svg { flex-shrink: 0; margin-top: 2px; color: var(--accent-text); }
+.first-plan-proof strong { font-size: 12px; }
+.first-plan-proof p { font-size: 13px; line-height: 1.6; margin-top: 4px; color: var(--ink-soft); }
+.first-plan-proof small { display: block; font-size: 11px; line-height: 1.5; margin-top: 9px; color: var(--ink-muted); }
+.first-plan-output { display: flex; gap: 8px; font-size: 12px; color: var(--ink-muted); line-height: 1.6; margin-top: 16px; }
+.first-plan-output svg { flex-shrink: 0; margin-top: 2px; }
+.first-plan-error { margin-top: 16px; color: var(--mark); font-size: 13px; line-height: 1.5; }
+.first-plan-saved { font-size: 11px; color: var(--ink-muted); text-align: center; margin-top: 14px; }
+@media (max-width: 760px) {
+  .first-plan-header { padding: 18px 20px; }
+  .first-plan-layout { grid-template-columns: 1fr; gap: 18px; padding: 22px 16px 40px; }
+  .first-plan-intro { padding: 0 6px; }
+  .first-plan-intro h1 { font-size: 29px; margin: 10px 0; }
+  .first-plan-intro h1 br { display: none; }
+  .first-plan-intro > p:not(.eyebrow), .first-plan-person { display: none; }
+  .first-plan-steps { display: flex; margin: 18px 0 0; gap: 24px; }
+  .first-plan-steps li { font-size: 12px; gap: 8px; }
+  .first-plan-card { padding: 23px 19px; border-radius: 17px; }
+  .first-plan-card h2 { font-size: 23px; }
+  .first-plan-fields { gap: 10px; }
+  .first-plan-card select, .first-plan-card input:not([type=radio]), .first-plan-card textarea { font-size: 16px; }
+}

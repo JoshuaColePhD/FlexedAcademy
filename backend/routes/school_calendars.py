@@ -12,12 +12,15 @@ import re
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 
 from .. import calendar_intake, db, storage, template_intake
 from ..config import settings
 from ..deps import get_current_admin, get_current_user
+from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..generation_queue import generation_queue
+from ..ratelimit import limiter
 from .misc import _spool
 
 log = logging.getLogger("flexedacademy.school_calendars")
@@ -62,7 +65,9 @@ def _require_school_access(user_id: str, school_id: str) -> dict:
 # `--workers 1` (Dockerfile) an async version ran that on the event loop and
 # froze every other request, SSE streams included. `def` gets the threadpool.
 @router.post("", status_code=201)
+@limiter.limit("10/hour")
 def upload_calendar(
+    request: Request,
     school_name: str = Form(..., min_length=1, max_length=120),
     source_url: str | None = Form(default=None),
     file: UploadFile | None = File(default=None),
@@ -89,8 +94,11 @@ def upload_calendar(
             )
         school = _resolve_school(school_name)
 
+    require_entitlement(user_id)
     text = calendar_intake.extract_calendar_text(upload=file, url=source_url)
-    weeks = calendar_intake.parse_and_validate(user_id, text)
+    with generation_queue.slot(user_id):
+        require_entitlement(user_id)
+        weeks = calendar_intake.parse_and_validate(user_id, text)
 
     submission = db.create_calendar_submission(
         school_id=school["id"],
@@ -148,8 +156,10 @@ def reject_calendar(submission_id: str, _admin_id: str = Depends(get_current_adm
 # `--workers 1` (Dockerfile) an async version ran that on the event loop and
 # froze every other request, SSE streams included. `def` gets the threadpool.
 @router.post("/{school_id}/template", status_code=201)
+@limiter.limit("20/hour")
 def upload_school_template(
     school_id: str,
+    request: Request,
     file: UploadFile | None = File(default=None),
     source_url: str | None = Form(default=None),
     blank_template_attested: bool = Form(default=False),
@@ -180,6 +190,7 @@ def upload_school_template(
         raise AppError("blank_template_confirmation_required", "Confirm that this is a blank, reusable district template before uploading.", status=400)
     if template_scope not in {"personal", "school_candidate"}:
         raise AppError("bad_template_scope", "Choose either a personal template or a school-level candidate.", status=400)
+    require_entitlement(user_id)
 
     if source_url:
         if "docs.google.com/document/d/" not in source_url:
@@ -203,16 +214,20 @@ def upload_school_template(
         template_id = db.new_id()
         dest = uploads_dir / f"{school_id}_{template_id}{ext}"
         shutil.move(str(spooled), str(dest))  # not Path.rename: the temp dir and uploads/ may be different filesystems
-        storage.mirror_file(dest)
+        if not storage.mirror_file(dest):
+            dest.unlink(missing_ok=True)
+            raise AppError("storage_unavailable", "Your template could not be saved durably. Please try the upload again.", status=503)
     finally:
         spooled.unlink(missing_ok=True)  # no-op once moved away; cleans up on any raise before that
 
     row = db.create_school_template(
         school_id, user_id, filename, str(dest), template_scope=template_scope
     )
-    return template_intake.run_and_persist(
-        user_id=user_id, template_id=row["id"], school_id=school_id, dest_path=dest, claimed_ext=ext
-    )
+    with generation_queue.slot(user_id):
+        require_entitlement(user_id)
+        return template_intake.run_and_persist(
+            user_id=user_id, template_id=row["id"], school_id=school_id, dest_path=dest, claimed_ext=ext
+        )
 
 
 @router.get("/{school_id}/templates")

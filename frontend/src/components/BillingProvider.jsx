@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, LockKeyhole, Sparkles } from 'lucide-react'
 import { BillingContext } from '../lib/billingContext'
@@ -6,7 +6,9 @@ import { useAuth } from '../lib/authContext'
 import { useToast } from '../lib/toastContext'
 import { useFocusTrap } from '../hooks/useFocusTrap'
 import { api } from '../lib/api'
-import { EmbeddedCheckout } from './EmbeddedCheckout'
+import { ErrorBoundary } from './ErrorBoundary'
+
+const EmbeddedCheckout = lazy(() => import('./EmbeddedCheckout').then((module) => ({ default: module.EmbeddedCheckout })))
 
 /* The paywall, and everything that decides when to show it.
  *
@@ -296,6 +298,8 @@ export function BillingProvider({ children }) {
             aria-describedby={checkoutClientSecret ? undefined : 'paywall-body'}
           >
             {checkoutClientSecret ? (
+              <ErrorBoundary scope="checkout" compact>
+              <Suspense fallback={<div className="p-6" role="status"><h2 id="checkout-title">Opening secure checkout…</h2><button type="button" className="btn mt-3" onClick={closeCheckout}>Close</button></div>}>
               <EmbeddedCheckout
                 key={checkoutSessionId || checkoutClientSecret}
                 clientSecret={checkoutClientSecret}
@@ -310,6 +314,8 @@ export function BillingProvider({ children }) {
                   pollForSubscription()
                 }}
               />
+              </Suspense>
+              </ErrorBoundary>
             ) : (
               <>
                 <div className="flex items-start gap-3">

@@ -1,9 +1,8 @@
-// Explicit typed actions take precedence; older voice events retain their route.
-export function planOperation(result, activePlanId, { voice = false } = {}) {
+// Spoken and typed requests share the same complete, validated action contract.
+export function planOperation(result, activePlanId) {
   if (!result?.toolCalled) return null
   const action = result.planAction
   if (!action) {
-    if (voice) return { action: activePlanId ? 'revise_week' : 'create' }
     throw new Error('The plan action was incomplete. Please try again.')
   }
   if (!['create', 'revise_week', 'revise_days'].includes(action.action)) {

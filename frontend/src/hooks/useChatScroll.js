@@ -17,7 +17,7 @@ import { readAccountStorage, writeAccountStorage } from '../lib/accountStorage'
  *   snapToBottom()                    treat the view as caught up
  *   scrollToBottom()                  the "Latest" jump
  */
-export function useChatScroll({ chatId, userId, messageCount, streamText }) {
+export function useChatScroll({ chatId, userId, messageCount, streamText, bottomClearance = 0 }) {
   const [atBottom, setAtBottom] = useState(true)
   const scrollRef = useRef(null)
   const endRef = useRef(null)
@@ -165,7 +165,7 @@ export function useChatScroll({ chatId, userId, messageCount, streamText }) {
       applyFollow()
     })
     return () => cancelAnimationFrame(frame)
-  }, [messageCount, atBottom, streamText, applyFollow])
+  }, [messageCount, atBottom, streamText, bottomClearance, applyFollow])
 
   /* A pin belongs to one exchange. Leaving it set across a chat switch would
      keep a spacer sized for a conversation that is no longer on screen. */

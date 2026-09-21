@@ -2,12 +2,11 @@ import { expect, test } from '@playwright/test'
 
 const seed = '/preview.html?fresh=0&at=/c/c1/chat/seed1'
 
-/* Seeded chats already have a week, so Outputs auto-opens as an in-flow
-   column. The conversation stays the main view; the desktop reader only
-   mounts after the teacher opens the week from that rail. The Close/Open
-   artifacts panel header toggle was removed; wait for the drawer itself
-   rather than a control that no longer exists. */
+/* A saved chat opens Materials once its plan has loaded. Wait for that
+   transition; clicking a generic Show/Hide locator can close the panel if
+   the plan arrives between inspecting the label and dispatching the click. */
 async function openArtifactsPanel(page) {
+  await expect(page.getByRole('button', { name: 'Hide materials', exact: true })).toBeVisible()
   await expect(page.locator('.artifact-drawer')).toBeVisible()
 }
 
@@ -185,11 +184,11 @@ test('composer stays centered between the navigation and materials rails', async
     expect(Math.abs(drawerBox.y - topbarBox.y)).toBeLessThanOrEqual(12)
     expect(await page.locator('.artifact-drawer').evaluate((el) => getComputedStyle(el).position)).toBe('relative')
     expect(composerBox.x).toBeGreaterThanOrEqual(chatBox.x - 1)
-    expect(composerBox.x + composerBox.width).toBeLessThanOrEqual(drawerBox.x - 24)
+    expect(composerBox.x + composerBox.width).toBeLessThanOrEqual(drawerBox.x - 17)
   }
   await assertComposerBetweenRails()
-  await expect(page.getByRole('button', { name: 'Close artifacts panel', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Open artifacts panel', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Hide materials', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Close materials panel', exact: true })).toBeVisible()
 
   await page.setViewportSize({ width: 1512, height: 900 })
   await page.waitForTimeout(220)

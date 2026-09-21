@@ -58,6 +58,7 @@ export const qk = {
    *  above. */
   planWeeks: (classId) => ['plan-weeks', classId ?? null],
   curriculumProgress: (classId) => ['curriculum-progress', classId ?? null],
+  standardsCoverage: (classId) => ['standards', 'coverage', classId ?? null],
   classDocuments: (classId) => ['class-documents', classId],
   supportThreads: ['support', 'threads'],
   supportThread: (id) => ['support', 'thread', id],

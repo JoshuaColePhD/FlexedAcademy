@@ -150,8 +150,7 @@ test('the new question pins to the top and the reply fills in beneath it', async
   await send(page, 'a question I should still be able to see')
 
   const topOf = async () => page.evaluate(() => {
-    const scroller = document.querySelector('[data-message-id]')?.closest('div[class*="overflow"]')
-      || [...document.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 40)
+    const scroller = document.querySelector('.chat-transcript-scroll')
     const rows = [...document.querySelectorAll('[data-message-id]')]
     const mine = rows.reverse().find((r) => r.textContent.includes('a question I should still'))
     if (!scroller || !mine) return null
@@ -176,6 +175,8 @@ test('the new question pins to the top and the reply fills in beneath it', async
   await expect(reply(page)).toContainText('More text that makes the reply tall.')
   // The spacer shrinks by exactly what the reply grows, so the pinned question
   // does not drift while the answer arrives.
-  const after = await topOf()
-  expect(Math.abs(after - before)).toBeLessThan(24)
+  // Text appears before the ResizeObserver/animation-frame scroll correction.
+  // Assert the settled position using the same tolerance, rather than reading
+  // the one intermediate frame in which the reply has grown but its spacer hasn't.
+  await expect.poll(async () => Math.abs((await topOf()) - before)).toBeLessThan(24)
 })

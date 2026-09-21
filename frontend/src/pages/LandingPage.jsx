@@ -447,8 +447,7 @@ export function LandingPage() {
             claim printed twice above the fold. */}
         <h1 className="land-title">A week of lesson plans, cited to the standard</h1>
         <p className="land-sub">
-          Word for word from your state's real course of study — no guessing, no vibes.
-          Just download it.
+          Draft a week from supported course standards, inspect the sources, and make it your own.
         </p>
         <div className="land-actions">
           <Link
@@ -473,7 +472,7 @@ export function LandingPage() {
           <span className="land-tag">Your format, carried through</span>
           <h2 id="template-proof-heading" className="land-heading">Bring the template your school already uses.</h2>
           <p className="land-template-copy">
-            Upload a blank Word template and FlexEd reads its cells, colors, headings, and layout intent. Your next lesson plan is written into that same format, alongside your syllabus, pacing guide, and state standards.
+            Start with a readable lesson plan, then add your school’s blank Word template. FlexEd analyzes its structure and prepares a matching format for review. Supported standards and your own teaching materials keep the plan tied to your course.
           </p>
         </div>
         <div className="land-template-flow" aria-label="Blank template becomes a filled lesson plan">

@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import re
 import time
+from contextlib import nullcontext
 
 import pytest
 import stripe
@@ -310,6 +311,8 @@ def _subscription_event(event_id: str, created: int, status: str = "active") -> 
 
 
 def test_webhook_deduplicates_and_ignores_late_subscription_events(monkeypatch):
+    monkeypatch.setattr(billing.db, "stripe_webhook_transaction", lambda _key: nullcontext())
+    monkeypatch.setattr(billing.db, "stripe_object_event_has_timestamp", lambda *_args: False)
     events = {
         "evt_new": _subscription_event("evt_new", 200, "active"),
         "evt_old": _subscription_event("evt_old", 100, "canceled"),
@@ -362,6 +365,7 @@ def test_webhook_deduplicates_and_ignores_late_subscription_events(monkeypatch):
 
 
 def test_checkout_webhook_retries_when_subscription_lookup_fails(monkeypatch):
+    monkeypatch.setattr(billing.db, "stripe_webhook_transaction", lambda _key: nullcontext())
     event = {
         "id": "evt_checkout",
         "type": "checkout.session.completed",

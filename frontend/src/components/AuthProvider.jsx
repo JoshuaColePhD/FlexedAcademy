@@ -17,20 +17,17 @@ function setAuthedState(val) {
 /* The one fetch of the signed-in account, shared by this provider and every
  * qk.me reader in the app.
  *
- * A 401 is resolved as `null` rather than thrown, which is what lets the three
- * states below be read straight off `data` with no separate error branch:
+ * A 401 is resolved as `null` rather than thrown:
  *
- *   undefined -> we do not know yet (still fetching, or a transport failure
- *                exhausted its retry) -> 'loading'
+ *   undefined -> fetching, or unavailable after the transport budget expires
  *   null      -> definitively not signed in                -> 'anon'
  *   object    -> signed in                                 -> 'authed'
  *
- * Anything that is NOT a 401 is rethrown so react-query's own retry handles it.
- * That distinction is load-bearing, not tidiness — see the status derivation
- * below for the outage it prevents. */
-async function fetchMe() {
+ * Other errors preserve the account's unknown state and offer a visible retry.
+ * The API transport owns the retry budget. */
+async function fetchMe({ signal } = {}) {
   try {
-    return await api.me()
+    return await api.me({ signal })
   } catch (err) {
     if (err?.status === 401) return null
     throw err
@@ -65,11 +62,8 @@ export function AuthProvider({ children }) {
   const meQuery = useQuery({
     queryKey: qk.me,
     queryFn: fetchMe,
-    /* Exactly one extra attempt, 1.5s apart — the same budget the hand-rolled
-       retriedRef used to give it. Only reachable for non-401s, since fetchMe
-       resolves a 401 as null rather than throwing. */
-    retry: 1,
-    retryDelay: 1500,
+    // api.js retries safe reads within one deadline; do not multiply that budget.
+    retry: false,
     /* The account does not change underneath a teacher who isn't editing it,
        and every mutation that DOES change it seeds this key directly. */
     staleTime: 60_000,
@@ -90,15 +84,13 @@ export function AuthProvider({ children }) {
    * next cold load skipped BootScreen too and went straight to the login
    * redirect.
    *
-   * Hence three states, not two: `undefined` (still fetching, or a transport
-   * failure used up its retry) holds at 'loading' so the shell waits instead
-   * of accusing anyone of being logged out. Only an actual 401 — which fetchMe
-   * turns into `null` — is 'anon'. Same distinction RootRedirect and
-   * AfterAuthRedirect in App.jsx already make, both citing this bug class. */
+   * `undefined` stays unknown: loading while fetching, then unavailable with
+   * a retry control. Only an actual 401 becomes anonymous. A background error
+   * also preserves a previously resolved account. */
   // lib/authState.js, so scripts/test-auth-state.mjs pins the real rule rather
   // than a copy of it. See that module for why the undefined/null split is
   // load-bearing.
-  const status = deriveAuthStatus(me)
+  const status = deriveAuthStatus(me, meQuery)
   const user = me ?? null
 
   /* Mirrors the query's answer into the localStorage hint BootScreen reads on

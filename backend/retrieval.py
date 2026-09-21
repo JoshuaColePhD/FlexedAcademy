@@ -34,6 +34,7 @@ import json
 import logging
 import re
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -787,6 +788,35 @@ def _chunks_by_state_course_and_code() -> dict[tuple[str, str, str], dict]:
     return out
 
 
+def chunks_for_codes(codes: list[str], subject_code: str | None = None, state: str = "AL") -> dict:
+    """Resolve a citation panel in one database read, preserving course scope."""
+    requested = list(dict.fromkeys(code.strip() for code in codes if code.strip()))
+    if len(requested) > 200:
+        raise AppError("too_many_codes", "Request at most 200 standards at once.", status=422)
+    if not requested:
+        return {}
+    if not settings.database_url:
+        return {code: chunk_for_code(code, subject_code, state) for code in requested}
+    states = ("AP", "National") if subject_code and is_ap_course(subject_code) else ((state or "AL").upper(), "National")
+    variants = list(course_variants(subject_code)) if subject_code else []
+    norm_codes = {_norm_code(code) for code in requested}
+    sql_codes = sorted({variant for code in norm_codes for variant in (code, code.replace("-", " "), code.replace(" ", "-"))})
+    sql = "SELECT id, metadata FROM chunks WHERE metadata->>'state' = ANY(%s) AND upper(metadata->>'code') = ANY(%s)"
+    params = [list(states), sql_codes]
+    if variants:
+        sql += " AND (metadata->>'course' = ANY(%s) OR metadata->>'source_type' = 'act_standards')"
+        params.append(variants)
+    rows = db._rows(sql + " ORDER BY id", tuple(params))
+    hits = [{**row["metadata"], "id": row["id"]} for row in rows]
+    hits.sort(key=lambda hit: (hit.get("course") not in variants, hit.get("state") != states[0]))
+    out = {}
+    for code in requested:
+        normalized = _norm_code(code)
+        spellings = {normalized, normalized.replace("-", " "), normalized.replace(" ", "-")}
+        out[code] = next((hit for hit in hits if _norm_code(str(hit.get("code", ""))) in spellings), None)
+    return out
+
+
 def chunk_for_code(code: str, subject_code: str | None = None, state: str = "AL") -> dict | None:
     """One chunk for this code — scoped to this state and subject_code's
     course when given.
@@ -1007,6 +1037,7 @@ class RetrievalResult:
 # Cost measured against Supabase: none discernible. All of these queries are
 # ~170-200ms either way; the time is the network round trip, not the scan.
 _ITERATIVE_SCAN = (
+    "SET LOCAL statement_timeout = '8s'; "
     "SET LOCAL hnsw.iterative_scan = relaxed_order; "
     # A 100k candidate scan is needlessly large for a top-15 query and was a
     # major transient memory spike on Render's 512 MB instance. The metadata
@@ -1376,18 +1407,30 @@ def retrieve_grounded(
     # the measured fast, stable point: it overlaps the independent standards
     # searches without allowing a burst of hybrid-query buffers in memory.
     workers = max(1, min(settings.retrieval_workers, settings.db_pool_size))
+    deadline = time.monotonic() + 30.0
+
+    def search_with_deadline(q, n, source_type):
+        if time.monotonic() >= deadline:
+            raise TimeoutError("Standards retrieval deadline exceeded")
+        return retrieve_raw(q, n, subject_code, grade, source_type, vectors[q], state)
+
+    failures = 0
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = []
         for q, n, source_type in jobs:
             futures.append(executor.submit(
-                retrieve_raw, q, n, subject_code, grade, source_type, vectors[q], state
+                search_with_deadline, q, n, source_type,
             ))
             
         for future in futures:
             try:
                 consider(future.result())
             except Exception as e:  # noqa: BLE001 — one retrieval source failing shouldn't sink the others
+                failures += 1
                 log.warning("retrieval failed: %s", e)
+    if failures == len(jobs) and not best:
+        raise AppError("retrieval_unavailable", "The standards search is temporarily unavailable.", status=503,
+                       hint="Your request was not generated. Try again shortly.")
 
     def ranking_value(chunk: dict) -> tuple[float, float]:
         # Preserve distance as the secondary key so two equally relevant chunks

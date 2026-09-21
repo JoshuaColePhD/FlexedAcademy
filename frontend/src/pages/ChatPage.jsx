@@ -4,8 +4,10 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { createPortal } from 'react-dom'
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, Plus, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
+import { ArrowDown, CheckCircle2, ChevronDown, ChevronLeft, Clock, CornerDownLeft, History, Loader2, PanelRight, Plus, Save, Trash2, TriangleAlert, Undo2, X } from 'lucide-react'
 import { api } from '../lib/api'
+import { invalidatePlanViews } from '../lib/planQueries'
+import { recordActivation } from '../lib/activation'
 import { haptic } from '../lib/haptics'
 import { useToast } from '../lib/toastContext'
 import { useAuth } from '../lib/authContext'
@@ -14,6 +16,10 @@ import { useBilling } from '../lib/billingContext'
 import { useVoice } from '../lib/voiceContext'
 import { useLessonStream } from '../hooks/useLessonStream'
 import { useChatStream } from '../hooks/useChatStream'
+import { useVoiceConsultation } from '../hooks/useVoiceConsultation'
+import { useVoicePlanFeedback } from '../hooks/useVoicePlanFeedback'
+import { teachingApi } from '../lib/teachingApi'
+import { describePlanChanges, undoVersion } from '../lib/voicePlanChanges'
 import { useLayoutMode, useMediaQuery } from '../hooks/useMediaQuery'
 import { useActiveClass, useCalendar, useChats, useClasses } from '../hooks/useAppData'
 import { FIELD_LABELS, SHORT_DAY, dayTitle, unitSuffix } from '../lib/planShape'
@@ -40,6 +46,7 @@ import { chatFailureCopy, droppedConnectionCopy, isDroppedConnectionError } from
 import { Composer } from '../components/Composer'
 import { AddDocumentDialog } from '../components/AddDocumentDialog'
 import { VoiceModePanel } from '../components/VoiceModePanel'
+import { VoiceSessionDetails } from '../components/VoiceSessionDetails'
 import { Message } from '../components/Message'
 import { LessonQuestions } from '../components/LessonQuestions'
 import { ArtifactPanel } from '../components/ArtifactPanel'
@@ -393,7 +400,7 @@ const ATTACHMENT_CHAR_CAP = 12000
 
 // Spoken (and captioned) the instant voice mode opens on an empty chat —
 // short on purpose, since it's heard once per conversation, not read.
-const VOICE_GREETING = 'Hey — what are we doing with this week?'
+const VOICE_GREETING = 'Let’s plan together. What should your students be able to do by the end of this lesson?'
 /* Which work card a chat tool call opens. ask_clarifying_questions is absent
    on purpose: a question is not work in progress. */
 const ACTIVITY_KIND_BY_TOOL = {
@@ -402,8 +409,6 @@ const ACTIVITY_KIND_BY_TOOL = {
   update_lesson_day: 'revision',
 }
 
-const VOICE_BUILDING = 'Alright, writing the week — give me a bit.'
-const VOICE_REVISING = 'On it — one moment.'
 
 const waitBeforeRetry = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -460,6 +465,10 @@ export function ChatPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
+  const selectedPlanId = searchParams.get('plan')
+  const autoPromptConsumed = useRef(null)
+  const nextWeekRequested = useRef(false)
+  const firstPlanRequested = useRef(false)
   const toast = useToast()
   const workspaceRail = useContext(WorkspaceRailContext)
   const persistMessage = useCallback(
@@ -486,6 +495,7 @@ export function ChatPage() {
   const isPhone = mode === 'phone'
   const isTablet = mode === 'tablet'
   const desktopViewport = useMediaQuery('(min-width: 1024px)')
+  const roomyWorkspace = useMediaQuery('(min-width: 1100px)')
   const tabletPortrait = useMediaQuery('(orientation: portrait)')
   const shortLandscape = useMediaQuery('(orientation: landscape) and (max-height: 520px)')
   const isTouchLandscapeTablet = useMediaQuery('(hover: none) and (pointer: coarse) and (orientation: landscape) and (min-height: 521px)')
@@ -762,6 +772,9 @@ export function ChatPage() {
   const [revisionHistory, setRevisionHistory] = useState([])
   const [revisionHistoryOpen, setRevisionHistoryOpen] = useState(false)
   const [planSaveState, setPlanSaveState] = useState('idle')
+  useEffect(() => {
+    if (artifact?.planId) qc.invalidateQueries({ queryKey: ['teaching', artifact.planId] })
+  }, [artifact?.planId, artifact?.plan, qc])
   const [lastSavedLabel, setLastSavedLabel] = useState('Lesson plan saved')
   const [pendingPlan, setPendingPlan] = useState(null)
   const [saveReceiptVisible, setSaveReceiptVisible] = useState(false)
@@ -884,6 +897,10 @@ export function ChatPage() {
   // now, everywhere it appears (Composer's icon, Greeting's pill) — see
   // VoiceModePanel for why this replaced a quiet on/off toggle.
   const [voiceOpen, setVoiceOpen] = useState(false)
+  const [voiceCollapsed, setVoiceCollapsed] = useState(false)
+  const [voiceDraft, setVoiceDraft] = useState('')
+  useComposerDraft(`voice:${draftKey}`, voiceDraft, setVoiceDraft, user?.id)
+  const [planWorkResult, setPlanWorkResult] = useState(null)
   /* The voice caption used to be state HERE, set at the moment text was handed
      to the TTS queue, and the panel then typed it out character by character
      hoping to land near the audio. It never did — see VoiceProvider's `caption`
@@ -976,30 +993,16 @@ export function ChatPage() {
      handle its lifetime; nothing here re-creates it on re-render. */
   const [portalHost] = useState(() => {
     const el = document.createElement('div')
+    el.className = 'composer-portal'
     el.style.position = 'fixed'
     el.style.zIndex = '200'
     // The host's own box is only ever as large as the anchor's rect (kept in
     // sync below) — this is a fallback for the first paint, before that sync
     // has run once, so an unstyled 0x0-but-static div can't eat a click.
     el.style.pointerEvents = 'none'
-    // left/width are animated when the chat rail changes. The same live
-    // anchor drives the composer whether chat or the lesson-plan overlay is
-    // visible, so resizing cannot leave the dock using an old layout.
-    // The bottom inset always follows the anchor's live bottom edge, so
-    // browser scaling and the lesson-plan overlay cannot strand the dock.
-    // Follow the measured chat lane with the same timing as the output drawer.
-    // A shorter, different transition made the portaled footer arrive at the
-    // chat seam before the drawer finished moving, which read as a gap/overlap
-    // glitch while Outputs opened or closed.
-    el.style.transition = 'left var(--t-reader) var(--ease-glide), width var(--t-reader) var(--ease-glide)'
-    el.style.willChange = 'left, width'
     return el
   })
-  /* The document opens over the chat, but it uses the SAME composer geometry
-     as the regular view. Read the live anchor on every sync so the composer
-     follows the current chat column when the rail disappears, the window is
-     resized, or browser zoom changes. The vertical position is always derived
-     from the anchor's bottom inset, so chat and document views cannot drift. */
+  // One portal keeps the input mounted while neighboring views change.
   useEffect(() => {
     document.body.appendChild(portalHost)
     return () => document.body.removeChild(portalHost)
@@ -1007,10 +1010,8 @@ export function ChatPage() {
 
   const composerAnchorRef = useRef(null)
   const composerDockRef = useRef(null)
-  const composerReaderAnchorRef = useRef(null)
-  const composerWorkspaceStateRef = useRef(null)
   const [composerDockH, setComposerDockH] = useState(0)
-  const [composerWorkspaceSettling, setComposerWorkspaceSettling] = useState(false)
+  const [chatComposerClearance, setChatComposerClearance] = useState(0)
   // The portaled dock's OWN rendered height, fed back to the anchor (below)
   // so the anchor reserves exactly the space the floating dock actually
   // needs — otherwise the transcript would sit a fixed guess-height short of
@@ -1253,6 +1254,7 @@ export function ChatPage() {
   const localClassFor = useRef(null)
   useEffect(() => {
     let cancelled = false
+    const loadController = new AbortController()
     /* Neither stream aborts on its own when the chat under it changes — only
        on unmount or an explicit Stop click. Navigate away from a chat mid-
        generation (sidebar click, "New plan") and the old fetch keeps running;
@@ -1336,31 +1338,8 @@ export function ChatPage() {
     // connection and then hid an existing plan. Use a short bounded backoff:
     // enough to recover a transient request without turning a real outage into
     // a forever-loading document.
-    const getPlanWithRetry = async (id) => {
-      let lastError
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          return await api.getPlan(id)
-        } catch (error) {
-          lastError = error
-          if (attempt < 2) await waitBeforeRetry(300 * (attempt + 1))
-        }
-      }
-      throw lastError
-    }
-
-    const getChatWithRetry = async (id) => {
-      let lastError
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        try {
-          return await api.getChat(id)
-        } catch (error) {
-          lastError = error
-          if (attempt < 2) await waitBeforeRetry(300 * (attempt + 1))
-        }
-      }
-      throw lastError
-    }
+    const getPlanWithRetry = (id) => api.getPlan(id, { signal: loadController.signal })
+    const getChatWithRetry = (id) => api.getChat(id, { signal: loadController.signal })
 
     getChatWithRetry(chatId)
       .then(async (row) => {
@@ -1390,6 +1369,9 @@ export function ChatPage() {
         localFor.current = chatId
         localClassFor.current = classId
         lastSpokenRef.current = loaded.length ? loaded[loaded.length - 1].id : null
+        // The Library selected an exact artifact. Its dedicated loader below
+        // owns the document while this request supplies only the transcript.
+        if (selectedPlanId) return
         const lastQuiz = [...loaded].reverse().find((m) => m.quizReceipt)?.quizReceipt
         if (lastQuiz && betaFeaturesRef.current) {
           try {
@@ -1485,12 +1467,35 @@ export function ChatPage() {
       .catch(() => loadIsCurrent() && toast.error("Couldn't open that conversation"))
     return () => {
       cancelled = true
+      loadController.abort()
     }
     // stream/chatStream deliberately excluded: their .stop() is a stable
     // useCallback closed over a ref, so even this closure's "stale" copy
     // still aborts whatever is actually in flight — see useLessonStream.js.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, classId, navigate, toast, artifactRetryTick])
+  }, [chatId, classId, navigate, toast, artifactRetryTick, selectedPlanId])
+
+  useEffect(() => {
+    if (!selectedPlanId) return undefined
+    const controller = new AbortController()
+    setArtifact(null)
+    setArtifactLoadError(false)
+    api.getPlan(selectedPlanId, { signal: controller.signal }).then((row) => {
+      if (controller.signal.aborted) return
+      if (row.class_id && row.class_id !== classId) {
+        setArtifactLoadError(true)
+        toast.error('This plan belongs to another class. Open it from that class’s Library.')
+        return
+      }
+      setArtifact({ planId: row.id, plan: row.plan_json, warnings: row.warnings, retrievedIds: row.retrieved_ids, unit: row.unit })
+      setViewKind('plan')
+      setRailOpen(true)
+      setExpanded(true)
+    }).catch((error) => {
+      if (error.name !== 'AbortError' && !controller.signal.aborted) setArtifactLoadError(true)
+    })
+    return () => controller.abort()
+  }, [selectedPlanId, classId, artifactRetryTick, toast])
 
   // The rail's Reload button, for the "a real plan exists and its fetch
   // failed" case. localFor.current already equals chatId by the time
@@ -1529,14 +1534,14 @@ export function ChatPage() {
       return next
     }
     if (row?.is_past) {
-      setSearchParams(stripWeek, { replace: true })
+      setSearchParams(stripWeek, { replace: true, state: location.state })
       const existingChatId = existingChatForWeek(row)
       if (existingChatId) navigate(`/c/${classId}/chat/${existingChatId}`, { replace: true })
       return
     }
     setSelectedWeek(requested)
-    setSearchParams(stripWeek, { replace: true })
-  }, [chatId, classId, calendar, navigate, searchParams, setSearchParams])
+    setSearchParams(stripWeek, { replace: true, state: location.state })
+  }, [chatId, classId, calendar, navigate, searchParams, setSearchParams, location.state])
 
   /* Back from Google's consent screen (routes/drive.py's /callback) — the
      browser lands right back on this same chat with ?drive=connected,
@@ -1587,7 +1592,9 @@ export function ChatPage() {
     setPlanSaveState('saved')
     setLastSavedLabel(`${label} saved`)
     armSaveReceipt()
-  }, [armSaveReceipt])
+    invalidatePlanViews(qc, classId)
+    recordActivation('plan_revised')
+  }, [armSaveReceipt, qc, classId])
 
   // A revision snapshot belongs to one conversation. Do not offer an Undo
   // from the previous week's plan after the teacher changes chats.
@@ -1606,7 +1613,9 @@ export function ChatPage() {
     setRevising(true)
     setPlanSaveState('saving')
     try {
-      const row = await api.patchPlan(artifact.planId, lastChange.beforePlan)
+      const versions = await teachingApi.versions(artifact.planId)
+      const target = undoVersion(versions, lastChange.beforePlan, artifact.plan)
+      const row = await teachingApi.restore(artifact.planId, target.revision, target.expectedRevision)
       setArtifact((current) => ({
         ...current,
         plan: row.plan_json,
@@ -1647,6 +1656,16 @@ export function ChatPage() {
     },
     onStatus: (event) => updateActiveWorkActivity(event),
     onDone: (done) => {
+      if (!pendingQuizRef.current) setPlanWorkResult({ id: nextId(), ok: true })
+      invalidatePlanViews(qc, classId)
+      if (firstPlanRequested.current) {
+        recordActivation('first_plan_completed')
+        firstPlanRequested.current = false
+      }
+      if (nextWeekRequested.current) {
+        recordActivation('second_week_completed')
+        nextWeekRequested.current = false
+      }
       planBuildInFlightRef.current = false
       const revised = Boolean(done.revised)
       const previousPlan = revisionBeforePlanRef.current
@@ -1683,7 +1702,9 @@ export function ChatPage() {
           ? ` I included ${selectedStandard.code} in the alignment.`
           : ` I couldn't confirm ${selectedStandard.code} in the generated alignment, so please review the Standards section.`
         : ''
-      const content = revised
+      const content = revised && voiceOpen && previousPlan
+        ? `${describePlanChanges(previousPlan, done.plan).label}.`
+        : revised
         ? `Done — ${done.week_label || done.plan?.week_of || 'the week'} is updated${unitSuffix(
           done.unit,
           ', still centered on '
@@ -1746,6 +1767,8 @@ export function ChatPage() {
       }
     },
     onError: (err) => {
+      if (firstPlanRequested.current) recordActivation('first_plan_failed')
+      setPlanWorkResult({ id: nextId(), ok: false })
       pendingQuizRef.current = null
       planBuildInFlightRef.current = false
       const wasRevision = Boolean(revisionBeforePlanRef.current)
@@ -2066,6 +2089,7 @@ export function ChatPage() {
     userId: user?.id,
     messageCount: messages.length,
     streamText: chatStream.text,
+    bottomClearance: chatComposerClearance,
   })
 
   const busy = stream.isStreaming || revising || quizBuilding || chatStream.isStreaming || preparing
@@ -2121,34 +2145,32 @@ export function ChatPage() {
      same creation block; kept separate rather than shared so neither
      path's error handling has to account for the other's caller. */
   const openVoice = useCallback(() => {
-    // Voice Mode is beta-gated (SettingsPage.jsx's "Enable Beta Features")
-    // — the visible entry points (Greeting, Composer) already hide
-    // themselves when it's off, but this also covers the ⌘⇧V shortcut
-    // below, which has no button to hide.
-    if (!betaFeaturesEnabled) {
-      toast.info('Voice Mode is a beta feature', 'Turn on Beta Features in Settings to try it.', {
-        label: 'Open Settings',
-        onClick: () => navigate(`/c/${classId}/settings#section-advanced`),
-      })
-      return
-    }
     // This is the deliberate user gesture that creates the one Realtime
     // session. Speech queued immediately afterward waits for the data channel.
     voice.startSession({ chatId: chatId ?? null, classId: classId ?? null, weekNumber: conversationWeek ?? null, mode: 'brainstorm' })
     setVoiceOpen(true)
+    setVoiceCollapsed(false)
+    if (artifact?.planId && !isPhone) setExpanded(true)
     if (messages.length === 0) voice.speak(VOICE_GREETING)
-  }, [voice, messages, chatId, classId, conversationWeek, betaFeaturesEnabled, toast, navigate])
+  }, [voice, messages, chatId, classId, conversationWeek, artifact?.planId, isPhone])
 
   /* Factored out of the docked panel's own onClose so the ⌘⇧V hotkey below
      can end the conversation exactly the same way a click on Close does —
      silencing the shared <audio> element too (see its own comment), not
      just the panel's own local state. */
-  const closeVoice = useCallback(() => {
+  const closeVoice = useCallback(({ preserveDraft = true } = {}) => {
     voice.stopSession()
-
     setVoiceOpen(false)
+    if (preserveDraft) {
+      if (voiceDraft.trim()) {
+        setQuery((current) => current.trim() && current.trim() !== voiceDraft.trim() ? `${current}\n\n${voiceDraft}` : voiceDraft)
+        setVoiceDraft('')
+        clearComposerDraft(`voice:${draftKey}`, user?.id)
+      }
+      requestAnimationFrame(() => document.getElementById('composer-input')?.focus())
+    }
     setDecisions([])
-  }, [voice])
+  }, [voice, voiceDraft, draftKey, user?.id])
 
   /* VoiceProvider is mounted once at the app root (App.jsx), above the
      router — it never unmounts on navigation, so nothing was ever stopping
@@ -2173,9 +2195,19 @@ export function ChatPage() {
      every unrelated voice state update. */
   const closeVoiceRef = useRef(closeVoice)
   closeVoiceRef.current = closeVoice
+  const voiceRouteRef = useRef({ classId, chatId })
+  const resetConsultationRef = useRef(null)
   useEffect(() => {
-    return () => closeVoiceRef.current()
+    const previous = voiceRouteRef.current
+    voiceRouteRef.current = { classId, chatId }
+    if (previous.classId === classId && previous.chatId === chatId) return
+    // Creating the first chat is part of this voice session, not navigation
+    // away from it. Every other class/chat switch ends the microphone.
+    if (previous.classId === classId && !previous.chatId && chatId === localFor.current) return
+    closeVoiceRef.current({ preserveDraft: false })
+    resetConsultationRef.current?.()
   }, [classId, chatId])
+  useEffect(() => () => { closeVoiceRef.current({ preserveDraft: false }); resetConsultationRef.current?.() }, [])
 
   /* ⌘/Ctrl+Shift+V toggles voice mode from anywhere on the page — the same
      "reach for it without touching the mouse" convenience CommandK (App.jsx)
@@ -2260,6 +2292,7 @@ export function ChatPage() {
       if (quiz.plan_id) qc.invalidateQueries({ queryKey: qk.quizzes(quiz.plan_id) })
       else qc.invalidateQueries({ queryKey: qk.standaloneQuizzes(classId) })
       setViewingQuiz(quiz)
+      setPlanWorkResult({ id: nextId(), ok: true })
       if (ctx.activeChatId) void persistMessage(ctx.activeChatId, { role: 'assistant', content: quizReceipt(quiz,
         `${revisingQuizId ? 'Updated' : 'Built'} "${quiz.title}." The quiz is saved.`) })
       setMessages((prev) => [
@@ -2283,6 +2316,7 @@ export function ChatPage() {
       })
     } catch (err) {
       if (quizCancelRef.current === result.requestId) return
+      setPlanWorkResult({ id: nextId(), ok: false })
       finishWorkActivity(result.requestId, { status: 'error', error: err.message })
       toast.apiError(revisingQuizId ? 'Could not update the quiz' : 'Could not build the quiz', err)
     } finally {
@@ -2299,12 +2333,12 @@ export function ChatPage() {
       action = planOperation(result, ctx.artifact?.planId || null, { voice: ctx.voiceOpen })
     } catch (err) {
       pendingQuizRef.current = null
+      setPlanWorkResult({ id: nextId(), ok: false })
       finishWorkActivity(result.requestId, { status: 'error', error: err.message })
       setMessages((prev) => [...prev, { id: nextId(), role: 'assistant', isError: true, content: err.message }])
       return
     }
     if (!ctx.artifact?.planId || action.action === 'create') {
-      if (ctx.voiceOpen) voice.speak(VOICE_BUILDING)
       fillLiveIfEmpty(
         pendingQuizRef.current
           ? 'I’ll build the week, then a short 5-question check.'
@@ -2328,7 +2362,6 @@ export function ChatPage() {
       return
     }
     const revisionFeedback = action.instruction || ctx.promptText || 'Use the attached documents as reference for this revision.'
-    if (ctx.voiceOpen) voice.speak(VOICE_REVISING)
     fillLiveIfEmpty(action.action === 'revise_days' ? 'Updating the requested days now — one moment.' : 'Reworking the week now — one moment.')
     startWorkActivity(
       result.requestId,
@@ -2395,7 +2428,7 @@ export function ChatPage() {
       const reply = {
         id: nextId(),
         role: 'assistant',
-        content: `Done — ${row.week_label || 'the week'} is updated${unitSuffix(
+        content: ctx.voiceOpen ? `${describePlanChanges(previousPlan, row.plan_json).label}.` : `Done — ${row.week_label || 'the week'} is updated${unitSuffix(
           row.unit,
           ', still centered on '
         )}. Let me know if anything else needs adjusting.`,
@@ -2409,6 +2442,7 @@ export function ChatPage() {
         void persistMessage(ctx.activeChatId, { role: 'assistant', content: reply.content, plan_id: row.id })
       }
       recordRevision('Lesson plan update', previousPlan)
+      if (!pendingQuizRef.current) setPlanWorkResult({ id: nextId(), ok: true })
       finishWorkActivity(result.requestId, { status: 'complete', summary: 'The lesson plan was updated and saved.' })
       const pendingQuiz = pendingQuizRef.current
       pendingQuizRef.current = null
@@ -2421,6 +2455,7 @@ export function ChatPage() {
     } catch (err) {
       pendingQuizRef.current = null
       if (quizCancelRef.current === result.requestId) return
+      setPlanWorkResult({ id: nextId(), ok: false })
       const timedOut = err.code === 'timeout'
       finishWorkActivity(result.requestId, {
         status: 'error',
@@ -2465,6 +2500,7 @@ export function ChatPage() {
     const days = (ctx.artifact?.plan || stream.preview)?.days || []
     const day = dayIndex >= 0 ? days[dayIndex] : null
     if (!targetPlanId || !day) {
+      setPlanWorkResult({ id: nextId(), ok: false })
       finishWorkActivity(result.requestId, { status: 'error', error: 'The requested day or plan is no longer active.' })
       setMessages((prev) => [
         ...prev,
@@ -2478,6 +2514,7 @@ export function ChatPage() {
       return
     }
     const outcome = await reviseDayRef.current?.(dayIndex, day, feedback, field)
+    setPlanWorkResult({ id: nextId(), ok: Boolean(outcome?.ok) })
     finishWorkActivity(result.requestId, outcome?.ok
       ? { status: 'complete', summary: `${dayName} was updated and saved.` }
       : { status: 'error', error: outcome?.error || 'The revision was not saved.' })
@@ -2599,17 +2636,17 @@ export function ChatPage() {
         setPreparing(false)
       }
       setPreparing(true)
-      setQuery('')
+      if (!voiceTurn) setQuery('')
       // A sent message shouldn't leave a stale draft behind to reappear on
       // the next visit — see clearComposerDraft's own comment for why this
       // can't just wait on the debounced write-back noticing `query` went
       // empty.
-      clearComposerDraft(draftKey, user?.id)
+      if (!voiceTurn) clearComposerDraft(draftKey, user?.id)
       // The chip has to clear here, before any request goes out — the sent
       // files are captured in `content` below and folded into this turn's
       // payload; leaving the chip pinned implied they were still in context
       // for every later message, which was never true even before this fix.
-      setAttachments([])
+      if (!voiceTurn) setAttachments([])
       const displayContent = options.youSaid
         ? `You said: ${options.youSaid}`
         : (promptText || `Sent ${atts.length} file(s)`)
@@ -2620,7 +2657,7 @@ export function ChatPage() {
         ...(options.youSaid ? { youSaid: options.youSaid } : {}),
       }
       const withoutOpenQuestions = (list) => list.map((m) => (m.questions ? { ...m, content: chatMessageText(m), questions: null } : m))
-      const nextMessages = retryMessage
+      const nextMessages = options.backgroundFollowUp ? withoutOpenQuestions(messages) : retryMessage
         ? withoutOpenQuestions([...historyMessages, retryMessage])
         : [...withoutOpenQuestions(messages), newUserMessage]
       // The scroll effect reads this once and follows the latest transcript
@@ -2740,7 +2777,7 @@ export function ChatPage() {
         // exception is a retry after chat creation failed: there was no chat
         // to persist into on the first attempt, so save it once the retry
         // creates the conversation.
-        const shouldPersistUser = !retryMessage || !hadChatId || retryMessage.unsaved
+        const shouldPersistUser = !options.backgroundFollowUp && (!retryMessage || !hadChatId || retryMessage.unsaved)
         if (shouldPersistUser) {
           const clientId = nextId()
           void persistMessage(activeChatId, {
@@ -2836,7 +2873,6 @@ export function ChatPage() {
           ...prev,
           { id: liveId, role: 'assistant', content: '', streaming: true, thinkingLabel: firstThinking },
         ])
-        if (voiceOpen) voice.speak(`${firstThinking}.`)
         startedActionRef.current = null
         quizCancelRef.current = null
         chatTurnRef.current = {
@@ -2871,9 +2907,9 @@ export function ChatPage() {
 
         // onAction starts quiz/plan as soon as the tool event arrives.
         // If it already did, or this was questions/advice, nothing left here.
-        if (firstResult?.questions?.length) return
+        if (firstResult?.questions?.length) return firstResult
         actionHandlerRef.current?.(firstResult)
-        return
+        return firstResult
       }
 
       // A plan already exists, so this message is ambiguous between "just
@@ -2909,7 +2945,6 @@ export function ChatPage() {
         ...prev,
         { id: laterLiveId, role: 'assistant', content: '', streaming: true, thinkingLabel: laterThinking },
       ])
-      if (voiceOpen) voice.speak(`${laterThinking}.`)
       startedActionRef.current = null
       quizCancelRef.current = null
       chatTurnRef.current = {
@@ -2941,8 +2976,9 @@ export function ChatPage() {
         requestId: options.requestId,
       })
       if (!chatResult) return
-      if (chatResult.questions?.length) return
+      if (chatResult.questions?.length) return chatResult
       actionHandlerRef.current?.(chatResult)
+      return chatResult
     },
     [attachments, busy, chatId, classId, draftKey, user?.id, artifact, chatStream, messages, navigate, qc, toast, mayGenerate, entitlement?.trial_expired, openPaywall, effectiveWeek, conversationWeek, voiceOpen, voice, isPhone, viewingQuiz, expanded, viewKind, chatMode, persistMessage, showReadyNotice, recordRevision, selectedStandard, startWorkActivity, finishWorkActivity, activeClass, betaFeaturesEnabled, followLatest]
   )
@@ -3296,6 +3332,7 @@ export function ChatPage() {
      never acquired a reply. The teacher was left looking at their own message
      with no indication anything had happened. */
   const stopGenerating = useCallback(() => {
+    setPlanWorkResult({ id: nextId(), ok: false })
     planBuildInFlightRef.current = false
     pendingQuizRef.current = null
     quizCancelRef.current = startedActionRef.current
@@ -3317,6 +3354,7 @@ export function ChatPage() {
      interrupted" — was therefore lying specifically about the conversational
      reply, which is interruptible and just wasn't wired. */
   const stopChatting = useCallback(() => {
+    setPlanWorkResult({ id: nextId(), ok: false })
     pendingQuizRef.current = null
     quizCancelRef.current = startedActionRef.current
     startedActionRef.current = null
@@ -3435,13 +3473,15 @@ export function ChatPage() {
 
   const onPlanRevised = useCallback((row) => {
     if (!row) return
+    invalidatePlanViews(qc, classId)
+    qc.invalidateQueries({ queryKey: ['document-status', row.id] })
     setArtifact((a) => ({
       ...a,
       plan: row.plan_json,
       warnings: row.warnings,
       retrievedIds: row.retrieved_ids,
     }))
-  }, [])
+  }, [qc, classId])
 
   /* The growing reply is handed to its Message as a prop (see `streamText` in
      the transcript below) instead of being copied into `messages` every frame.
@@ -3519,20 +3559,44 @@ export function ChatPage() {
   /* Voice has one submit path. Realtime emits a completed transcription;
      ChatPage submits it through the same grounded flow as typed text, which
      is also the only place that saves the user message. */
-  const submitRef = useRef(submit)
-  submitRef.current = submit
+  const consultation = useVoiceConsultation({
+    open: voiceOpen, voice, messages, busy, preparing,
+    artifactBusy: stream.isStreaming || revising || quizBuilding || planBuildInFlightRef.current,
+    planId: artifact?.planId, saveState: planSaveState, planWorkResult,
+    chatId: chatId || localFor.current, classId,
+    weekNumber: conversationWeek ?? effectiveWeek,
+    submit, persistMessage,
+    appendMessage: (message) => setMessages((current) => [...current, message]),
+    stopReply: () => { chatStream.stop(); finalizeLiveMessage() },
+  })
+  const voiceFeedback = useVoicePlanFeedback({
+    open: voiceOpen, planId: artifact?.planId, chatId, plan: artifact?.plan,
+    change: lastChange, flash,
+    busy: busy || consultation.isStreaming || consultation.pendingChanges.length > 0,
+    onUndoStart: () => { setRevising(true); setPlanSaveState('saving') },
+    onUndoEnd: () => { setRevising(false); setPlanSaveState('saved') },
+    onRestored: (row, changeId) => {
+      onPlanRevised(row)
+      setLastChange(null)
+      setRevisionHistory((history) => history.map((entry) => entry.id === changeId ? { ...entry, undoneAt: new Date().toISOString() } : entry))
+      setLastSavedLabel('Previous version restored')
+      const content = 'Undid the last lesson change and restored the previous version.'
+      setMessages((history) => [...history, { id: nextId(), role: 'assistant', content }])
+      if (localFor.current) void persistMessage(localFor.current, { role: 'assistant', content, plan_id: row.id })
+    },
+  })
+  resetConsultationRef.current = consultation.reset
   useEffect(
-    () => voice.onUtterance((text) => {
-      // A spoken interruption cancels any still-streaming grounded reply;
-      // the new utterance itself then starts the same submit path. Settle
-      // the interrupted turn's own placeholder first — otherwise the next
-      // turn pushes a second one and the first is left stuck mid-stream,
-      // stranded above it.
-      chatStream.stop()
-      finalizeLiveMessage()
-      submitRef.current(text, { voiceTurn: true })
-    }),
-    [chatStream, voice, finalizeLiveMessage]
+    () => voice.onUtterance(consultation.handleUtterance),
+    [voice, consultation.handleUtterance]
+  )
+  useEffect(
+    () => voice.onSpeechStart?.(consultation.interrupt),
+    [voice, consultation.interrupt]
+  )
+  useEffect(
+    () => voice.onInputSettled?.(consultation.handleInputSettled),
+    [voice, consultation.handleInputSettled]
   )
 
   /* The clarification the conversation is currently waiting on, if any.
@@ -3599,69 +3663,7 @@ export function ChatPage() {
   // landscape the plan earns a stable pane beside the conversation.
   const tabletLandscapePlanOpen = isTabletLandscape && overlayOpen && viewKind === 'plan'
   const desktopInspectorOpen = desktopInspector && overlayExit.mounted
-  // Desktop still uses the in-flow Outputs column, but `railOpen` remains
-  // the single open/close state for every non-phone layout. Forcing the
-  // column open whenever `desktopInspector` is true hid the header toggle
-  // and left Playwright unable to find Close/Open artifacts panel.
-  // The reader unmounts before Outputs has returned to its resting width.
-  // Preserve the command bar's last good geometry through that small gap so
-  // a transient, full-width chat lane is never captured as its new target.
-  const [composerReaderSettling, setComposerReaderSettling] = useState(false)
-  useEffect(() => {
-    if (desktopInspectorOpen) {
-      setComposerReaderSettling(true)
-      return undefined
-    }
-    if (!composerReaderSettling) return undefined
-    // The reader and workspace both settle inside 380ms. Leave one short
-    // frame of slack, then hand geometry back to the live chat lane. Keeping
-    // this tied to that single transition window avoids a second, delayed
-    // composer correction after the panel already appears to be at rest.
-    const release = window.setTimeout(() => setComposerReaderSettling(false), 420)
-    return () => window.clearTimeout(release)
-  }, [composerReaderSettling, desktopInspectorOpen])
-  // The command surface does not travel with the workspace, but a tiny
-  // reversible lift acknowledges that a neighboring panel just changed.
-  // The initial state is deliberately silent; only subsequent panel moves
-  // receive this response.
-  useEffect(() => {
-    // Fullscreen is a reader-only expansion. The composer keeps its locked
-    // rectangle through it, so it must not receive a second acknowledgement
-    // animation that looks like a late layout correction.
-    const nextState = `${railOpen}:${overlayOpen}`
-    const previousState = composerWorkspaceStateRef.current
-    composerWorkspaceStateRef.current = nextState
-    if (previousState == null || previousState === nextState) return undefined
-    setComposerWorkspaceSettling(false)
-    const frame = window.requestAnimationFrame(() => setComposerWorkspaceSettling(true))
-    const clear = window.setTimeout(() => setComposerWorkspaceSettling(false), 180)
-    return () => {
-      window.cancelAnimationFrame(frame)
-      window.clearTimeout(clear)
-    }
-  }, [overlayOpen, railOpen])
   const setDocumentReading = workspaceRail.setDocumentReading
-  // Snapshot the command bar before opening a lesson-plan reader. The reader
-  // intentionally changes the workspace geometry, but the composer should
-  // keep the exact width and screen position it had in the chat view so it
-  // can remain over the document instead of collapsing into the chat rail.
-  const captureComposerReaderAnchor = useCallback(() => {
-    if (isPhone || isLandscapePhone || artifactFullscreen) return
-    const dock = composerDockRef.current
-    const shell = dock?.querySelector('.composer-shell')
-    const anchor = composerAnchorRef.current
-    if (!dock || !shell || !anchor) return
-    const dockRect = dock.getBoundingClientRect()
-    const shellRect = shell.getBoundingClientRect()
-    if (dockRect.width < 100 || shellRect.width < 100) return
-    composerReaderAnchorRef.current = {
-      left: dockRect.left,
-      width: dockRect.width,
-      laneWidth: Math.max(0, dockRect.width),
-      shellLeft: shellRect.left,
-      shellInset: shellRect.left - dockRect.left,
-    }
-  }, [artifactFullscreen, isLandscapePhone, isPhone])
   useLayoutEffect(() => {
     document.documentElement.classList.toggle('is-document-reading', Boolean(desktopInspectorOpen))
     setDocumentReading?.(Boolean(desktopInspectorOpen))
@@ -3670,24 +3672,6 @@ export function ChatPage() {
       setDocumentReading?.(false)
     }
   }, [desktopInspectorOpen, setDocumentReading])
-  // Keep a fresh idle snapshot for the next reader. Capture only across two
-  // paint frames—not an arbitrary delayed timeout—so a later rail transition
-  // cannot overwrite the snapshot halfway through a reader close.
-  useLayoutEffect(() => {
-    if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-    let secondFrame = null
-    const firstFrame = window.requestAnimationFrame(() => {
-      if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-      secondFrame = window.requestAnimationFrame(() => {
-        if (overlayOpen || artifactFullscreen || desktopInspectorOpen || composerReaderSettling || document.documentElement.classList.contains('is-document-reading')) return
-        captureComposerReaderAnchor()
-      })
-    })
-    return () => {
-      window.cancelAnimationFrame(firstFrame)
-      if (secondFrame != null) window.cancelAnimationFrame(secondFrame)
-    }
-  }, [artifactFullscreen, captureComposerReaderAnchor, composerDockH, composerReaderSettling, desktopInspectorOpen, overlayOpen, railOpen])
   // Fullscreen: the host becomes the true viewport. Docked: the host
   // becomes exactly the box #main used to provide for free (before this
   // was always portaled, .artifact-overlay's own position:fixed picked up
@@ -3762,93 +3746,49 @@ export function ChatPage() {
       window.removeEventListener('resize', sync)
     }
   }, [artifactFullscreen, overlayPortalHost, desktopInspectorOpen])
-  // Keep the persistent footer matched to the live anchor. When the lesson
-  // plan opens, preserve the centered composer position and narrow its lane
-  // from the right rather than moving it into the collapsed chat rail.
-  useEffect(() => {
-    const anchor = artifactFullscreen
-      ? overlayPortalHost
-      : tabletPortraitReaderOpen
-        ? overlayAnchorRef.current
-        : composerAnchorRef.current
+  // Desktop uses a viewport-based lane matching the three-panel workspace.
+  // It never measures a rail or reader mid-transition. Smaller devices still
+  // follow their live chat anchor, including keyboard and safe-area changes.
+  useLayoutEffect(() => {
+    const stable = desktopInspector && !isPhone && !isLandscapePhone
+    portalHost.classList.toggle('has-stable-composer', stable)
+    if (stable) {
+      portalHost.style.cssText = 'position:fixed;z-index:200;pointer-events:none'
+      if (composerDockRef.current) {
+        composerDockRef.current.style.width = '100%'
+        composerDockRef.current.style.maxWidth = 'none'
+      }
+      return
+    }
+    const anchor = tabletPortraitReaderOpen ? overlayAnchorRef.current : composerAnchorRef.current
     if (!anchor) return
     const workspace = anchor.closest('.workspace-panes')
-    const getDrawer = () => workspace?.querySelector(':scope > .artifact-drawer')
     const sync = () => {
       const r = anchor.getBoundingClientRect()
-      // Outputs is an in-flow inspector column. Size the command lane to the
-      // chat canvas rather than stretching it to the drawer edge, which would
-      // hide the gutter the composer is supposed to keep between the rails.
-      const drawer = getDrawer()
-      const drawerOpen = Boolean(
-        !document.documentElement.classList.contains('is-document-reading') &&
-        drawer?.classList.contains('is-open') &&
-        !drawer.classList.contains('is-closing')
-      )
-      const drawerLeft = drawerOpen ? drawer.getBoundingClientRect().left : null
-      const laneWidth = Math.max(
-        0,
-        Math.min(r.width, drawerLeft == null ? r.width : drawerLeft - 24 - r.left),
-      )
-      const documentReading = document.documentElement.classList.contains('is-document-reading')
-      // Keep the composer pinned to its pre-reader geometry while the lesson
-      // plan is mounted or returning, whether it is docked or fullscreen.
-      // Snapshot capture is intentionally owned by openDocument/the idle
-      // effect above; this resize path must never replace it mid-transition.
-      const cachedReaderAnchor = composerReaderAnchorRef.current
-      const hasValidCachedAnchor = Boolean(
-        cachedReaderAnchor &&
-        cachedReaderAnchor.width >= 100 &&
-        cachedReaderAnchor.laneWidth >= 100,
-      )
-      if (cachedReaderAnchor && !hasValidCachedAnchor) composerReaderAnchorRef.current = null
-      const keepReaderComposer = Boolean(
-        (desktopInspectorOpen || composerReaderSettling) &&
-        hasValidCachedAnchor &&
-        !isPhone &&
-        !isLandscapePhone
-      )
-      const readerAnchor = keepReaderComposer ? composerReaderAnchorRef.current : null
-      const hostLeft = (readerAnchor?.shellLeft != null && readerAnchor.shellInset != null
-        ? readerAnchor.shellLeft - readerAnchor.shellInset
-        : readerAnchor?.left ?? r.left)
-      const hostWidth = readerAnchor?.width ?? r.width
-      const visibleLaneWidth = readerAnchor
-        ? readerAnchor.laneWidth
-        : laneWidth
-      // Desktop geometry is intentionally static. The adjacent panel carries
-      // the motion; animating this portaled host at the same time creates a
-      // competing width tween and the visible composer "jump" on reversals.
-      portalHost.style.transition = !isPhone && !isLandscapePhone
-        ? 'none'
-        : (documentReading || desktopInspectorOpen
-          ? 'width var(--t-reader) var(--ease-glide)'
-          : 'left var(--t-reader) var(--ease-glide), width var(--t-reader) var(--ease-glide)')
-      portalHost.style.left = `${hostLeft}px`
-      portalHost.style.width = `${Math.max(0, hostWidth)}px`
+      const drawer = workspace?.querySelector(':scope > .artifact-drawer.is-open')
+      const drawerRect = drawer?.getBoundingClientRect()
+      const laneWidth = drawerRect?.width > 0 ? Math.min(r.width, drawerRect.left - r.left) : r.width
+      portalHost.style.left = `${r.left}px`
+      portalHost.style.width = `${r.width}px`
       portalHost.style.top = 'auto'
       portalHost.style.bottom = `${Math.max(0, window.innerHeight - r.bottom)}px`
       portalHost.style.height = 'auto'
+      portalHost.style.transition = 'none'
       if (composerDockRef.current) {
-        composerDockRef.current.style.width = `${visibleLaneWidth}px`
+        composerDockRef.current.style.width = `${Math.max(0, laneWidth)}px`
         composerDockRef.current.style.maxWidth = 'none'
       }
     }
     let syncFrame = null
     const scheduleSync = () => {
       if (syncFrame != null) return
-      syncFrame = window.requestAnimationFrame(() => {
-        syncFrame = null
-        sync()
-      })
+      syncFrame = window.requestAnimationFrame(() => { syncFrame = null; sync() })
     }
     sync()
     const ro = new ResizeObserver(scheduleSync)
     ro.observe(anchor)
-    const pane = anchor.parentElement
-    if (pane && pane !== anchor) ro.observe(pane)
-    if (workspace && workspace !== pane) ro.observe(workspace)
-    const drawer = getDrawer()
+    if (workspace && workspace !== anchor) ro.observe(workspace)
+    const drawer = workspace?.querySelector(':scope > .artifact-drawer')
     if (drawer) ro.observe(drawer)
     window.addEventListener('resize', scheduleSync)
     window.visualViewport?.addEventListener('resize', scheduleSync)
@@ -3858,7 +3798,46 @@ export function ChatPage() {
       window.removeEventListener('resize', scheduleSync)
       window.visualViewport?.removeEventListener('resize', scheduleSync)
     }
-  }, [artifactFullscreen, composerDockH, overlayOpen, overlayPortalHost, portalHost, desktopInspector, desktopInspectorOpen, composerReaderSettling, tabletPortraitReaderOpen, isLandscapePhone, isPhone])
+  }, [composerDockH, overlayOpen, portalHost, desktopInspector, tabletPortraitReaderOpen, isLandscapePhone, isPhone, voiceOpen])
+  // A floating composer covers part of the scroll viewport. Reserve actual
+  // scrollable space for that overlap, separately from the temporary spacer
+  // that pins a new exchange. In-flow phone docks need no extra allowance.
+  useEffect(() => {
+    const workspace = overlayAnchorRef.current
+    const viewport = workspace?.querySelector(voiceOpen ? '.voice-details' : '.chat-transcript-scroll')
+    const dock = composerDockRef.current
+    if (!viewport || !dock) {
+      setChatComposerClearance(0)
+      return undefined
+    }
+    let frame = null
+    const measure = () => {
+      frame = null
+      const content = viewport.getBoundingClientRect()
+      const composer = dock.getBoundingClientRect()
+      const intersects = composer.width > 0 && composer.height > 0
+        && composer.right > content.left && composer.left < content.right
+        && composer.bottom > content.top && composer.top < content.bottom
+      const clearance = intersects ? Math.ceil(Math.min(content.height, content.bottom - composer.top)) : 0
+      setChatComposerClearance((current) => current === clearance ? current : clearance)
+    }
+    const schedule = () => {
+      if (frame == null) frame = requestAnimationFrame(measure)
+    }
+    schedule()
+    const observer = new ResizeObserver(schedule)
+    observer.observe(viewport)
+    observer.observe(dock)
+    observer.observe(workspace)
+    window.addEventListener('resize', schedule)
+    window.visualViewport?.addEventListener('resize', schedule)
+    return () => {
+      if (frame != null) cancelAnimationFrame(frame)
+      observer.disconnect()
+      window.removeEventListener('resize', schedule)
+      window.visualViewport?.removeEventListener('resize', schedule)
+    }
+  }, [chatId, isEmpty, voiceOpen, isPhone, planPeekOpen, composerDockH, desktopInspectorOpen, artifactFullscreen])
   // Keep the composer above the document in both docked and fullscreen
   // reading modes. Fullscreen expands the lesson plan's reading surface, but
   // it should not take away the command surface the teacher is actively using.
@@ -3939,17 +3918,13 @@ export function ChatPage() {
          available so the teacher can pull Materials in when wanted. The
          recruiter showcase is the exception on a portrait phone: it should
          open on the evidence, not make a visitor hunt for the lesson plan. */
-      setRailOpen(!isLandscapePhone && !isTabletLandscape)
-      // Opening a chat lands on the conversation, not the full-width plan
-      // reader. On desktop the reader collapses the chat-list rail (it sets
-      // is-document-reading), so auto-expanding here dropped the teacher onto
-      // the document with the rail gone instead of the three-column workspace.
-      // The plan stays one click away in Outputs. The recruiter showcase on a
-      // portrait phone still opens on the plan so a visitor sees the evidence.
+      setRailOpen(roomyWorkspace && !isLandscapePhone && !isTabletLandscape)
+      // Keep the conversation visible until the teacher opens the lesson.
+      // The read-only phone showcase still opens directly on its evidence.
       if (user?.read_only && isPhone) setExpanded(true)
       railAutoOpenedRef.current = true
     }
-  }, [hasArtifact, isLandscapePhone, isPhone, isTabletLandscape, user?.read_only])
+  }, [hasArtifact, roomyWorkspace, isLandscapePhone, isPhone, isTabletLandscape, user?.read_only])
 
   // A builder should feel underway in two places at once: the composer keeps
   // Stop under the teacher's thumb, while Outputs opens to the live document
@@ -3958,10 +3933,10 @@ export function ChatPage() {
   // `preparing` is true for every send, including greetings, so it must not
   // open Outputs or the panel looks like a week has already started.
   useEffect(() => {
-    if (!isPhone && !isLandscapePhone && stream.isStreaming && !artifact?.planId) {
+    if (roomyWorkspace && !isPhone && !isLandscapePhone && stream.isStreaming && !artifact?.planId) {
       setRailOpen(true)
     }
-  }, [artifact?.planId, isLandscapePhone, isPhone, stream.isStreaming])
+  }, [artifact?.planId, roomyWorkspace, isLandscapePhone, isPhone, stream.isStreaming])
 
   useEffect(() => {
     if (!stream.isStreaming) {
@@ -3983,20 +3958,29 @@ export function ChatPage() {
 
   // Process autoPrompt from navigation (e.g. 5-Minute Sub Plan)
   useEffect(() => {
-    if (location.state?.autoPrompt && !chatId) {
-      // Clear the state so it doesn't re-fire on hot reload or back navigation
-      navigate(location.pathname, { replace: true, state: {} })
-      submit(location.state.autoPrompt)
+    const prompt = location.state?.autoPrompt
+    if (!prompt || chatId || !activeClass || !calendar || busy || !isOnline) return
+    // Let the earlier week-selection effect settle before sending. It clears
+    // ?week only after the requested calendar context has been pinned.
+    if (searchParams.has('week')) return
+    const intent = `${location.key}:${prompt}`
+    if (autoPromptConsumed.current === intent) return
+    autoPromptConsumed.current = intent
+    if (location.state.onboardingFirstPlan) {
+      firstPlanRequested.current = true
+      recordActivation('first_plan_requested')
     }
-  }, [location.state, chatId, navigate, submit, location.pathname])
+    if (location.state.teachingNextWeek) nextWeekRequested.current = true
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
+    submit(prompt)
+  }, [location.state, location.key, location.search, chatId, navigate, submit, location.pathname, activeClass, calendar, busy, isOnline, searchParams])
 
   /** Opening the document from anywhere, optionally straight into a cell. */
   const openDocument = useCallback((tweak = null) => {
-    captureComposerReaderAnchor()
     setViewKind('plan')
     setOpenTweak(tweak)
     setExpanded(true)
-  }, [captureComposerReaderAnchor])
+  }, [])
   const handleOpenPlanDay = useCallback((dayIndex, field = 'during') => {
     openDocument({ dayIndex, field })
   }, [openDocument])
@@ -4137,9 +4121,11 @@ export function ChatPage() {
       documents: classDocuments.data || [],
       attachments,
       hasPlan: Boolean(artifact?.planId),
+      planOpen: expanded && viewKind === 'plan' && Boolean(artifact?.planId),
+      days: artifact?.plan?.days,
       modelSuggestion: groundedComposerSuggestion.data?.prompt || '',
     }),
-    [artifact?.planId, attachments, classDocuments.data, displayWeek, groundedComposerSuggestion.data?.prompt]
+    [artifact?.planId, artifact?.plan?.days, expanded, viewKind, attachments, classDocuments.data, displayWeek, groundedComposerSuggestion.data?.prompt]
   )
 
   const artifactEl =
@@ -4156,6 +4142,7 @@ export function ChatPage() {
         onEditDay={artifact?.planId ? editDay : undefined}
         onPickStandard={artifact?.planId ? pickStandard : undefined}
         onPlanRevised={onPlanRevised}
+        voiceFeedback={voiceFeedback}
         busy={artifactBusy}
         preparing={preparing && artifactBusy}
         planSaveState={planSaveState}
@@ -4195,6 +4182,58 @@ export function ChatPage() {
   // Keep the phone dock in the chat's normal flex flow instead.
   const renderComposerDock = (dock) => (isPhone ? dock : createPortal(dock, portalHost))
 
+  const voicePreview = Boolean(voice.preview || voice.isPreview)
+  const voiceSendDisabled = consultation.isStreaming || (voicePreview && (voice.status !== 'live' || voice.muted))
+  const sendVoiceDraft = (text) => {
+    const value = text.trim()
+    if (!value || voiceSendDisabled) return
+    // The preview emits provider events, which already reach the consultation
+    // subscription. Real typed corrections go directly to that same handler.
+    const result = voicePreview ? voice.simulateUtterance?.(value) : consultation.handleUtterance(value)
+    if (result === false) return
+    setVoiceDraft('')
+    clearComposerDraft(`voice:${draftKey}`, user?.id)
+    Promise.resolve(result).catch(() => {
+      setVoiceDraft((current) => current || value)
+      toast.error('That idea couldn’t be sent', 'Try it again.')
+    })
+  }
+  const voiceDetails = voiceOpen ? (
+    <VoiceSessionDetails
+      planOpen={viewKind === 'plan' && (overlayOpen || (isPhone && planPeekOpen))}
+      classLabel={activeClass?.name}
+      weekLabel={artifact?.plan?.week_of || (displayWeek ? `Week ${displayWeek.week}` : 'Your next lesson')}
+      transcript={consultation.text ? [...messages, { id: 'voice-live', role: 'assistant', content: consultation.text }] : messages}
+      caption={voice.caption}
+      decisions={decisions}
+      conversationBusy={consultation.isStreaming}
+      busy={busy}
+      onUtterance={consultation.handleUtterance}
+      onRetryPending={consultation.pendingPaused ? consultation.retryPending : undefined}
+      lessonStatus={{
+        state: revising ? 'revising' : stream.isStreaming ? 'building' : planSaveState === 'error' ? 'error' : artifact?.planId ? 'ready' : 'idle',
+        label: revising ? 'Updating your lesson' : stream.isStreaming ? 'Building your draft' : planSaveState === 'error' ? 'Save needs attention' : artifact?.planId ? 'Lesson saved' : 'Let’s shape the lesson',
+        detail: stream.isStreaming ? (stream.status?.label || 'Keep talking while your draft takes shape.') : artifact?.planId ? 'Discuss it, then ask for a specific change.' : 'Start with the learning goal and what your students need.',
+        pendingChanges: consultation.pendingChanges.length,
+      }}
+      onOpenPlan={artifact?.planId ? () => {
+        setViewKind('plan')
+        if (isPhone) { setVoiceCollapsed(true); setPlanPeekOpen(true) }
+        else setExpanded(true)
+      } : undefined}
+      onReplayLast={lastReplyText ? () => voice.speak(lastReplyText) : undefined}
+      builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
+      building={stream.isStreaming}
+      buildDays={stream.preview?.days}
+      onBuild={() => consultation.handleUtterance('Looks good, build the lesson plan using the decisions from our conversation.')}
+      questions={pendingQuestions?.questions || null}
+      onAnswer={(text) => {
+        voice.cancelSpeech()
+        onAnswerQuestions(pendingQuestions.message, text, { youSaid: text })
+      }}
+    />
+  ) : null
+
   const chatPane = (
     /* border-r-0, not a plain `border`: this pane's own background is only
        30% opaque (the glassmorphism pass above), so a border on the edge
@@ -4203,7 +4242,7 @@ export function ChatPage() {
        right at that seam — a visible tinted line between two panels that
        otherwise sit flush. The other three edges keep the glass border;
        only the shared seam drops it. */
-    <div className={`workspace-chat relative flex h-full min-h-0 flex-col${(isPhone || isLandscapePhone) && chatId ? ' mobile-active-chat-shell' : ''}${(isPhone || isLandscapePhone) && !chatId ? ' mobile-new-chat-shell' : ''}`}>
+    <div className={`workspace-chat relative flex h-full min-h-0 flex-col${(isPhone || isLandscapePhone) && chatId ? ' mobile-active-chat-shell' : ''}${(isPhone || isLandscapePhone) && !chatId ? ' mobile-new-chat-shell' : ''}`} style={{ '--chat-composer-clearance': `${chatComposerClearance}px` }}>
       {/* Always on, unlike chat-head below it — right-aligned so it sits at
           the seam with whatever's docked on the right (the plans rail, or
           the open document), not lost against the far edge of the screen. */}
@@ -4325,6 +4364,14 @@ export function ChatPage() {
           </button>
         )}
         <div className="ml-auto flex min-w-0 items-center gap-3">
+          {!isPhone && !desktopInspectorOpen ? <button
+            type="button"
+            className="workspace-materials-toggle"
+            aria-label={railOpen ? 'Hide materials' : 'Show materials'}
+            aria-expanded={railOpen}
+            aria-controls="artifacts-panel"
+            onClick={() => setRailOpen((open) => !open)}
+          ><PanelRight size={16} aria-hidden="true" /><span>Materials</span></button> : null}
           {isPhone || isLandscapePhone ? (
             <button
               type="button"
@@ -4364,15 +4411,16 @@ export function ChatPage() {
       <TemplateBanner />
       <TrialBanner />
 
-      {isEmpty ? (
+      {voiceOpen ? voiceDetails : isEmpty ? (
         <Greeting
           className={activeClass?.name}
-          onOpenVoice={betaFeaturesEnabled ? openVoice : undefined}
+          onOpenVoice={openVoice}
           week={displayWeek}
           hint={emptyStateHint}
           onOpenSettings={handleOpenSettings}
         />
       ) : (
+        <div className="chat-transcript-region" style={{ '--latest-bottom': `${chatComposerClearance + 16}px` }}>
         <div className="min-h-0 flex-1 scroll-y chat-transcript-scroll" ref={scrollRef} onScroll={onScroll}>
           <div className={`chat-transcript-column chat-column mx-auto flex w-full flex-col px-gutter py-8 transition-all duration-500 ease-out ${
             voiceOpen ? 'max-w-5xl' : 'max-w-4xl'
@@ -4517,10 +4565,19 @@ export function ChatPage() {
                 not scrolling away with the transcript — so this keeps only
                 the eyebrow label here; isPhone still gets the full list,
                 since phone has no rail to carry it. */}
+            {/* Permanent clearance for the floating dock; the scroll hook's
+                separate spacer may shrink to zero when a reply grows. */}
+            <div className="shrink-0" style={{ height: chatComposerClearance }} aria-hidden="true" />
             {/* Sized imperatively by the scroll hook; see useChatScroll. */}
             <div ref={spacerRef} aria-hidden="true" />
             <div ref={endRef} />
           </div>
+        </div>
+        {latestPill.mounted ? <button
+          type="button"
+          className={`chat-latest-button${latestPill.closing ? ' fa-chip-exit' : ''}`}
+          onClick={scrollToBottom}
+        ><ArrowDown size={13} aria-hidden="true" />Latest</button> : null}
         </div>
       )}
 
@@ -4549,7 +4606,7 @@ export function ChatPage() {
       {renderComposerDock(
         <div
           ref={composerDockRef}
-          className={`composer-dock-host composer-dock-lane relative shrink-0 z-10${composerWorkspaceSettling ? ' is-workspace-settling' : ''}${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-host' : ''}`}
+          className={`composer-dock-host composer-dock-lane relative shrink-0 z-10${voiceOpen ? ' is-voice-consulting' : ''}${isPhone && planPeekOpen && hasArtifact ? ' is-plan-peek-host' : ''}`}
           style={{ pointerEvents: 'auto' }}
         >
       {/* While a plan is still being written, retain the compact progress row.
@@ -4584,7 +4641,7 @@ export function ChatPage() {
         style={isPhone && keyboardInset > 8 ? { paddingBottom: `${keyboardInset + 8}px` } : undefined}
       >
         <div className="relative mx-auto w-full max-w-4xl px-gutter">
-          {generationStatus ? (
+          {generationStatus && !voiceOpen ? (
             <div className="composer-writing-status composer-generation-status mb-2" role="status" aria-live="polite">
               <span className="composer-writing-status-mark" aria-hidden="true">
                 <Loader2 size={14} className="animate-spin" />
@@ -4596,7 +4653,7 @@ export function ChatPage() {
           {artifact?.planId && (
             planSaveState === 'pending' ||
             planSaveState === 'error' ||
-            (planSaveState === 'saved' && saveReceiptExit.mounted)
+            (planSaveState === 'saved' && saveReceiptExit.mounted && !voiceOpen)
           ) ? (
             <div
               className={`composer-writing-status composer-save-status mb-2${planSaveState === 'error' ? ' is-error' : planSaveState === 'pending' ? ' is-pending' : ' is-saved'}${saveReceiptExit.closing && planSaveState === 'saved' ? ' fa-chip-exit' : ''}`}
@@ -4682,20 +4739,6 @@ export function ChatPage() {
                   </span>
                 </div>
               ))}
-            </div>
-          ) : null}
-          {/* Latest is an anchored affordance, not another composer row. It
-              sits above the dock without contributing height, so following a
-              long transcript never creates a white band or moves the input. */}
-          {latestPill.mounted ? (
-            <div className="plan-peek-latest">
-              <button
-                type="button"
-                className={`fa-rise fa-press flex min-h-touch items-center gap-2 rounded-full bg-paper-inset px-3.5 text-xs font-medium text-ink-soft transition-colors hover:bg-edge${latestPill.closing ? ' fa-chip-exit' : ''}`}
-                onClick={scrollToBottom}
-              >
-                <ArrowDown size={13} aria-hidden="true" /> Latest
-              </button>
             </div>
           ) : null}
           {/* navigator.onLine, not a failed request — this is proactive
@@ -4787,6 +4830,7 @@ export function ChatPage() {
                 onEditDay={editDay}
                 onPickStandard={pickStandard}
                 onPlanRevised={onPlanRevised}
+                voiceFeedback={voiceFeedback}
                 busy={artifactBusy}
                 preparing={preparing && artifactBusy}
                 planSaveState={planSaveState}
@@ -4801,24 +4845,30 @@ export function ChatPage() {
             </PlanPeek>
           ) : null}
           <Composer
-            value={query}
-            onChange={setQuery}
-            onSubmit={queueOrSubmit}
+            value={voiceOpen ? voiceDraft : query}
+            onChange={voiceOpen ? setVoiceDraft : setQuery}
+            onSubmit={voiceOpen ? sendVoiceDraft : queueOrSubmit}
+            sendDisabled={voiceOpen && voiceSendDisabled}
+            inputLabel={voiceOpen ? (voicePreview ? 'Practice a spoken teaching idea' : 'Type a teaching idea or correction') : undefined}
             /* The send-button slot is always Stop while a turn is being
                prepared or streamed. Revisions remain outside this state: the
                revision API has no AbortController, so promising Stop there
                would be misleading. */
-            onStop={generationBusy && !stream.isStreaming && !revising ? stopActiveGeneration : undefined}
-            isStreaming={generationBusy}
+            onStop={!voiceOpen && generationBusy && !stream.isStreaming && !revising ? stopActiveGeneration : undefined}
+            isStreaming={!voiceOpen && generationBusy}
             attachments={attachments}
             setAttachments={setAttachments}
             selectedStandard={selectedStandard}
             selectedStandardStatus={selectedStandardStatus}
             onSaveAttachmentAsDocument={activeClass && !hasPacingGuide ? saveAttachmentAsDocument : undefined}
             voiceModeActive={voiceOpen}
+            onOpenVoice={openVoice}
             mode={chatMode}
             onModeChange={changeChatMode}
             ghostContext={composerGhostContext}
+            contextLabel={artifact?.planId && viewKind === 'plan' && (expanded || (isPhone && planPeekOpen))
+              ? `${displayWeek ? `Week ${String(displayWeek.week).padStart(2, '0')}` : 'Current lesson'} · Editing this lesson`
+              : undefined}
             voiceGlossary={[activeClass?.name, activeClass?.subject, selectedStandard?.code].filter(Boolean)}
             questionsPanel={
               questionsExit.mounted && lastQuestions ? (
@@ -4840,62 +4890,13 @@ export function ChatPage() {
                   <div className={`voice-dock-body${voiceExit.closing ? ' is-closing' : ''}`}>
                     <VoiceModePanel
                       onClose={closeVoice}
-                      onUtterance={submit}
-                      /* The panel's retry uses the same active chat/week/mode
-                         context to create a fresh provider session. */
+                      onStart={openVoice}
+                      collapsed={voiceCollapsed}
+                      onCollapsedChange={setVoiceCollapsed}
+                      conversationBusy={consultation.isStreaming || chatStream.isStreaming || preparing}
                       chatId={chatId ?? null}
                       weekNumber={conversationWeek ?? null}
-                      voiceMode="brainstorm"
-                      busy={busy}
                       isSpeaking={voice.speaking}
-                      /* Straight off VoiceProvider — the sentence whose audio is
-                         playing right now, from the Realtime session's own
-                         output-transcript deltas rather than guessed at from a
-                         character interval. */
-                      caption={voice.caption}
-                      decisions={decisions}
-                      messages={messages}
-                      activeClass={activeClass}
-                      calendar={calendar}
-                      onBuild={() => submit('Looks good, build the lesson plan.')}
-                      /* Replay button: speaks the last reply again through the same
-                         Realtime speech queue, captioning itself as it goes like any
-                         other spoken text. undefined (not a no-op function) when
-                         there's nothing to replay yet — VoiceModePanel hides the
-                         button outright rather than rendering it disabled. */
-                      onReplayLast={
-                        lastReplyText
-                          ? () => {
-                              voice.speak(lastReplyText)
-                            }
-                          : undefined
-                      }
-                      /* Non-null the moment a week is actually saved — see
-                         VoiceModePanel's BuiltPlanCard, which takes over from the
-                         running decisions checklist once this is set. artifact.planId,
-                         not liveArtifact/stream.preview: those cover the in-progress
-                         preview too, and this is specifically "it's done and saved,"
-                         not "it's still being written." */
-                      builtPlan={artifact?.planId ? { planId: artifact.planId, weekLabel: artifact.plan?.week_of } : null}
-                      /* "Making it" — the same stream.preview days feeding the text
-                         chat's own WeekStrip (see the "Writing the week" block
-                         above), read here too rather than re-fetched, so voice mode
-                         and the text view can never show two different days-done
-                         counts for the same in-flight generation. */
-                      building={stream.isStreaming}
-                      buildDays={stream.preview?.days}
-                      /* The clarification cards, tappable inside the panel — voice
-                         mode asks ONE question at a time (see the backend's voice
-                         prompt) and shows its options here rather than reading them
-                         aloud. */
-                      questions={pendingQuestions?.questions || null}
-                      onAnswer={(text) => {
-                        // Silence whatever is being read out, keep the session —
-                        // stop() here ended voice mode outright the first time a
-                        // teacher tapped an option on a clarification card.
-                        voice.cancelSpeech()
-                        onAnswerQuestions(pendingQuestions.message, text, { youSaid: text })
-                      }}
                     />
                   </div>
                 </div>
@@ -4905,14 +4906,14 @@ export function ChatPage() {
                phone — the textarea is one row, so the second line of a wrapped
                placeholder is simply cut off mid-word. */
             placeholder={
-              expanded && viewKind === 'plan' && artifact?.planId
+              voiceOpen ? (voicePreview ? 'Type a practice voice turn…' : 'Or type a thought…') : expanded && viewKind === 'plan' && artifact?.planId
                 ? (displayWeek ? `Change Week ${displayWeek.week}…` : 'Change this week…')
               : chatMode === 'research' ? 'What should I look up?'
                 : chatMode === 'build' || chatMode === 'sub_plan'
                   ? (displayWeek ? `Week ${displayWeek.week} — what’s the focus?` : 'What’s the focus this week?')
                 : (displayWeek ? `Ask about Week ${displayWeek.week}…` : 'Ask about this week…')
             }
-            sendLabel={expanded && viewKind === 'plan' && artifact?.planId ? 'Apply change' : 'Send message'}
+            sendLabel={voiceOpen ? 'Send teaching idea' : expanded && viewKind === 'plan' && artifact?.planId ? 'Apply change' : 'Send message'}
           />
           </div>
         </div>
@@ -4938,6 +4939,7 @@ export function ChatPage() {
     return (
       <main className={`mobile-plan-reader${overlayExit.closing ? ' is-closing' : ''}`}>
         {artifactEl}
+        <button type="button" className="voice-reader-entry" onClick={() => { setExpanded(false); setPlanPeekOpen(false); openVoice() }}>Plan with voice</button>
       </main>
     )
   }
@@ -4958,7 +4960,7 @@ export function ChatPage() {
     // fa-rise — see fa-rise-panel's own comment in base.css for why a
     // full-viewport container inside AppShell's blurred "main" panel
     // shouldn't animate opacity.
-    <div ref={overlayAnchorRef} className={`workspace-panes flex h-full w-full min-w-0${isPhone ? ' fa-rise-panel' : ''}${isTabletLandscape ? ' is-tablet-landscape-workspace' : ''}${railOpen && !isPhone ? ' artifacts-open' : ''}`}>
+    <div ref={overlayAnchorRef} className={`workspace-panes flex h-full w-full min-w-0${voiceOpen ? ' is-voice-consulting' : ''}${isPhone ? ' fa-rise-panel' : ''}${isTabletLandscape ? ' is-tablet-landscape-workspace' : ''}${railOpen && !isPhone ? ' artifacts-open' : ''}`}>
       {/* OUTSIDE chatPane. It used to live inside it, and ArtifactPanel sets
           aria-modal="true" when overlaying — which tells assistive tech to
           ignore everything outside the dialog, so on a phone with the document
@@ -4994,7 +4996,7 @@ export function ChatPage() {
         </div>
       ) : null}
 
-      {/* Desktop keeps Outputs as an in-flow third column while `railOpen`
+      {/* Desktop keeps Materials as an in-flow third column while `railOpen`
           is true. Smaller layouts use the adaptive drawer; phone uses the
           bar in chatPane. Closing the header toggle unmounts this node so
           the workspace can reclaim the column. */}
@@ -5003,6 +5005,7 @@ export function ChatPage() {
           open={railOpen}
           onClose={() => setRailOpen(false)}
           persistent={desktopInspector}
+          obscured={desktopInspectorOpen}
           hasArtifact={hasArtifact}
           artifact={{ ...liveArtifact, plan: livePlan }}
           classId={classId}
@@ -5020,6 +5023,9 @@ export function ChatPage() {
           artifactLoadError={artifactLoadError}
           onRetryArtifact={retryArtifactLoad}
           onSuggestPrompt={suggestRailPrompt}
+          planSaveState={planSaveState}
+          documents={classDocuments.data}
+          onManageMaterials={() => setDocumentDialogOpen(true)}
         />
       ) : null}
 

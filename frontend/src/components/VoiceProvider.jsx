@@ -1,24 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { VoiceContext } from '../lib/voiceContext'
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { VoiceContext, VoiceTransportContext } from '../lib/voiceContext'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { createSpeechQueue } from '../lib/voiceSpeechQueue'
+import { openWebRTCTransport } from '../lib/voiceWebRTCTransport'
+import { createVoiceAudioMeter } from '../lib/voiceAudioMeter'
 import * as metrics from '../lib/voiceMetrics'
 
 const CONNECT_TIMEOUT_MS = 12000
-const VOICE_DEVICE_STORAGE_KEY = 'flexedacademy.voice.inputDevice'
-// A cap, not a target — this app's own entitlement check only runs when a
-// session OPENS (see voice_session's own docstring), so nothing stops an
-// already-open WebRTC session from just staying open. 20 minutes is
-// generous for a planning conversation and short enough that "forgot a tab
-// open with voice mode live" can't run unbounded. Module-level (not inside
-// the component) so it's a stable reference startSession's own useCallback
-// doesn't need to list as a dependency.
 const MAX_SESSION_MS = 20 * 60 * 1000
+const VOICE_DEVICE_STORAGE_KEY = 'flexedacademy.voice.inputDevice'
+const AUTO_TURN_DETECTION = { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 800, create_response: false, interrupt_response: false }
 
-/* Realtime owns audio transport, turn detection, transcription, and playback.
- * ChatPage owns transcript -> grounded chat_stream -> persistence. */
-export function VoiceProvider({ children }) {
+/* Realtime owns audio/transcription. ChatPage owns grounded reasoning and
+ * persistence. The optional transport is injected only by the local preview. */
+export function VoiceProvider({ children, transportFactory: suppliedFactory }) {
+  const injectedFactory = useContext(VoiceTransportContext)
+  const transportFactory = suppliedFactory || injectedFactory
+  const preview = Boolean(transportFactory?.preview)
   const toast = useToast()
   const [status, setStatus] = useState('idle')
   const [errorMessage, setErrorMessage] = useState('')
@@ -26,265 +25,228 @@ export function VoiceProvider({ children }) {
   const [caption, setCaption] = useState('')
   const [heard, setHeard] = useState('')
   const [muted, setMutedState] = useState(false)
+  const [backgroundMuted, setBackgroundMuted] = useState(false)
   const [interrupted, setInterrupted] = useState(false)
-  // Set when the browser's autoplay policy blocked the reply audio from
-  // starting on its own (mainly iOS Safari) — VoiceModePanel shows a "tap to
-  // enable audio" affordance when this is true, wired to resumeAudio() below.
   const [audioBlocked, setAudioBlocked] = useState(false)
-
-  const pcRef = useRef(null)
-  const dcRef = useRef(null)
+  const [inputMode, setInputModeState] = useState('auto')
+  const transportRef = useRef(null)
   const audioElRef = useRef(null)
-  const streamRef = useRef(null)
+  const audioMeterRef = useRef(null)
   const activeRef = useRef(false)
+  const readyRef = useRef(false)
   const generationRef = useRef(0)
   const handlersRef = useRef(new Set())
+  const speechStartHandlersRef = useRef(new Set())
+  const inputSettledHandlersRef = useRef(new Set())
   const captionTimerRef = useRef(null)
   const interruptTimerRef = useRef(null)
   const connectTimerRef = useRef(null)
-  const connectAbortRef = useRef(null)
-  const connectTimedOutRef = useRef(false)
-  const mutedRef = useRef(false)
-  // Tab-hidden auto-mute is a SEPARATE flag from mutedRef (the teacher's own
-  // explicit choice) so backgrounding the tab never overwrites — or gets
-  // overwritten by restoring — a mute the teacher set on purpose.
-  const autoMutedRef = useRef(false)
   const sessionTimerRef = useRef(null)
-  // response.done's own usage object, summed across the session and reported
-  // once on stop — see api.reportVoiceUsage's own comment for why this is
-  // the only cost visibility this backend has into the audio-transport half
-  // of a voice session at all.
+  const connectAbortRef = useRef(null)
+  const mutedRef = useRef(false)
+  const inputModeRef = useRef('auto')
+  const pttStartedRef = useRef(null)
+  const autoMutedRef = useRef(false)
   const usageRef = useRef({ input: 0, output: 0 })
+  const completedResponsesRef = useRef(new Set())
+  const deliveredTranscriptsRef = useRef(new Set())
+  const speechQueueRef = useRef(null)
+  const handleEventRef = useRef(null)
 
   useEffect(() => {
     const audio = document.createElement('audio')
     audio.autoplay = true
     audioElRef.current = audio
-    return () => {
-      audio.pause()
-      audio.srcObject = null
-    }
+    return () => { audio.pause(); audio.srcObject = null; audioElRef.current = null }
   }, [])
 
-  /* iOS Safari (and Chrome, more strictly on some platforms) can refuse to
-     autoplay the <audio> element the reply arrives on — pc.ontrack setting
-     srcObject is not itself a user gesture. Without this, that failure was
-     invisible: the session looked "live" and the teacher just never heard
-     anything. resumeAudio() is a real .play() call, which DOES count as a
-     user gesture when it runs from the "tap to enable audio" button's own
-     click handler. */
+  const clearTimer = (ref) => { if (ref.current) clearTimeout(ref.current); ref.current = null }
   const resumeAudio = useCallback(() => {
+    audioMeterRef.current?.resume()
     const el = audioElRef.current
-    if (!el) return
-    el.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true))
+    if (!el?.srcObject) return
+    const generation = generationRef.current
+    el.play().then(() => {
+      if (generation === generationRef.current) setAudioBlocked(false)
+    }).catch(() => {
+      if (generation === generationRef.current) setAudioBlocked(true)
+    })
   }, [])
-
-  const clearSessionTimer = useCallback(() => {
-    if (sessionTimerRef.current) {
-      clearTimeout(sessionTimerRef.current)
-      sessionTimerRef.current = null
-    }
-  }, [])
-
-  /* Reports whatever usage accumulated this session and resets the
-     accumulator — fire-and-forget (see api.reportVoiceUsage's own comment:
-     a dropped report costs nothing but a gap in cost accounting, never a
-     broken session), so this never awaits or blocks stopSession. */
-  const flushUsage = useCallback(() => {
-    const { input, output } = usageRef.current
-    usageRef.current = { input: 0, output: 0 }
-    if (!input && !output) return
-    api.reportVoiceUsage({ input_tokens: input, output_tokens: output }).catch(() => {})
-  }, [])
-
-  const clearCaptionTimer = useCallback(() => {
-    if (captionTimerRef.current) {
-      clearTimeout(captionTimerRef.current)
-      captionTimerRef.current = null
-    }
-  }, [])
-
-  const clearConnectTimer = useCallback(() => {
-    if (connectTimerRef.current) {
-      clearTimeout(connectTimerRef.current)
-      connectTimerRef.current = null
-    }
-  }, [])
-
-  const clearInterruptTimer = useCallback(() => {
-    if (interruptTimerRef.current) {
-      clearTimeout(interruptTimerRef.current)
-      interruptTimerRef.current = null
-    }
-  }, [])
-
-  const sendEvent = useCallback((event) => {
-    const dc = dcRef.current
-    if (!dc || dc.readyState !== 'open') return false
-    dc.send(JSON.stringify(event))
-    return true
-  }, [])
-
-  const speechQueueRef = useRef(null)
+  const sendEvent = useCallback((event) => transportRef.current?.send(event) || false, [])
   if (!speechQueueRef.current) {
     speechQueueRef.current = createSpeechQueue({
       send: sendEvent,
-      isOpen: () => activeRef.current && dcRef.current?.readyState === 'open',
+      isOpen: () => activeRef.current && Boolean(transportRef.current?.isOpen()),
+      waitForPlayback: true,
     })
   }
-
-  const closeTransport = useCallback(() => {
-    try { dcRef.current?.close() } catch { /* already closed */ }
-    try { pcRef.current?.close() } catch { /* already closed */ }
-    dcRef.current = null
-    pcRef.current = null
-    streamRef.current?.getTracks().forEach((track) => track.stop())
-    streamRef.current = null
-    if (audioElRef.current) audioElRef.current.srcObject = null
-  }, [])
+  const effectiveMute = useCallback(() => mutedRef.current || autoMutedRef.current || document.hidden, [])
+  const applyMute = useCallback(() => transportRef.current?.setMuted?.(effectiveMute()), [effectiveMute])
 
   const stopSession = useCallback(() => {
     generationRef.current += 1
     activeRef.current = false
+    readyRef.current = false
     connectAbortRef.current?.abort()
     connectAbortRef.current = null
-    connectTimedOutRef.current = false
-    clearConnectTimer()
-    clearInterruptTimer()
-    clearSessionTimer()
-    flushUsage()
+    clearTimer(connectTimerRef)
+    clearTimer(interruptTimerRef)
+    clearTimer(sessionTimerRef)
+    clearTimer(captionTimerRef)
+    transportRef.current?.close()
+    transportRef.current = null
+    audioMeterRef.current?.close()
+    audioMeterRef.current = null
+    if (audioElRef.current) { audioElRef.current.pause(); audioElRef.current.srcObject = null }
+    const usage = usageRef.current
+    usageRef.current = { input: 0, output: 0 }
+    if (!preview && (usage.input || usage.output)) {
+      api.reportVoiceUsage({ input_tokens: usage.input, output_tokens: usage.output }).catch(() => {})
+    }
+    completedResponsesRef.current.clear()
+    deliveredTranscriptsRef.current.clear()
     speechQueueRef.current.clear()
-    clearCaptionTimer()
-    // "A closed panel" — voiceMetrics' own third named abandonment case.
-    // A no-op if no turn was open (the guard is inside turnAbandoned itself).
     metrics.turnAbandoned()
     setSpeaking(false)
     setCaption('')
     setHeard('')
-    setMutedState(false)
-    mutedRef.current = false
+    mutedRef.current = inputModeRef.current === 'ptt'
+    setMutedState(mutedRef.current)
     autoMutedRef.current = false
+    setBackgroundMuted(false)
+    pttStartedRef.current = null
     setInterrupted(false)
     setAudioBlocked(false)
-    closeTransport()
     setStatus('idle')
     setErrorMessage('')
-  }, [clearCaptionTimer, clearConnectTimer, clearInterruptTimer, clearSessionTimer, flushUsage, closeTransport])
+  }, [preview])
 
-  const pumpSpeech = useCallback(() => speechQueueRef.current.pump(), [])
-
+  const failSession = useCallback((message) => {
+    stopSession()
+    setErrorMessage(message)
+    setStatus('error')
+  }, [stopSession])
   const cancelSpeech = useCallback(() => {
-    // Barge-in cancels audio only; the microphone and WebRTC session survive.
     speechQueueRef.current.cancel()
-    clearCaptionTimer()
+    clearTimer(captionTimerRef)
     setSpeaking(false)
     setCaption('')
-    // response.cancel (above, inside speechQueueRef.cancel()) stops the
-    // SERVER from generating more audio, but says nothing about audio
-    // already in flight — the WebRTC jitter buffer and the <audio> element
-    // itself can both be holding a second or more of already-decided sound,
-    // which then keeps playing right through the "barge-in," undercutting
-    // the whole point of interrupting. Detaching and immediately
-    // reattaching the same live MediaStream forces the element to drop
-    // whatever it had buffered and pick back up at the stream's current
-    // (silent, post-cancel) position — there is no seekable file to rewind,
-    // so this is the flush.
-    const el = audioElRef.current
-    const track = el?.srcObject
-    if (el && track) {
-      el.srcObject = null
-      el.srcObject = track
-    }
-  }, [clearCaptionTimer])
-
+  }, [])
   const speak = useCallback((text, options = {}) => {
     const line = typeof text === 'string' ? text.trim() : ''
-    if (!line) return
-    // Only the turn's first call actually records anything — see
-    // sentenceQueued's own guard — so it's safe to call this on every
-    // enqueue rather than threading "is this the first one" through here.
+    if (!line || !activeRef.current) return
     metrics.sentenceQueued()
     speechQueueRef.current.enqueue(line, options)
   }, [])
-
   const setMuted = useCallback((value) => {
-    const next = Boolean(value)
-    mutedRef.current = next
-    streamRef.current?.getAudioTracks().forEach((track) => { track.enabled = !next })
-    setMutedState(next)
+    if (!value) audioMeterRef.current?.resume()
+    mutedRef.current = Boolean(value)
+    setMutedState(mutedRef.current)
+    applyMute()
+  }, [applyMute])
+  const sendInputMode = useCallback(() => sendEvent({
+    type: 'session.update',
+    session: { type: 'realtime', audio: { input: { turn_detection: inputModeRef.current === 'ptt' ? null : AUTO_TURN_DETECTION } } },
+  }), [sendEvent])
+  const setInputMode = useCallback((mode) => {
+    if (!['auto', 'ptt'].includes(mode)) return
+    inputModeRef.current = mode
+    setInputModeState(mode)
+    pttStartedRef.current = null
+    sendInputMode()
+    setMuted(mode === 'ptt')
+  }, [sendInputMode, setMuted])
+  const settleInput = useCallback((text = '', failed = false) => {
+    for (const handler of inputSettledHandlersRef.current) {
+      try { handler({ text, failed }) } catch (error) { console.error('voice input-settled handler failed', error) }
+    }
   }, [])
-
-  /* Push-to-talk's own "I'm done" signal. Releasing PTT already mutes the
-     track (setMuted(true), called right after this by the caller) — but a
-     muted track still sends silence, not nothing, so without this the
-     server's VAD silence timer has to elapse on that silence before it
-     decides the turn is over: a guaranteed extra ~350ms tacked onto every
-     single push-to-talk turn, on top of whatever the teacher already waited
-     holding the button. commit tells the Realtime session the turn is over
-     RIGHT NOW, since a manual release is a stronger, more immediate signal
-     than silence ever is. A no-op in auto mode, where server VAD alone
-     decides turn boundaries and there is no release to hang this off of. */
+  const beginTurn = useCallback(() => {
+    if (!readyRef.current || inputModeRef.current !== 'ptt' || document.hidden) return false
+    // Manual mode has no VAD speech_started event; pressing PTT is the same
+    // interruption signal to the grounded conversation owner.
+    for (const handler of speechStartHandlersRef.current) {
+      try { handler() } catch (error) { console.error('voice speech-start handler failed', error) }
+    }
+    cancelSpeech()
+    sendEvent({ type: 'input_audio_buffer.clear' })
+    pttStartedRef.current = performance.now()
+    setHeard('')
+    return true
+  }, [cancelSpeech, sendEvent])
   const commitTurn = useCallback(() => {
-    sendEvent({ type: 'input_audio_buffer.commit' })
-  }, [sendEvent])
-
+    if (!readyRef.current || inputModeRef.current !== 'ptt' || pttStartedRef.current == null) return false
+    const duration = performance.now() - pttStartedRef.current
+    pttStartedRef.current = null
+    if (duration < 120) { sendEvent({ type: 'input_audio_buffer.clear' }); settleInput(); return false }
+    metrics.turnStarted()
+    return sendEvent({ type: 'input_audio_buffer.commit' })
+  }, [sendEvent, settleInput])
   const onUtterance = useCallback((handler) => {
     if (typeof handler !== 'function') return () => {}
     handlersRef.current.add(handler)
     return () => handlersRef.current.delete(handler)
   }, [])
+  const onSpeechStart = useCallback((handler) => {
+    if (typeof handler !== 'function') return () => {}
+    speechStartHandlersRef.current.add(handler)
+    return () => speechStartHandlersRef.current.delete(handler)
+  }, [])
+  const onInputSettled = useCallback((handler) => {
+    if (typeof handler !== 'function') return () => {}
+    inputSettledHandlersRef.current.add(handler)
+    return () => inputSettledHandlersRef.current.delete(handler)
+  }, [])
 
   const handleEvent = useCallback((event) => {
+    const queue = speechQueueRef.current
     switch (event.type) {
       case 'response.created':
-        speechQueueRef.current.responseCreated(event.response?.id)
-        clearCaptionTimer()
+        if (!queue.responseCreated(event.response?.id, event.response?.metadata?.speech_id)) break
+        clearTimer(captionTimerRef)
         setCaption('')
         break
+      case 'output_audio_buffer.started':
+      case 'response.output_audio.delta':
       case 'response.audio.delta':
-        if (speechQueueRef.current.current()) {
+        if (queue.accepts(event.response_id)) {
           setSpeaking(true)
-          // Only the turn's first call records anything (firstAudio's own
-          // guard) — this fires on every delta of every response, which is
-          // exactly what makes it correct: the FIRST one to land after
-          // turnStarted() is, by definition, the moment the teacher's wait
-          // ends.
-          metrics.firstAudio()
+          if (!preview) metrics.firstAudio()
         }
         break
       case 'response.audio_transcript.delta':
       case 'response.output_audio_transcript.delta':
-        if (!speechQueueRef.current.current()) break
-        clearCaptionTimer()
-        setSpeaking(true)
+        if (!queue.accepts(event.response_id)) break
+        clearTimer(captionTimerRef)
         setCaption((previous) => previous + (event.delta || ''))
         break
       case 'response.audio_transcript.done':
       case 'response.output_audio_transcript.done':
-        if (!speechQueueRef.current.current()) break
-        clearCaptionTimer()
-        captionTimerRef.current = setTimeout(() => {
-          captionTimerRef.current = null
-          setCaption('')
-        }, 1800)
+        if (queue.accepts(event.response_id) && event.transcript) setCaption(event.transcript)
+        break
+      case 'output_audio_buffer.stopped':
+      case 'output_audio_buffer.cleared':
+        if (!queue.accepts(event.response_id)) { queue.playbackDone(event.response_id); break }
+        setSpeaking(false)
+        clearTimer(captionTimerRef)
+        captionTimerRef.current = setTimeout(() => setCaption(''), 1800)
+        queue.playbackDone(event.response_id)
         break
       case 'response.done': {
-        const responseId = event.response?.id || event.response_id
-        // response.usage rides along on every completed response regardless
-        // of whether it was one this queue was tracking — accumulated
-        // unconditionally so a response the queue didn't own (a stray
-        // server-initiated one) still counts toward what stopSession
-        // reports. See flushUsage's own comment for where this goes.
+        const id = event.response?.id || event.response_id
+        if (id && completedResponsesRef.current.has(id)) break
+        if (id) completedResponsesRef.current.add(id)
         const usage = event.response?.usage
         if (usage) {
-          usageRef.current = {
-            input: usageRef.current.input + (usage.input_tokens || 0),
-            output: usageRef.current.output + (usage.output_tokens || 0),
-          }
+          usageRef.current.input += Number(usage.input_tokens) || 0
+          usageRef.current.output += Number(usage.output_tokens) || 0
         }
-        if (!speechQueueRef.current.responseDone(responseId)) break
-        setSpeaking(false)
-        pumpSpeech()
+        const response = event.response || {}
+        const hasAudio = !Array.isArray(response.output) || response.output.some((item) => item.content?.some((part) => ['audio', 'output_audio'].includes(part.type)))
+        queue.responseDone(id, { status: response.status, hasAudio })
+        if (response.status === 'failed') {
+          failSession('The spoken reply could not finish. Your lesson remains available in the chat.')
+        } else if (!queue.current()) setSpeaking(false)
         break
       }
       case 'conversation.item.input_audio_transcription.delta':
@@ -292,254 +254,148 @@ export function VoiceProvider({ children }) {
         break
       case 'conversation.item.input_audio_transcription.completed': {
         const text = (event.transcript || '').trim()
+        if (event.item_id && deliveredTranscriptsRef.current.has(event.item_id)) break
+        if (event.item_id) deliveredTranscriptsRef.current.add(event.item_id)
         setHeard(text)
-        // Noise/empty completions never enter ChatPage's submit path.
+        settleInput(text)
         if (!text) break
-        // "A transcript came back" — the STT leg of the latency budget ends
-        // here, whether or not anything downstream ends up using it.
         metrics.transcriptReady()
         for (const handler of handlersRef.current) {
           try { handler(text) } catch (error) { console.error('voice utterance handler failed', error) }
         }
         break
       }
-      // The teacher stopped talking — turnStarted()'s own docstring is
-      // explicit that the clock has to start HERE, not when a transcript
-      // comes back, because everything after this point is latency the
-      // teacher actually sits through.
-      case 'input_audio_buffer.speech_stopped':
-        metrics.turnStarted()
-        break
+      case 'input_audio_buffer.speech_stopped': metrics.turnStarted(); break
       case 'input_audio_buffer.speech_started':
         setHeard('')
-        if (speechQueueRef.current.current() || speechQueueRef.current.pending()) {
-          // Barge-in: the assistant was still talking when the teacher
-          // started again. Whatever turn was in flight (already spoken, by
-          // definition, or it wouldn't be in this branch) is done being
-          // measured — recorded as abandoned rather than left to dangle.
+        for (const handler of speechStartHandlersRef.current) {
+          try { handler() } catch (error) { console.error('voice speech-start handler failed', error) }
+        }
+        if (queue.current() || queue.pending()) {
           metrics.turnAbandoned()
           cancelSpeech()
-          clearInterruptTimer()
+          clearTimer(interruptTimerRef)
           setInterrupted(true)
-          interruptTimerRef.current = setTimeout(() => {
-            interruptTimerRef.current = null
-            setInterrupted(false)
-          }, 1400)
+          interruptTimerRef.current = setTimeout(() => setInterrupted(false), 1400)
         }
         break
+      case 'conversation.item.input_audio_transcription.failed':
+        settleInput('', true)
+        failSession('The last sentence could not be transcribed. Your work is saved; reconnect or type it instead.')
+        break
       case 'error':
-        console.error('realtime error event', event)
-        // Used to only set errorMessage — but VoiceModePanel's error banner
-        // is gated on status === 'error', not on errorMessage being
-        // non-empty, so a server-side error event was recorded to the
-        // console and otherwise invisible: the panel kept showing
-        // "Listening"/"Speaking" as if nothing had happened. Not closing
-        // the transport here — an application-level error event doesn't
-        // necessarily mean the connection itself died (that's
-        // onconnectionstatechange's own job, below), so the session stays
-        // live and the teacher decides via the banner's Try Again or Close.
-        setErrorMessage(event.error?.message || 'The voice session reported an error.')
-        setStatus('error')
-        metrics.turnAbandoned()
+        // A very short PTT tap or an already-finished cancellation is benign.
+        if (event.error?.code === 'input_audio_buffer_commit_empty') { settleInput(); break }
+        if (event.error?.code === 'response_cancel_not_active') break
+        failSession(event.error?.message || 'The voice session reported an error.')
         break
-      default:
-        break
+      default: break
     }
-  }, [cancelSpeech, clearCaptionTimer, clearInterruptTimer, pumpSpeech])
-
-  const handleEventRef = useRef(handleEvent)
+  }, [cancelSpeech, failSession, preview, settleInput])
   useEffect(() => { handleEventRef.current = handleEvent }, [handleEvent])
 
   const startSession = useCallback(async (context = {}) => {
     if (activeRef.current) return
-    const generation = generationRef.current + 1
-    generationRef.current = generation
+    const generation = ++generationRef.current
     const cancelled = () => generationRef.current !== generation
-    const connectAbort = new AbortController()
-    connectAbortRef.current = connectAbort
-    connectTimedOutRef.current = false
+    const abort = new AbortController()
+    let timedOut = false
+    connectAbortRef.current = abort
     activeRef.current = true
+    readyRef.current = false
+    autoMutedRef.current = document.hidden
+    setBackgroundMuted(document.hidden)
     setStatus('connecting')
     setErrorMessage('')
-    clearConnectTimer()
-    connectTimerRef.current = setTimeout(() => {
-      connectTimedOutRef.current = true
-      connectAbort.abort()
-    }, CONNECT_TIMEOUT_MS)
-
+    // Start the context within the Voice button's user gesture. Preview has
+    // its own explicitly simulated levels and never opens an audio context.
+    if (!transportFactory) audioMeterRef.current = createVoiceAudioMeter()
+    connectTimerRef.current = setTimeout(() => { timedOut = true; abort.abort() }, CONNECT_TIMEOUT_MS)
+    const eventHandler = (event) => { if (!cancelled()) handleEventRef.current?.(event) }
     try {
-      // Provisioning and microphone permission are independent. Starting them
-      // together removes one full network/permission round trip from the
-      // deliberate open action while preserving the no-mic-on-page-load rule.
-      const sessionPromise = api.createVoiceSession({
-        chat_id: context.chatId ?? context.chat_id ?? null,
-        class_id: context.classId ?? context.class_id ?? null,
-        week_number: context.weekNumber ?? context.week_number ?? null,
-        mode: context.mode || 'brainstorm',
-      }, { signal: connectAbort.signal })
-      let preferredDeviceId = ''
-      try { preferredDeviceId = window.localStorage.getItem(VOICE_DEVICE_STORAGE_KEY) || '' } catch { /* optional persistence */ }
-      const mediaConstraints = {
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          ...(preferredDeviceId ? { deviceId: { exact: preferredDeviceId } } : {}),
-        },
-      }
-      const mediaPromise = navigator.mediaDevices.getUserMedia(mediaConstraints).catch((error) => {
-        // A remembered Bluetooth/USB mic may no longer be connected. Fall
-        // back to the computer's current default instead of prompting for a
-        // different device or failing the entire Realtime session.
-        if (!preferredDeviceId || error?.name !== 'OverconstrainedError') throw error
-        return navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+      let transport
+      if (transportFactory) {
+        transport = await transportFactory({ onEvent: eventHandler, signal: abort.signal })
+      } else {
+        let preferredDeviceId = ''
+        try { preferredDeviceId = window.localStorage.getItem(VOICE_DEVICE_STORAGE_KEY) || '' } catch { /* optional */ }
+        transport = await openWebRTCTransport({
+          signal: abort.signal,
+          provision: (signal) => api.createVoiceSession({
+            chat_id: context.chatId ?? context.chat_id ?? null,
+            class_id: context.classId ?? context.class_id ?? null,
+            week_number: context.weekNumber ?? context.week_number ?? null,
+            mode: context.mode || 'brainstorm',
+          }, { signal }),
+          onEvent: eventHandler,
+          onLost: (message) => { if (!cancelled()) failSession(message) },
+          onInputStream: (stream) => { if (!cancelled()) audioMeterRef.current?.attach('input', stream) },
+          onTrack: (stream) => {
+            if (cancelled() || !audioElRef.current) return
+            audioMeterRef.current?.attach('output', stream)
+            audioElRef.current.srcObject = stream
+            resumeAudio()
+          },
+          isMuted: effectiveMute,
+          preferredDeviceId,
+          onDevice: (id) => { try { window.localStorage.setItem(VOICE_DEVICE_STORAGE_KEY, id) } catch { /* optional */ } },
         })
-      }).then((stream) => {
-        // getUserMedia cannot be aborted while Chrome's permission prompt is
-        // open. If the teacher closes the panel or the handshake times out and
-        // then grants permission later, release that late stream immediately.
-        if (cancelled() || connectTimedOutRef.current) {
-          stream.getTracks().forEach((track) => track.stop())
-          return null
-        }
-        return stream
-      })
-      const handshake = Promise.all([sessionPromise, mediaPromise])
-      const deadline = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Voice connection timed out.')), CONNECT_TIMEOUT_MS)
-      })
-      const [{ token, model }, stream] = await Promise.race([handshake, deadline])
-      if (cancelled()) return
-      if (!stream) throw new Error('Microphone permission was not granted.')
-      const actualDeviceId = stream.getAudioTracks()[0]?.getSettings?.().deviceId
-      if (actualDeviceId) {
-        try { window.localStorage.setItem(VOICE_DEVICE_STORAGE_KEY, actualDeviceId) } catch { /* optional persistence */ }
       }
-
-      const pc = new RTCPeerConnection()
-      pcRef.current = pc
-      pc.ontrack = (event) => {
-        const el = audioElRef.current
-        if (!el) return
-        el.srcObject = event.streams[0]
-        // srcObject alone doesn't count as a user gesture, so the browser's
-        // autoplay policy can silently refuse to play it — see resumeAudio's
-        // own comment. Explicit .play() at least surfaces the failure
-        // (audioBlocked) instead of a session that looks live but is mute.
-        el.play().then(() => setAudioBlocked(false)).catch(() => setAudioBlocked(true))
-      }
-      pc.onconnectionstatechange = () => {
-        if (['failed', 'closed', 'disconnected'].includes(pc.connectionState) && !cancelled()) {
-          closeTransport()
-          activeRef.current = false
-          setErrorMessage('The voice connection was lost. Try again.')
-          setStatus('error')
-        }
-      }
-
-      if (cancelled()) {
-        stream.getTracks().forEach((track) => track.stop())
-        pc.close()
-        return
-      }
-      streamRef.current = stream
-      stream.getAudioTracks().forEach((track) => { track.enabled = !mutedRef.current })
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream))
-      const dc = pc.createDataChannel('oai-events')
-      dcRef.current = dc
-      dc.onmessage = (message) => {
-        try { handleEventRef.current(JSON.parse(message.data)) } catch (error) { console.error('Failed to parse realtime event', error) }
-      }
-      dc.onopen = pumpSpeech
-
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-      if (cancelled()) return
-      const response = await fetch(`https://api.openai.com/v1/realtime/calls?model=${encodeURIComponent(model)}`, {
-        method: 'POST',
-        body: offer.sdp,
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/sdp' },
-      })
-      if (cancelled()) return
-      if (!response.ok) {
-        const detail = await response.text().catch(() => '')
-        throw new Error(`Realtime connection refused (${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`)
-      }
-      await pc.setRemoteDescription({ type: 'answer', sdp: await response.text() })
-      if (cancelled()) return
-      clearConnectTimer()
+      if (cancelled() || abort.signal.aborted) { transport.close(); return }
+      transportRef.current = transport
+      clearTimer(connectTimerRef)
       connectAbortRef.current = null
+      readyRef.current = true
+      applyMute()
+      sendInputMode()
       setStatus('live')
-      pumpSpeech()
-      clearSessionTimer()
+      speechQueueRef.current.pump()
       sessionTimerRef.current = setTimeout(() => {
         if (cancelled()) return
-        toast.info('Voice Mode timed out', `Ended after ${Math.round(MAX_SESSION_MS / 60000)} minutes — start it again to keep going.`)
+        toast.info('Voice Mode timed out', 'Ended after 20 minutes — start it again to keep going.')
         stopSession()
       }, MAX_SESSION_MS)
     } catch (error) {
       if (cancelled()) return
-      connectAbort.abort()
-      clearConnectTimer()
-      connectAbortRef.current = null
-      const message = connectTimedOutRef.current
-        ? 'Voice took too long to connect. Check Chrome microphone permissions and try again.'
+      const message = timedOut
+        ? 'Voice took too long to connect. Check microphone permissions and try again.'
         : error?.name === 'NotAllowedError'
-          ? 'Chrome blocked microphone access. Allow the microphone for this site, then try again.'
-          : error?.message || String(error)
-      closeTransport()
-      activeRef.current = false
-      setStatus('error')
-      setErrorMessage(message)
+          ? 'Microphone access was blocked. Allow it for this site, then try again.'
+          : error?.message || 'Voice could not connect. Try again.'
+      failSession(message)
       toast.error('Couldn’t start Voice Mode', message)
     }
-  }, [clearConnectTimer, clearSessionTimer, closeTransport, pumpSpeech, stopSession, toast])
+  }, [applyMute, effectiveMute, failSession, resumeAudio, sendInputMode, stopSession, toast, transportFactory])
+  const simulateUtterance = useCallback((text) => {
+    if (!preview || !readyRef.current || effectiveMute()) return false
+    return transportRef.current?.simulateUtterance?.(text) || false
+  }, [effectiveMute, preview])
+  const getAudioLevel = useCallback((channel) => {
+    if (!readyRef.current || document.hidden || (channel === 'input' && effectiveMute())) return 0
+    return preview ? transportRef.current?.sampleLevel?.(channel) || 0 : audioMeterRef.current?.sample(channel) || 0
+  }, [effectiveMute, preview])
 
   useEffect(() => () => stopSession(), [stopSession])
-
-  /* Backgrounding a tab (or locking the phone) used to do nothing at all —
-     the mic stayed live and streaming into a session nobody was attending
-     to. Auto-mutes on hide and restores on return, but ONLY the auto-mute:
-     if the teacher had explicitly muted before backgrounding, autoMutedRef
-     stays false and this leaves that alone in both directions. */
   useEffect(() => {
     const onVisibility = () => {
       if (!activeRef.current) return
-      if (document.hidden) {
-        if (mutedRef.current) return
-        autoMutedRef.current = true
-        streamRef.current?.getAudioTracks().forEach((track) => { track.enabled = false })
-      } else if (autoMutedRef.current) {
-        autoMutedRef.current = false
-        if (!mutedRef.current) {
-          streamRef.current?.getAudioTracks().forEach((track) => { track.enabled = true })
-        }
-      }
+      autoMutedRef.current = document.hidden
+      setBackgroundMuted(document.hidden)
+      applyMute()
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [])
+  }, [applyMute])
 
   const value = useMemo(() => ({
-    enabled: status === 'connecting' || status === 'live',
-    status,
-    errorMessage,
-    speaking,
-    caption,
-    heard,
-    muted,
-    interrupted,
-    audioBlocked,
-    startSession,
-    stopSession,
-    speak,
-    cancelSpeech,
-    onUtterance,
-    setMuted,
-    commitTurn,
-    resumeAudio,
-  }), [audioBlocked, cancelSpeech, caption, commitTurn, errorMessage, heard, interrupted, muted, onUtterance, resumeAudio, speak, startSession, status, stopSession, setMuted, speaking])
-
+    enabled: status === 'connecting' || status === 'live', status, errorMessage,
+    speaking, caption, heard, muted: muted || backgroundMuted, backgroundMuted,
+    interrupted, audioBlocked, inputMode, preview, isPreview: preview,
+    startSession, stopSession, speak, cancelSpeech, onUtterance, onSpeechStart, onInputSettled, setMuted,
+    setInputMode, beginTurn, commitTurn, resumeAudio, simulateUtterance, getAudioLevel,
+  }), [status, errorMessage, speaking, caption, heard, muted, backgroundMuted,
+    interrupted, audioBlocked, inputMode, preview, startSession, stopSession,
+    speak, cancelSpeech, onUtterance, onSpeechStart, onInputSettled, setMuted, setInputMode, beginTurn,
+    commitTurn, resumeAudio, simulateUtterance, getAudioLevel])
   return <VoiceContext.Provider value={value}>{children}</VoiceContext.Provider>
 }

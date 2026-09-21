@@ -6,6 +6,9 @@ import { recoverDumpedToolsFromText } from '../src/lib/chatToolRecovery.js'
 import { createSmoother } from '../src/lib/streamSmoother.js'
 import { optionalFollowUpProps, planOperation, quizReceipt, quizRevisionId, readQuizReceipt, requestedOptionalNextStep, revisionDayIndices, shouldOfferOptionalFollowUp, shouldStreamPlanRevision } from '../src/lib/chatActions.js'
 
+const apiSource = (await readFile(new URL('../src/lib/api.js', import.meta.url), 'utf8')).replace('import.meta.env.VITE_API_URL', "''")
+const realApi = await import(`data:text/javascript;base64,${Buffer.from(apiSource).toString('base64')}`)
+
 // Run the actual hook's streaming code without a DOM. Only React state storage,
 // timing instrumentation, and the API URL are stubbed; fetch uses real Responses.
 async function harness(responses, callbacks = {}) {
@@ -25,12 +28,13 @@ async function harness(responses, callbacks = {}) {
       const response = responses.shift()
       if (typeof response === 'function') return response(init)
       if (response instanceof Error) throw response
+      if (response instanceof Response) return response
       return new Response(response.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), { headers: { 'Content-Type': 'text/event-stream' } })
     },
   })
   const modules = {
     react: { useCallback: (fn) => fn, useEffect: noop, useRef: (current) => ({ current }), useState: (initial) => [initial, noop] },
-    '../lib/api': { ApiError, api: { chatStreamUrl: () => '/api/chat_stream' }, apiErrorFromBody: (body) => new ApiError(body.error.message, body.error) },
+    '../lib/api': { ApiError, api: { chatStreamUrl: () => '/api/chat_stream' }, toError: realApi.toError },
     '../lib/voiceMetrics': { firstToken: noop },
     '../lib/chatToolRecovery': { recoverDumpedToolsFromText },
     '../lib/performanceMetrics': { mark: noop, measure: noop },
@@ -75,7 +79,7 @@ test('advice does not dispatch an artifact; explicit creation wins over open pla
   assert.equal(planOperation({ text: 'Try modeling.' }, 'p1'), null)
   assert.equal(planOperation({ toolCalled: true, planAction: action }, 'p1').action, 'create')
   assert.throws(() => planOperation({ toolCalled: true }, 'p1'), /incomplete/)
-  assert.equal(planOperation({ toolCalled: true }, 'p1', { voice: true }).action, 'revise_week')
+  assert.throws(() => planOperation({ toolCalled: true }, 'p1', { voice: true }), /incomplete/)
 })
 
 test('stale revision targets bind to the open plan instead of failing the turn', () => {
@@ -103,6 +107,17 @@ test('a truncated action still starts work once without retrying chat', async ()
   assert.deepEqual(calls.map((c) => c.attempt), [0])
   assert.ok(calls.every((c) => c.request_id === 'r1' && c.active_plan_id === 'old-plan'))
   assert.equal(calls[0].plan_open, false)
+})
+
+test('voice consultation sends its pending-work context without dispatching a mutation', async () => {
+  const { hook, calls } = await harness([[{ chunk: 'Try a brief worked example.' }, done]])
+  const result = await hook.start([{ role: 'user', content: 'How can I scaffold this?' }], {
+    voice: true, planWorkPending: true, activePlanId: 'p1', planOpen: true,
+  })
+  assert.equal(calls[0].plan_work_pending, true)
+  assert.equal(calls[0].voice, true)
+  assert.equal(calls[0].active_plan_id, 'p1')
+  assert.equal(result.toolCalled, false)
 })
 
 test('plan overlay flag reaches the chat stream', async () => {
@@ -238,4 +253,58 @@ test('also_quiz on a plan action requests the quiz in the same turn', async () =
   assert.equal(result.quizRequested.numQuestions, 5)
   assert.equal(result.quizRequested.questionTypes[0], 'multiple_choice')
   assert.equal(result.quizRequested.instruction, action.instruction)
+})
+
+
+test('an HTML gateway outage retries the same chat request and dispatches once', async () => {
+  const dispatched = []
+  const { hook, calls } = await harness([
+    new Response('<html>Bad gateway</html>', { status: 502 }),
+    [action, done],
+  ], { onAction: (result) => dispatched.push(result) })
+  await hook.start([{ role: 'user', content: 'Build my week.' }], { requestId: 'gateway-recovery' })
+  assert.equal(calls.length, 2)
+  assert.ok(calls.every((call) => call.request_id === 'gateway-recovery'))
+  assert.equal(dispatched.length, 1)
+})
+
+test('permanent provider failures do not retry even with a formerly retryable code', async () => {
+  const { hook, calls } = await harness([[{ error: { code: 'rate_limited', message: 'Account limit reached', retryable: false } }]])
+  await assert.rejects(hook.start([]), /Account limit reached/)
+  assert.equal(calls.length, 1)
+})
+
+test('long Retry-After stops automatic retries instead of hammering the provider', async () => {
+  const { hook, calls } = await harness([new Response('Busy', { status: 429, headers: { 'Retry-After': '120' } })])
+  await assert.rejects(hook.start([]), { status: 429 })
+  assert.equal(calls.length, 1)
+})
+
+test('stopping during backoff cancels the next attempt', async () => {
+  let retry
+  const waiting = new Promise((resolve) => { retry = resolve })
+  const { hook, calls } = await harness([new TypeError('offline')], { onRetry: retry })
+  const pending = hook.start([])
+  await waiting
+  hook.stop()
+  assert.equal(await pending, null)
+  assert.equal(calls.length, 1)
+})
+
+test('the completion event settles the reply even if a proxy never closes', { timeout: 1500 }, async () => {
+  let closed = false
+  const { hook, calls } = await harness([() => new Response(new ReadableStream({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"chunk":"A complete reply."}\n\ndata: {"done":true}\n\n'))
+    },
+    cancel() { closed = true },
+  }))])
+  try {
+    const result = await hook.start([])
+    assert.equal(result.text, 'A complete reply.')
+    assert.equal(calls.length, 1)
+    assert.equal(closed, true)
+  } finally {
+    hook.stop()
+  }
 })

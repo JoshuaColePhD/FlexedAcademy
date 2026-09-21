@@ -19,6 +19,7 @@ import { classColor } from '../lib/classColor'
 import { shortDateTime } from '../lib/dates'
 import { ShareDialog } from './ShareDialog'
 import { DocxDownloadButton } from './DocxDownloadButton'
+import '../styles/materials-panel.css'
 
 const RailGroup = ({ title, headerTitle = title, isBar, children }) => {
   if (isBar) {
@@ -35,33 +36,15 @@ const RailGroup = ({ title, headerTitle = title, isBar, children }) => {
 }
 import { useToast } from '../lib/toastContext'
 
-// The full date range belongs in the reader. In the persistent Outputs rail,
+// The full date range belongs in the reader. In the persistent Materials rail,
 // the week number is the useful scan target and keeps the row comparable to a
 // chat title rather than a second document heading.
 const shortPlanWeek = (weekOf) => String(weekOf || '').match(/Week\s+\d+/i)?.[0] || 'Lesson plan'
 
 
 
-/* The artifact rail — the content that fills the drawer once it's open (see
- * ArtifactDrawer at the bottom of this file for the always-mounted shell
- * around it).
- *
- * A lesson plan is not a thing you read on a screen. It is a thing you
- * download, print and hand in. So the always-open document viewer that used to
- * share width with the chat is gone: the chat gets a real reading column, and
- * the artifact goes back to being what it actually is — a file, with a Download
- * button and a note of what it was built from.
- *
- * The honest cost is that you can no longer see whether Thursday is right
- * without opening it. That is paid for in the chat message, not here: see
- * Message.jsx, which carries the week strip and the grounding line so a bad
- * week is catchable with the document closed.
- *
- * Every row below is derived from something real. There is deliberately no
- * "prior versions" group: a plan row is updated in place (backend/db.py has no
- * revision table), so a v1/v2 list would be an invention, and an invented
- * version history in a compliance document is the worst kind of decoration.
- */
+/* Keep the rail focused on opening the work. Review details belong in the
+ * lesson reader; class files are available on demand. */
 
 /** Secondary source rows appear immediately, without staggered animation. */
 function RailRow({ icon: Icon, label, sub, flag, onClick, title }) {
@@ -72,7 +55,7 @@ function RailRow({ icon: Icon, label, sub, flag, onClick, title }) {
       </span>
       <span className="rail-text">
         <span className="rail-row-label">{label}</span>
-        <span className={`rail-sub${flag ? ' is-flag' : ''}`}>{sub}</span>
+        {sub ? <span className={`rail-sub${flag ? ' is-flag' : ''}`}>{sub}</span> : null}
       </span>
     </>
   )
@@ -240,6 +223,10 @@ export function ArtifactRail({
   quizBuilding = false,
   quizzesEnabled = false,
   updating = false,
+  planSaveState = 'idle',
+  documents,
+  onManageMaterials,
+  onOpenDocument,
   // Opens the same embossed panel the plan card does (see onExpand above),
   // just pointed at a different kind of content — ArtifactDetailPanel in
   // ChatPage.jsx switches on what each of these was given. Not gated behind
@@ -283,9 +270,11 @@ export function ArtifactRail({
      travels in the message as the week strip and the grounding line. */
   const isBar = variant === 'bar'
   const color = classColor(classId)
+  const unsaved = ['pending', 'error'].includes(planSaveState)
+  const classDocuments = Array.isArray(documents) ? documents : null
 
   return (
-    <aside className={`artifact-rail${isBar ? ' is-bar' : ' p-3'}`} aria-label="Outputs">
+    <aside className={`artifact-rail materials-panel${isBar ? ' is-bar' : ' p-3'}`} aria-label="Materials">
       <div className={isBar ? 'artifact-rail-bar-content' : 'artifact-rail-scroll'}>
       {planId || busy || artifactLoadError ? (
         <RailGroup title="Lesson plans" isBar={isBar}>
@@ -367,6 +356,13 @@ export function ArtifactRail({
         ) : null}
         </RailGroup>
       ) : null}
+      {!isBar && planId && unsaved ? <div className="materials-save-notice" role="status">
+        <div className="materials-save-status needs-attention">
+          <AlertTriangle size={13} aria-hidden="true" />
+          <span>{planSaveState === 'error' ? 'Changes not saved' : 'Unsaved changes'}</span>
+        </div>
+        <p className="materials-note">Downloads use the last saved version.</p>
+      </div> : null}
       {quizzesEnabled && (quizBuilding || quizzes.length > 0) ? (
         <RailGroup title="Assessments" isBar={isBar}>
           {quizBuilding ? (
@@ -397,9 +393,15 @@ export function ArtifactRail({
         </RailGroup>
       ) : (
         !planId && !busy && !artifactLoadError ? (
-          <p className="rail-empty px-2 py-3 text-sm text-ink-muted">Outputs from this chat will appear here.</p>
+          <p className="rail-empty px-2 py-3 text-sm text-ink-muted">Lesson plans and assessments from this chat will appear here.</p>
         ) : null
       )}
+
+      {!isBar && (classDocuments?.length || onManageMaterials) ? <details className="materials-class-files">
+        <summary>Class files<ChevronRight size={14} aria-hidden="true" /></summary>
+        {classDocuments?.length ? <div className="materials-file-list">{classDocuments.slice(0, 3).map((doc) => <RailRow key={doc.id} icon={FileText} label={doc.original_name || doc.title || 'Class document'} sub={doc.processing_status === 'queued' ? 'Waiting to be read' : doc.processing_status === 'processing' ? 'Processing' : doc.processing_status === 'needs_attention' ? 'Needs attention' : null} flag={doc.processing_status === 'needs_attention'} onClick={onOpenDocument ? () => onOpenDocument(doc) : undefined} />)}</div> : null}
+        {onManageMaterials ? <button type="button" className="materials-link" onClick={onManageMaterials}>{classDocuments?.length > 3 ? 'View all files' : 'Add files'}<ChevronRight size={13} aria-hidden="true" /></button> : null}
+      </details> : null}
 
       </div>
 
@@ -425,11 +427,10 @@ export function ArtifactRail({
  * effect); afterward the header Close/Open artifacts panel toggle is the
  * teacher's control on desktop and tablet.
  *
- * `open` is still owned by ChatPage so the panel can be hidden while a
- * document overlay is active. `persistent` hides only the in-drawer X so
- * the header toggle remains the one close/open control.
+ * `open` is owned by ChatPage. Every visible drawer can be closed from its
+ * own heading, including the persistent desktop column.
  */
-export function ArtifactDrawer({ open, onClose, persistent = false, hasArtifact, busy, ...railProps }) {
+export function ArtifactDrawer({ open, onClose, persistent = false, obscured = false, hasArtifact, busy, ...railProps }) {
   /* Keep the node mounted through close so the width/opacity CSS can play.
      Unmounting on `open === false` made the chat column snap open instead of
      gliding into the freed space the way ChatGPT/Grok side panels do. */
@@ -441,14 +442,14 @@ export function ArtifactDrawer({ open, onClose, persistent = false, hasArtifact,
     // outer wrapper (AppShell.jsx's .app-rail) and the chat pane itself.
     <div
       id="artifacts-panel"
+      data-persistent={persistent || undefined}
       className={`artifact-drawer glass-panel rounded-2xl shadow-sm overflow-hidden${open && !closing ? ' is-open' : ''}${closing ? ' is-closing' : ''}`}
-      aria-hidden={closing || !open ? true : undefined}
+      aria-hidden={closing || !open || obscured ? true : undefined}
+      inert={closing || !open || obscured ? true : undefined}
     >
       <div className="artifact-drawer-heading">
-        <span>Outputs</span>
-        {!persistent ? (
-          <button type="button" className="btn-icon fa-press" onClick={onClose} aria-label="Close workspace" title="Close workspace"><X size={18} aria-hidden="true" /></button>
-        ) : null}
+        <span>Materials</span>
+        <button type="button" className="btn-icon fa-press" onClick={onClose} aria-label="Close materials panel" title="Close materials panel"><X size={18} aria-hidden="true" /></button>
       </div>
       <div className="artifact-drawer-body h-full">
         <ArtifactRail hasArtifact={hasArtifact} busy={busy} {...railProps} />
