@@ -3,6 +3,7 @@ import { ThumbsDown, ThumbsUp } from 'lucide-react'
 import { api } from '../lib/api'
 import { useToast } from '../lib/toastContext'
 import { useLayoutMode } from '../hooks/useMediaQuery'
+import { useLessonCellDraft } from '../hooks/useLessonCellDraft'
 import { LESSON_PARTS, ROWS, orderedDays } from '../lib/planShape'
 import { CitedText } from './Citation'
 import { PlanDayCards } from './PlanDayCards'
@@ -54,7 +55,7 @@ export const LessonPlanTable = memo(function LessonPlanTable({
   openTweak,
   setOpenTweak,
 }) {
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useLessonCellDraft(plan, missingDays, openTweak)
   // null = not sent yet; true/false = which thumb was actually clicked, not
   // just "sent" — disabling both buttons on a plain boolean left no visible
   // trace of which one you'd picked, only a toast that had already faded.

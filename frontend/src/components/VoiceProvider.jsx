@@ -10,7 +10,7 @@ import * as metrics from '../lib/voiceMetrics'
 const CONNECT_TIMEOUT_MS = 12000
 const MAX_SESSION_MS = 20 * 60 * 1000
 const VOICE_DEVICE_STORAGE_KEY = 'flexedacademy.voice.inputDevice'
-const AUTO_TURN_DETECTION = { type: 'server_vad', threshold: 0.5, prefix_padding_ms: 300, silence_duration_ms: 800, create_response: false, interrupt_response: false }
+const AUTO_TURN_DETECTION = { type: 'semantic_vad', eagerness: 'medium', create_response: false, interrupt_response: false }
 
 /* Realtime owns audio/transcription. ChatPage owns grounded reasoning and
  * persistence. The optional transport is injected only by the local preview. */
@@ -19,6 +19,10 @@ export function VoiceProvider({ children, transportFactory: suppliedFactory }) {
   const transportFactory = suppliedFactory || injectedFactory
   const preview = Boolean(transportFactory?.preview)
   const toast = useToast()
+  useEffect(() => {
+    metrics.setReporter(preview ? null : api.reportVoiceMetric)
+    return () => metrics.setReporter(null)
+  }, [preview])
   const [status, setStatus] = useState('idle')
   const [errorMessage, setErrorMessage] = useState('')
   const [speaking, setSpeaking] = useState(false)
@@ -45,6 +49,7 @@ export function VoiceProvider({ children, transportFactory: suppliedFactory }) {
   const connectAbortRef = useRef(null)
   const mutedRef = useRef(false)
   const inputModeRef = useRef('auto')
+  const autoTurnDetectionRef = useRef(AUTO_TURN_DETECTION)
   const pttStartedRef = useRef(null)
   const autoMutedRef = useRef(false)
   const usageRef = useRef({ input: 0, output: 0 })
@@ -122,6 +127,7 @@ export function VoiceProvider({ children, transportFactory: suppliedFactory }) {
   }, [preview])
 
   const failSession = useCallback((message) => {
+    metrics.turnAbandoned('failed')
     stopSession()
     setErrorMessage(message)
     setStatus('error')
@@ -146,7 +152,7 @@ export function VoiceProvider({ children, transportFactory: suppliedFactory }) {
   }, [applyMute])
   const sendInputMode = useCallback(() => sendEvent({
     type: 'session.update',
-    session: { type: 'realtime', audio: { input: { turn_detection: inputModeRef.current === 'ptt' ? null : AUTO_TURN_DETECTION } } },
+    session: { type: 'realtime', audio: { input: { turn_detection: inputModeRef.current === 'ptt' ? null : autoTurnDetectionRef.current } } },
   }), [sendEvent])
   const setInputMode = useCallback((mode) => {
     if (!['auto', 'ptt'].includes(mode)) return
@@ -211,7 +217,7 @@ export function VoiceProvider({ children, transportFactory: suppliedFactory }) {
       case 'response.audio.delta':
         if (queue.accepts(event.response_id)) {
           setSpeaking(true)
-          if (!preview) metrics.firstAudio()
+          if (!preview && event.type === 'output_audio_buffer.started') metrics.firstAudio()
         }
         break
       case 'response.audio_transcript.delta':
@@ -272,7 +278,7 @@ export function VoiceProvider({ children, transportFactory: suppliedFactory }) {
           try { handler() } catch (error) { console.error('voice speech-start handler failed', error) }
         }
         if (queue.current() || queue.pending()) {
-          metrics.turnAbandoned()
+          metrics.turnAbandoned('interrupted')
           cancelSpeech()
           clearTimer(interruptTimerRef)
           setInterrupted(true)
@@ -321,12 +327,16 @@ export function VoiceProvider({ children, transportFactory: suppliedFactory }) {
         try { preferredDeviceId = window.localStorage.getItem(VOICE_DEVICE_STORAGE_KEY) || '' } catch { /* optional */ }
         transport = await openWebRTCTransport({
           signal: abort.signal,
-          provision: (signal) => api.createVoiceSession({
+          provision: async (signal) => {
+            const session = await api.createVoiceSession({
             chat_id: context.chatId ?? context.chat_id ?? null,
             class_id: context.classId ?? context.class_id ?? null,
             week_number: context.weekNumber ?? context.week_number ?? null,
             mode: context.mode || 'brainstorm',
-          }, { signal }),
+            }, { signal })
+            autoTurnDetectionRef.current = session.turn_detection || AUTO_TURN_DETECTION
+            return session
+          },
           onEvent: eventHandler,
           onLost: (message) => { if (!cancelled()) failSession(message) },
           onInputStream: (stream) => { if (!cancelled()) audioMeterRef.current?.attach('input', stream) },

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SHORT_DAY, dayState, initialDayIndex, orderedDays } from '../lib/planShape'
 import { SkeletonText } from './Skeleton'
 import { cellKit } from './cellTweakKit'
+import { useLessonCellDraft } from '../hooks/useLessonCellDraft'
 
 
 const FIELDS = [
@@ -76,7 +77,7 @@ export function WeedenPlanDayCards({
   setOpenTweak,
 }) {
   const days = orderedDays(plan, missingDays)
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useLessonCellDraft(plan, missingDays, openTweak)
   const canTweak = Boolean(onEditDay || onReviseDay)
   const openCell = (dayIndex, field) => {
     if (!canTweak) return
@@ -105,7 +106,7 @@ export function WeedenPlanDayCards({
   const [active, setActive] = useState(() => initialDayIndex(days, plan.week_of))
   const scrollerRef = useRef(null)
   const syncing = useRef(false)
-  const offsetOf = (el, i) => el.children[i]?.offsetLeft ?? i * el.clientWidth
+  const offsetOf = (el, i) => el.children[i] ? el.children[i].offsetLeft - el.children[0].offsetLeft : i * el.clientWidth
   const goTo = useCallback((i) => {
     const el = scrollerRef.current
     if (!el) return
@@ -114,6 +115,18 @@ export function WeedenPlanDayCards({
     el.scrollTo({ left: offsetOf(el, i), behavior: 'smooth' })
     setTimeout(() => { syncing.current = false }, 400)
   }, [])
+  useEffect(() => {
+    const el = scrollerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    let width = el.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return
+      width = el.clientWidth
+      el.scrollTo({ left: offsetOf(el, active), behavior: 'instant' })
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [active])
   useEffect(() => {
     const el = scrollerRef.current
     if (el) el.scrollLeft = offsetOf(el, active)
@@ -126,11 +139,15 @@ export function WeedenPlanDayCards({
     let nearest = 0
     let best = Infinity
     for (let i = 0; i < el.children.length; i += 1) {
-      const distance = Math.abs((el.children[i].offsetLeft || 0) - el.scrollLeft)
+      const distance = Math.abs(offsetOf(el, i) - el.scrollLeft)
       if (distance < best) { best = distance; nearest = i }
     }
     if (nearest !== active) setActive(nearest)
   }
+  useEffect(() => {
+    const index = openTweak?.dayIndex
+    if (Number.isInteger(index) && index >= 0) goTo(index)
+  }, [openTweak?.dayIndex, goTo])
   return (
     <div className="plan-deck">
       <p className="weeden-week-label">{plan.course} · {plan.week_of}</p>

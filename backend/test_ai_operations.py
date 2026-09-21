@@ -50,6 +50,7 @@ def test_tool_completion_drains_final_usage(monkeypatch):
             pass
 
     recorded = []
+    monkeypatch.setattr(llm.settings, "chat_api", "chat_completions")
     monkeypatch.setattr(llm, "client", lambda: N(chat=N(completions=N(create=lambda **kw: Stream()))))
     monkeypatch.setattr(llm, "beta_features_for", lambda _: False)
     monkeypatch.setattr(llm, "_chat_tools_for", lambda *a, **kw: [{}])

@@ -434,6 +434,7 @@ function MessageImpl({
               className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
               onClick={() => setEditing(true)}
               aria-label="Edit and send again"
+              title="Edit in a new conversation; preserve this version"
             >
               <Pencil size={14} aria-hidden="true" />
             </button>
@@ -453,6 +454,7 @@ function MessageImpl({
               className="fa-press rounded-md p-1.5 transition-colors hover:bg-paper-sunken hover:text-ink"
               onClick={onRetry}
               aria-label={message.isError ? 'Try again' : 'Regenerate this reply'}
+              title={message.isError ? 'Try again' : 'Create an alternative in a new conversation'}
             >
               <RotateCcw size={14} aria-hidden="true" />
             </button>

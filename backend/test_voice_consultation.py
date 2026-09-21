@@ -19,15 +19,18 @@ def test_voice_session_is_transport_only_with_manual_response_control(monkeypatc
         return SimpleNamespace(status_code=200, json=lambda: {"value": "test-ephemeral-token", "expires_at": 123})
     monkeypatch.setattr(requests, "post", post)
     result = generate.voice_session.__wrapped__(generate.VoiceSessionRequest(chat_id="chat", class_id="class"), request=None, user_id="u")
-    assert result == {"token": "test-ephemeral-token", "expires_at": 123, "model": generate.settings.realtime_model}
+    assert result["token"] == "test-ephemeral-token" and result["expires_at"] == 123
     url, request = calls[0]
     assert url == "https://api.openai.com/v1/realtime/client_secrets"
     session = request["json"]["session"]
     assert session["type"] == "realtime" and session["model"] == result["model"]
     assert not session.get("tools") and "instructions" not in session
-    assert session["audio"]["input"]["transcription"] == {"model": "whisper-1", "language": "en"}
+    transcription = session["audio"]["input"]["transcription"]
+    assert transcription["model"] == "gpt-4o-mini-transcribe" and transcription["language"] == "en"
+    assert "rhetorical analysis" in transcription["prompt"]
     detection = session["audio"]["input"]["turn_detection"]
-    assert detection["silence_duration_ms"] == 800
+    assert detection["type"] == "semantic_vad" and detection["eagerness"] == "medium"
+    assert result["turn_detection"] == detection
     assert detection["create_response"] is False and detection["interrupt_response"] is False
     assert request["timeout"] == generate.settings.realtime_session_timeout_s
 

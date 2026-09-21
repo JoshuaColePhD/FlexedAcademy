@@ -175,6 +175,12 @@ def usage_trend(_admin: str = Depends(get_current_admin)):
     return {"weeks": db.weekly_usage_series()}
 
 
+@router.get("/chat-quality")
+def chat_quality(days: int = Query(default=30, ge=1, le=90), _admin: str = Depends(get_current_admin)):
+    from ..chat_metrics import summary
+    return {"days": days, "samples": summary(days)}
+
+
 @router.get("/usage-costs")
 def usage_costs(
     days: int = Query(default=30, ge=1, le=365),

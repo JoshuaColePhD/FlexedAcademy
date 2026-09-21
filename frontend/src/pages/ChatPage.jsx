@@ -63,8 +63,7 @@ import { WorkspaceRailContext } from '../lib/workspaceRailContext'
 /* Chat actions explicitly distinguish advice, creation, and scoped revisions.
  * Existing document presentation is shared by all action paths. */
 
-let idSeq = 0
-const nextId = () => `m${++idSeq}`
+const nextId = () => `m${crypto.randomUUID()}`
 
 function standaloneQuizBody(requested, topicFallback) {
   const types = requested?.questionTypes?.length ? requested.questionTypes : ['multiple_choice']
@@ -471,18 +470,27 @@ export function ChatPage() {
   const firstPlanRequested = useRef(false)
   const toast = useToast()
   const workspaceRail = useContext(WorkspaceRailContext)
+  const pendingMessageSavesRef = useRef(new Map())
   const persistMessage = useCallback(
     async (chatId, payload) => {
       if (!chatId) return null
       const client_id = payload.client_id || nextId()
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        try {
-          return await api.addMessage(chatId, { ...payload, client_id })
-        } catch {
-          if (attempt < 4) await waitBeforeRetry(250 * (attempt + 1))
+      const key = `${chatId}:${client_id}`
+      const existing = pendingMessageSavesRef.current.get(key)
+      if (existing) return existing
+      const saving = (async () => {
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          try {
+            return await api.addMessage(chatId, { ...payload, client_id })
+          } catch {
+            if (attempt < 4) await waitBeforeRetry(250 * (attempt + 1))
+          }
         }
-      }
-      return null
+        return null
+      })()
+      pendingMessageSavesRef.current.set(key, saving)
+      try { return await saving }
+      finally { pendingMessageSavesRef.current.delete(key) }
     },
     []
   )
@@ -694,6 +702,9 @@ export function ChatPage() {
     requestAnimationFrame(() => document.getElementById('composer-input')?.focus())
   }
   const [attachments, setAttachments] = useState([])
+  const [conversationSources, setConversationSources] = useState([])
+  const [restoredChatId, setRestoredChatId] = useState(null)
+  useEffect(() => { setConversationSources([]) }, [chatId])
   /* A transient "it's done" notice in the same slot as the queued-message
      pill above — set only on a SUCCESSFUL plan/quiz build (see onDone below
      and the quiz try-block), never on error, so it can't misreport a failed
@@ -1330,6 +1341,7 @@ export function ChatPage() {
     setPlanPeekOpen(false)
     planBuildStartedRef.current = false
 
+    setRestoredChatId(null)
     const loadVersion = ++chatLoadVersionRef.current
     const loadIsCurrent = () => !cancelled && chatLoadVersionRef.current === loadVersion
 
@@ -1349,10 +1361,14 @@ export function ChatPage() {
           return
         }
         setChatMode(normalizeChatMode(row.mode))
+        setConversationSources(row.sources || [])
         const loaded = (row.messages || []).map((m) => {
           const receipt = readQuizReceipt(m.content)
           return {
             id: nextId(),
+            persistedId: m.id,
+            clientId: m.client_id,
+            sourceIds: m.source_ids_json || [],
             role: m.role,
             content: stripClarifyMarker(receipt.content),
             quizReceipt: receipt.quiz,
@@ -1464,6 +1480,7 @@ export function ChatPage() {
           if (loadIsCurrent()) setArtifactLoadError(true)
         }
       })
+      .then(() => { if (loadIsCurrent()) setRestoredChatId(chatId) })
       .catch(() => loadIsCurrent() && toast.error("Couldn't open that conversation"))
     return () => {
       cancelled = true
@@ -2573,7 +2590,7 @@ export function ChatPage() {
       // if the composer's own chips already cleared, or a teacher's next
       // batch if they attached something new in the meantime), not the
       // ones actually present when they hit Enter.
-      const atts = options.attachmentsOverride ?? attachments
+      const atts = options.attachmentsOverride ?? retryMessage?.pendingAttachments ?? attachments
       /* Attached files were extracted, confirmed with a toast reporting the
          character count, and then never sent: `attachments` was written by the
          Composer and read by nobody. The chip also stayed pinned after sending,
@@ -2654,6 +2671,9 @@ export function ChatPage() {
         id: nextId(),
         role: 'user',
         content: displayContent,
+        clientId: nextId(),
+        unsaved: true,
+        pendingAttachments: atts.map(({ filename, text }) => ({ filename, text })),
         ...(options.youSaid ? { youSaid: options.youSaid } : {}),
       }
       const withoutOpenQuestions = (list) => list.map((m) => (m.questions ? { ...m, content: chatMessageText(m), questions: null } : m))
@@ -2766,6 +2786,25 @@ export function ChatPage() {
         }
       }
 
+      let savedSourceIds = options.sourceIds || retryMessage?.sourceIds || []
+      if (activeChatId && atts.length) {
+        try {
+          const saved = await api.saveChatSources(activeChatId, atts.map(({ filename, text }) => ({ filename, text })))
+          if (pendingSubmissionRef.current !== submissionToken) return
+          savedSourceIds = saved.sources.map((source) => source.id)
+          setConversationSources((current) => [...new Map([...current, ...saved.sources].map((source) => [source.id, source])).values()])
+          setMessages((current) => current.map((message) => message.id === newUserMessage.id
+            ? { ...message, sourceIds: savedSourceIds, pendingAttachments: [] } : message))
+        } catch (error) {
+          finishPreparing()
+          setMessages((current) => [...current, {
+            id: nextId(), role: 'assistant', isError: true,
+            content: "I couldn't save the attached sources. Your message and attachments are kept for retry.",
+            hint: error?.message || 'Try again when the connection returns.',
+          }])
+          return
+        }
+      }
       if (activeChatId) {
         // Persistence is deliberately decoupled from model startup. The
         // message is already visible optimistically and the stream has all
@@ -2779,18 +2818,20 @@ export function ChatPage() {
         // creates the conversation.
         const shouldPersistUser = !options.backgroundFollowUp && (!retryMessage || !hadChatId || retryMessage.unsaved)
         if (shouldPersistUser) {
-          const clientId = nextId()
+          const clientId = newUserMessage.clientId || nextId()
           void persistMessage(activeChatId, {
             role: 'user',
             content: displayContent,
             client_id: clientId,
+            source_ids: savedSourceIds,
             ...(options.voiceTurn ? { source: 'voice' } : {}),
           }).then((saved) => {
             if (saved) {
               setMessages((prev) => prev.map((message) => (
-                message.id === newUserMessage.id ? { ...message, unsaved: false } : message
+                message.id === newUserMessage.id ? { ...message, unsaved: false, persistedId: saved.id, clientId, sourceIds: savedSourceIds } : message
               )))
             }
+            return saved
           })
         }
       }
@@ -3047,13 +3088,13 @@ export function ChatPage() {
       const ask = `Revise ${label}: ${feedback}`
       const askId = nextId()
       followLatestOnly(askId)
-      setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
+      setMessages((prev) => [...prev, { id: askId, clientId: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       // Persisted for the same reason as the composer's own messages: a cell
       // tweak is a real edit to the week, and the transcript is meant to be a
       // complete record of what happened to the plan. It was writing to screen
       // only, so every in-cell revision vanished on reload.
       const saveTo = localFor.current
-      if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
+      if (saveTo) void persistMessage(saveTo, { role: 'user', client_id: askId, content: ask, created_at: new Date().toISOString() })
       const previousPlan = clonePlan(artifact.plan)
       setRevising(true)
       setPlanSaveState('saving')
@@ -3205,9 +3246,9 @@ export function ChatPage() {
       const ask = `Revise ${label}: ${feedback}`
       const askId = nextId()
       followLatestOnly(askId)
-      setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
+      setMessages((prev) => [...prev, { id: askId, clientId: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       const saveTo = localFor.current
-      if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
+      if (saveTo) void persistMessage(saveTo, { role: 'user', client_id: askId, content: ask, created_at: new Date().toISOString() })
       const previousPlan = clonePlan(artifact.plan)
       setRevising(true)
       setPlanSaveState('saving')
@@ -3274,9 +3315,9 @@ export function ChatPage() {
       const ask = `Set ${label} to ${code}.`
       const askId = nextId()
       followLatestOnly(askId)
-      setMessages((prev) => [...prev, { id: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
+      setMessages((prev) => [...prev, { id: askId, clientId: askId, role: 'user', content: ask, created_at: new Date().toISOString() }])
       const saveTo = localFor.current
-      if (saveTo) void persistMessage(saveTo, { role: 'user', content: ask, created_at: new Date().toISOString() })
+      if (saveTo) void persistMessage(saveTo, { role: 'user', client_id: askId, content: ask, created_at: new Date().toISOString() })
       const previousPlan = clonePlan(artifact.plan)
       setRevising(true)
       setPlanSaveState('saving')
@@ -3394,16 +3435,50 @@ export function ChatPage() {
   /* Rebuild the last turn from the same prompt. Keep the original user row and
      remove only the terminal error row; retrying must not duplicate the prompt
      in the transcript or in the model's history. */
+  const startAlternative = useCallback(async (message, text) => {
+    if (!chatId || busy || !text?.trim()) return
+    const token = nextId()
+    pendingSubmissionRef.current = token
+    setPreparing(true)
+    try {
+      const pendingSave = pendingMessageSavesRef.current.get(`${chatId}:${message.clientId}`)
+      if (pendingSave) {
+        const saved = await pendingSave
+        if (!saved) throw new Error('Your message could not be saved. Try again when the connection returns.')
+      }
+      if (pendingSubmissionRef.current !== token) return
+      const branch = await api.branchChat(chatId, {
+        branch_id: token,
+        message_id: message.persistedId || null,
+        client_id: message.clientId || null,
+      })
+      if (pendingSubmissionRef.current !== token) return
+      qc.invalidateQueries({ queryKey: ['chats'] })
+      navigate(`/c/${classId}/chat/${branch.id}`, { state: { branchPrompt: text, sourceIds: branch.source_ids || [] } })
+    } catch (error) {
+      toast.apiError('Could not start an alternative', error)
+    } finally {
+      if (pendingSubmissionRef.current === token) {
+        pendingSubmissionRef.current = null
+        setPreparing(false)
+      }
+    }
+  }, [chatId, busy, qc, navigate, classId, toast])
+
   const retryLast = useCallback((requestId) => {
     const last = messages[messages.length - 1]
     const lastAsk = [...messages].reverse().find((m) => m.role === 'user')
     if (!lastAsk) return
+    if (!last?.isError) {
+      void startAlternative(lastAsk, lastAsk.content)
+      return
+    }
     submit(lastAsk.content, {
       retryMessageId: lastAsk.id,
       retryErrorId: last?.isError ? last.id : undefined,
       requestId,
     })
-  }, [messages, submit])
+  }, [messages, submit, startAlternative])
 
   /* Both of these exist to keep <Message>'s props referentially stable, which
      is what makes memoizing it (components/Message.jsx) actually pay off —
@@ -3412,7 +3487,7 @@ export function ChatPage() {
 
      Message ignores its first argument (it passes its own `message` back), so
      this can be one shared callback rather than one closure per row. */
-  const handleEditMessage = useCallback((_m, next) => submit(next), [submit])
+  const handleEditMessage = useCallback((message, next) => startAlternative(message, next), [startAlternative])
   const handleApplyAdvice = useCallback((message) => {
     const prefix = artifact?.planId
       ? 'Apply this coaching advice to the current plan:\n\n'
@@ -3957,6 +4032,16 @@ export function ChatPage() {
   }, [artifact?.planId, isLandscapePhone, isPhone, stream.isStreaming, stream.preview])
 
   // Process autoPrompt from navigation (e.g. 5-Minute Sub Plan)
+  useEffect(() => {
+    const prompt = location.state?.branchPrompt
+    if (!prompt || !chatId || localFor.current !== chatId || restoredChatId !== chatId || busy || !isOnline) return
+    const intent = `${location.key}:${prompt}`
+    if (autoPromptConsumed.current === intent) return
+    autoPromptConsumed.current = intent
+    const sourceIds = location.state?.sourceIds || []
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: {} })
+    submit(prompt, { sourceIds })
+  }, [location.state, location.key, location.pathname, location.search, chatId, restoredChatId, busy, isOnline, navigate, submit])
   useEffect(() => {
     const prompt = location.state?.autoPrompt
     if (!prompt || chatId || !activeClass || !calendar || busy || !isOnline) return
@@ -5025,6 +5110,7 @@ export function ChatPage() {
           onSuggestPrompt={suggestRailPrompt}
           planSaveState={planSaveState}
           documents={classDocuments.data}
+          conversationSources={conversationSources}
           onManageMaterials={() => setDocumentDialogOpen(true)}
         />
       ) : null}

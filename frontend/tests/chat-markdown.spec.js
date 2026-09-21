@@ -118,7 +118,7 @@ test('the work card follows the preamble instead of preceding it', async ({ page
     { done: true },
   ])
   await send(page, 'make a lesson')
-  const prose = page.getByText('Building week 7 on quadratics.')
+  const prose = page.locator('#main').getByText('Building week 7 on quadratics.')
   await expect(prose).toBeVisible()
   const order = await page.evaluate(() => {
     const text = [...document.querySelectorAll('.msg-markdown')]

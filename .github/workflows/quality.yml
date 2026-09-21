@@ -84,7 +84,9 @@ jobs:
         # decision on which DB that is, so they stay a manual
         # `./venv/bin/python eval/run_all.py` before anything touching
         # retrieval/auth ships, exactly as eval/README.md already documents.
-        run: python eval/run_all.py --fast
+        run: |
+          python eval/run_all.py --fast
+          python eval/benchmark_chat_consultation.py
 
   postgres-integration:
     runs-on: ubuntu-latest

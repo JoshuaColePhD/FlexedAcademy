@@ -122,7 +122,7 @@ export function useVoiceConsultation(options) {
     const turn = { id: makeId(), text, queued: false, spoken: [], chatId: ctx.chatId }
     activeTurn.current = turn
     const currentEpoch = epoch.current
-    const userMessage = { id: turn.id, role: 'user', content: text, source: 'voice' }
+    const userMessage = { id: turn.id, clientId: turn.id, role: 'user', content: text, source: 'voice' }
     const history = [...ctx.messages, ...conversationAdditions.current.filter((item) => !ctx.messages.some((saved) => saved.id === item.id))]
     appendConversationMessage(userMessage)
     const saveTo = ctx.chatId

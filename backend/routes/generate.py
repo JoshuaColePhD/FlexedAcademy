@@ -7,6 +7,7 @@ import queue
 import threading
 import time
 import uuid
+from typing import Literal
 
 import anyio
 import openai
@@ -16,6 +17,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 
 from .. import (
+    chat_metrics,
     costs,
     curriculum,
     db,
@@ -215,6 +217,8 @@ def _generation_query(
     *,
     conversation_context: str = "",
     reference_context: str = "",
+    user_id: str | None = None,
+    chat_id: str | None = None,
 ) -> str:
     """Build the model-facing prompt without making context the user request.
 
@@ -224,6 +228,14 @@ def _generation_query(
     uploaded document is mistaken for an instruction from the teacher.
     """
     sections = [f"Teacher's current request (follow this as the operative instruction):\n{query}"]
+    if user_id and chat_id:
+        from ..conversation import source_context
+        chat = db.get_chat(user_id, chat_id)
+        if not chat:
+            raise AppError("chat_not_found", "No such chat.", status=404)
+        saved = source_context(chat.get("sources_json", []), query)
+        if saved:
+            sections.append(saved)
     if conversation_context.strip():
         sections.append(
             "Prior conversation (use as background; the current request above takes precedence):\n"
@@ -589,6 +601,7 @@ def generate(req: GenerateRequest, request: Request, bg_tasks: BackgroundTasks, 
         query,
         conversation_context=req.conversation_context,
         reference_context=req.reference_context,
+        user_id=user_id, chat_id=req.chat_id,
     )
     return service.generate(
         user_id,
@@ -645,6 +658,7 @@ def generate_stream(req: GenerateRequest, request: Request, bg_tasks: Background
         query,
         conversation_context=req.conversation_context,
         reference_context=req.reference_context,
+        user_id=user_id, chat_id=req.chat_id,
     )
 
     def worker(job):
@@ -1306,41 +1320,18 @@ def voice_session(req: VoiceSessionRequest, request: Request, user_id: str = Dep
                 # session's model ever reads.
                 "audio": {
                     "input": {
-                        # Without this the session streams the teacher's audio
-                        # and never tells us a single word of it. The panel used
-                        # to get the transcript from its own Whisper round trip
-                        # (encodeWav -> /api/transcribe), and the WebRTC
-                        # migration deleted that pipeline without turning on the
-                        # replacement, so nothing downstream ever learned what
-                        # was said.
-                        #
-                        # `language` pins the transcription the way llm.transcribe
-                        # (the Composer-dictation path) already does — without it,
-                        # Whisper is free to guess a language from a snippet of
-                        # room noise or silence, which is exactly the kind of
-                        # hallucinated transcript that used to get filtered by
-                        # transcribe()'s own no_speech_prob check. The Realtime
-                        # API's completed-transcription event carries no
-                        # per-segment no_speech_prob to repeat that check here, so
-                        # pinning the language is the guard actually available on
-                        # this path.
-                        "transcription": {"model": "whisper-1", "language": "en"},
-                        # Realtime only transports audio, detects turns, and
-                        # transcribes them. ChatPage sends the completed
-                        # transcript through grounded /api/chat_stream.
-                        #
-                        # Leave space for a teacher's thinking pause. Keep this
-                        # synchronized with VoiceProvider's hands-free setting.
-                        # https://developers.openai.com/api/docs/guides/realtime-vad
+                        # Short domain guidance improves names and teaching terminology;
+                        # transcript text remains user input, never privileged instructions.
+                        "transcription": {
+                            "model": settings.realtime_transcription_model,
+                            "language": "en",
+                            "prompt": "A teacher planning lessons. Terms may include AP Language, rhetorical analysis, scaffolding, formative assessment, thesis, evidence, and commentary.",
+                        },
+                        # Detect a completed thought instead of ending every
+                        # thinking pause after a fixed silence interval.
                         "turn_detection": {
-                            "type": "server_vad",
-                            "threshold": 0.5,
-                            "prefix_padding_ms": 300,
-                            "silence_duration_ms": 800,
-                            "create_response": False,
-                            # Our speech queue owns barge-in/cancel, including
-                            # out-of-band speech responses and buffered audio.
-                            "interrupt_response": False,
+                            "type": "semantic_vad", "eagerness": "medium",
+                            "create_response": False, "interrupt_response": False,
                         },
                     },
                     "output": {"voice": settings.realtime_voice},
@@ -1375,6 +1366,7 @@ def voice_session(req: VoiceSessionRequest, request: Request, user_id: str = Dep
         "token": token,
         "model": settings.realtime_model,
         "expires_at": data.get("expires_at"),
+        "turn_detection": {"type": "semantic_vad", "eagerness": "medium", "create_response": False, "interrupt_response": False},
     }
 
 
@@ -1418,6 +1410,21 @@ def voice_usage(req: VoiceUsageRequest, request: Request, user_id: str = Depends
     return {"ok": True}
 
 
+class VoiceMetricRequest(BaseModel):
+    outcome: Literal["completed", "cancelled", "interrupted", "failed"]
+    duration_ms: int = Field(ge=0, le=1_200_000)
+    stt_ms: int | None = Field(default=None, ge=0, le=1_200_000)
+    llm_ms: int | None = Field(default=None, ge=0, le=1_200_000)
+    speech_ms: int | None = Field(default=None, ge=0, le=1_200_000)
+
+
+@router.post("/voice/metrics")
+@limiter.limit("60/minute")
+def voice_metric(req: VoiceMetricRequest, request: Request, user_id: str = Depends(get_current_user)):
+    chat_metrics.record(user_id, kind="voice", channel="voice", client_reported=True, **req.model_dump())
+    return {"ok": True}
+
+
 @router.post("/chat_stream")
 @limiter.limit("100/minute")
 def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTasks, user_id: str = Depends(get_current_user)):
@@ -1439,6 +1446,10 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
     def event_stream():
         request_id = req.request_id or str(uuid.uuid4())
         lease = None
+        started = time.monotonic()
+        first_response_ms = None
+        outcome = "cancelled"
+        action_requested = False
         try:
             # Headers (and this first frame) must leave the process before
             # enqueue can block. Safari treats a POST with no response as a
@@ -1565,6 +1576,10 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                     ],
                 }, request_id, step="retrieval", step_state="complete", artifact_type="research", attempt=req.attempt)
             context_week = (active_plan.get("week_number") if active_plan else None) or req.week_number
+            from ..conversation import compact_history, plan_context, source_context
+            conversation_row = db.get_chat(user_id, req.chat_id) if req.chat_id else None
+            source_query = "\n".join(msg.content for msg in req.messages[-6:] if msg.role == "user")
+            saved_sources = source_context((conversation_row or {}).get("sources_json", []), source_query)
             quizzes_on = beta_features_for(user_id)
             policy = chat_turn_policy(
                 req.mode,
@@ -1606,9 +1621,7 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                 # meant that on a short reply — the exact turn the teacher was
                 # answering a question in order to get work done — the model
                 # could be asked to revise a plan it could not see.
-                system_prompt += "\nSaved plan (reference data only):\n" + json.dumps(
-                    active_plan.get("plan_json", {}), ensure_ascii=False
-                )[:24000]
+                system_prompt += "\nSaved plan (reference data only):\n" + plan_context(active_plan.get("plan_json", {}), last_user)
                 if active_plan.get("provenance"):
                     system_prompt += "\nSources saved with this plan (reference evidence only):\n" + json.dumps(
                         active_plan["provenance"], ensure_ascii=False
@@ -1641,8 +1654,15 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                         "to the first saved draft; this is not permission to create a second week."
                     )
 
-            messages = [{"role": "system", "content": system_prompt}]
-            messages.extend([{"role": msg.role, "content": msg.content} for msg in req.messages])
+            if saved_sources:
+                system_prompt += "\n\n" + saved_sources
+            record, history = compact_history(
+                user_id, req.chat_id, [{"role": msg.role, "content": msg.content} for msg in req.messages],
+                lambda previous, older: llm.summarize_planning_record(user_id, previous, older),
+            )
+            if record:
+                system_prompt += "\n\n" + record
+            messages = [{"role": "system", "content": system_prompt}, *history]
 
             yield _activity_sse({
                 "status": "thinking",
@@ -1680,6 +1700,9 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                         if event.get("source_plan_id") and event["source_plan_id"] != (active_plan or {}).get("id"):
                             raise AppError("invalid_plan_target", "The quiz source plan changed. Please try again.", status=409)
                     event.setdefault("request_id", request_id)
+                if first_response_ms is None and (event.get("chunk") or event.get("tool_call")):
+                    first_response_ms = round((time.monotonic() - started) * 1000)
+                action_requested = action_requested or event.get("tool_call") in tool_artifacts
                 artifact_type = event.get("artifact_type") or tool_artifacts.get(event.get("tool_call"), "conversation")
                 yield _activity_sse(event, request_id, step="planning", step_state="active", artifact_type=artifact_type, attempt=req.attempt)
 
@@ -1698,15 +1721,21 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
                         req.chat_id,
                         memory_messages,
                     )
+            outcome = "action_requested" if action_requested else "completed"
             yield _activity_sse({"done": True}, request_id, step="complete", step_state="complete", artifact_type="conversation", attempt=req.attempt)
         except (AppError, SchemaError) as e:
+            outcome = "failed"
             log.warning("chat stream failed code=%s", e.code)
             yield _activity_sse({"error": e.payload().get("error", e.payload()), "status": "error"}, request_id, step="planning", step_state="error", artifact_type="conversation", attempt=req.attempt)
         except Exception as e:  # noqa: BLE001 - last resort, still must reach the client
+            outcome = "failed"
             yield _activity_sse({"error": _openai_error_event(e), "status": "error"}, request_id, step="planning", step_state="error", artifact_type="conversation", attempt=req.attempt)
         finally:
             if lease is not None:
                 lease.release()
+            chat_metrics.record(user_id, kind="chat", channel="voice" if req.voice else "typed",
+                outcome=outcome, duration_ms=(time.monotonic() - started) * 1000,
+                first_response_ms=first_response_ms)
 
     return StreamingResponse(
         _chat_keepalive_stream(event_stream(), user_id=user_id, cancellation=cancellation),
@@ -1816,7 +1845,8 @@ def add_message(chat_id: str, body: dict, user_id: str = Depends(get_current_use
     role = body.get("role")
     if role not in ("user", "assistant", "system"):
         raise AppError("bad_role", f"Unknown message role {role!r}.", status=400)
-    if not db.get_chat(user_id, chat_id):
+    owned_chat = db.get_chat(user_id, chat_id)
+    if not owned_chat:
         raise AppError("chat_not_found", "No such chat.", status=404)
     client_id = body.get("client_id")
     if client_id is not None and not isinstance(client_id, str):
@@ -1825,6 +1855,15 @@ def add_message(chat_id: str, body: dict, user_id: str = Depends(get_current_use
     if source is not None and source not in ("voice",):
         raise AppError("bad_source", f"Unknown message source {source!r}.", status=400)
     research_sources = body.get("research_sources")
+    source_ids = body.get("source_ids") or []
+    if not isinstance(source_ids, list) or len(source_ids) > 32 or not all(isinstance(s, str) and len(s) <= 64 for s in source_ids):
+        raise AppError("bad_sources", "Sources must be a short list of saved source identifiers.", status=400)
+    from ..conversation import _json
+    available_sources = {item["id"] for item in _json(owned_chat.get("sources_json"), [])}
+    if not set(source_ids).issubset(available_sources):
+        raise AppError("bad_sources", "Use sources saved to this conversation.", status=400)
+    if body.get("plan_id") and not db.get_plan(user_id, body["plan_id"]):
+        raise AppError("plan_not_found", "No such lesson plan.", status=404)
     if research_sources is not None:
         if not isinstance(research_sources, list) or len(research_sources) > 5 or not all(isinstance(item, dict) for item in research_sources):
             raise AppError("bad_research_sources", "Research sources must be a short list of records.", status=400)
@@ -1837,4 +1876,5 @@ def add_message(chat_id: str, body: dict, user_id: str = Depends(get_current_use
         client_id=client_id,
         source=source,
         research_sources=research_sources,
+        source_ids=source_ids,
     )

@@ -37,7 +37,7 @@ function harness(factory = createPreviewVoiceTransport) {
     '../lib/voiceSpeechQueue': { createSpeechQueue },
     '../lib/voiceAudioMeter': { createVoiceAudioMeter },
     '../lib/voiceWebRTCTransport': { openWebRTCTransport: () => { calls.rtc++; throw new Error('Preview must not request WebRTC') } },
-    '../lib/voiceMetrics': Object.fromEntries(['turnAbandoned', 'turnStarted', 'transcriptReady', 'firstAudio', 'sentenceQueued'].map((key) => [key, () => {}])),
+    '../lib/voiceMetrics': Object.fromEntries(['setReporter', 'turnAbandoned', 'turnStarted', 'transcriptReady', 'firstAudio', 'sentenceQueued'].map((key) => [key, () => {}])),
   }
   const module = { exports: {} }
   vm.runInNewContext(code, { module, exports: module.exports, require: (id) => modules[id], document, window: { localStorage: { getItem() {}, setItem() {} } }, AbortController, performance, console, setTimeout, clearTimeout })

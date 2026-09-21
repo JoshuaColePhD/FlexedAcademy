@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useLessonCellDraft } from '../hooks/useLessonCellDraft'
 import { orderedDays } from '../lib/planShape'
 import { cellKit } from './cellTweakKit'
 
@@ -31,7 +31,7 @@ export function WeedenLessonPlanTable({
   openTweak,
   setOpenTweak,
 }) {
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useLessonCellDraft(plan, missingDays, openTweak)
   const ordered = orderedDays(plan, missingDays)
   const canTweak = Boolean(onEditDay || onReviseDay)
   const byDay = Object.fromEntries(ordered.map((day) => [day.name, day]))
