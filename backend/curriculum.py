@@ -43,7 +43,7 @@ def _client():
             "OPENAI_API_KEY is not set.",
             hint="Add it to the .env file at the project root (see .env.example).",
         )
-    return OpenAI(api_key=settings.openai_api_key)
+    return OpenAI(api_key=settings.openai_api_key, timeout=60.0, max_retries=1)
 
 CHUNK_CHARS = 1200
 CHUNK_OVERLAP = 150

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, api, apiErrorFromBody } from '../lib/api'
+import { ApiError, api, toError } from '../lib/api'
 import { droppedConnectionCopy, isDroppedConnectionError } from '../lib/streamTransport'
 import { parsePartialJson, usablePlan } from '../lib/partialJson'
 import { applyPlanPatch, activeWorkingCellKey } from '../lib/planShape'
@@ -50,7 +50,12 @@ const RETRYABLE_CODES = new Set(['stream_truncated', 'stream_connection_error', 
 const MAX_AUTO_RETRIES = 2
 const RETRY_DELAY_MS = 600
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const sleep = (ms, signal) => new Promise((resolve) => {
+  const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve() }
+  const timer = setTimeout(finish, ms)
+  signal.addEventListener('abort', finish, { once: true })
+  if (signal.aborted) finish()
+})
 
 function waitForVisible(signal) {
   return new Promise((resolve, reject) => {
@@ -310,16 +315,11 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
       throw err
     }
 
-    if (!res.ok || !res.body) {
-      let payload = null
-      try {
-        payload = await res.json()
-      } catch {
-        /* non-JSON error body */
-      }
-      // Was a second hand-rolled copy of api.js's envelope parsing; one
-      // function should decide how a backend error becomes an ApiError.
-      throw apiErrorFromBody(payload, res.status)
+    if (!res.ok) throw await toError(res)
+    if (!res.body) {
+      throw new ApiError('The connection closed before the reply arrived.', {
+        code: 'stream_connection_error', extra: { retryable: true },
+      })
     }
 
     const reader = res.body.getReader()
@@ -420,8 +420,15 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
           }
           if (event.done) {
             finished = event
+            break
           }
         }
+      }
+      if (finished) {
+        // The terminal event is authoritative. A proxy keeping the socket
+        // open must not turn a completed reply/save into a timeout and retry.
+        void reader.cancel().catch(() => {})
+        break
       }
       if (done) break
     }
@@ -474,7 +481,8 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
         let lastErr = null
         for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
           if (stoppedRef.current) return null
-          if (tryNum > 0) await sleep(RETRY_DELAY_MS)
+          if (tryNum > 0) await sleep(Math.max(RETRY_DELAY_MS * (2 ** (tryNum - 1)) + Math.random() * 300, (lastErr?.extra?.retry_after_seconds || 0) * 1000), controller.signal)
+          if (stoppedRef.current || controller.signal.aborted) return null
           try {
             const result = await attempt(query, {
               chatId,
@@ -497,7 +505,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
             // terminal for this attempt. Job-status reconnect exists for
             // dropped/truncated streams where the server may still be writing
             // — not for a request the stream already rejected.
-            const streamRetryable = RETRYABLE_CODES.has(err.code) || err.extra?.retryable
+            const streamRetryable = err.extra?.retryable !== false && (RETRYABLE_CODES.has(err.code) || err.extra?.retryable)
             if (!streamRetryable) break
             let snap = null
             try {
@@ -519,6 +527,7 @@ export function useLessonStream({ onDone, onError, onStatus, onStart } = {}) {
               })
               break
             }
+            if (err.extra?.retry_after_seconds > 60) break
             const retryable = streamRetryable || snap?.status === 'running'
             setStatus({
               phase: 'retrying',

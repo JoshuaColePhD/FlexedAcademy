@@ -107,6 +107,13 @@ export const ONBOARDING_EVENTS = Object.freeze({
   FLOW_SKIPPED: 'flow_skipped',
   FLOW_COMPLETED: 'flow_completed',
   STATE_UNSUPPORTED_INTEREST: 'state_unsupported_interest',
+  FIRST_PLAN_REQUESTED: 'first_plan_requested',
+  FIRST_PLAN_COMPLETED: 'first_plan_completed',
+  FIRST_PLAN_FAILED: 'first_plan_failed',
+  CITATION_OPENED: 'citation_opened',
+  PLAN_EXPORTED: 'plan_exported',
+  PLAN_REVISED: 'plan_revised',
+  SECOND_WEEK_COMPLETED: 'second_week_completed',
 })
 
 /** Which steps this account still has to answer.

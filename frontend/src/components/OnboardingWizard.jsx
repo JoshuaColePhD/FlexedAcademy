@@ -50,7 +50,7 @@ import {
   matchesFramework,
 } from '../lib/frameworks'
 import { US_STATES, isStandardsReady } from '../lib/states'
-import { ONBOARDING_STEPS, derivePlan, nextStep, prevStep } from '../lib/onboardingPlan'
+import { ONBOARDING_STEPS, derivePlan, nextStep, prevStep, resumeStep } from '../lib/onboardingPlan'
 import { SchoolSelect } from './SchoolSelect'
 import { PendingCalendarReview } from './PendingCalendarReview'
 import { CalendarBody } from './ArtifactDetailPanel'
@@ -333,7 +333,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
        they already made. Compare against what we created, not against
        whether anything changed. */
     if (cls?.id && cls.id === createdClass?.id) return
-    setStepKey(livePlan[0])
+    setStepKey(resumeStep(livePlan, user?.onboarding_step))
     setTeacherName(user?.name || '')
     setDirection(1)
     setSchool(activeClass?.school || '')
@@ -659,7 +659,7 @@ export function OnboardingWizard({ open, onClose, cls, variant = 'modal' }) {
      right below this one used to warn about for the old click-then-Continue
      flow and would silently reintroduce here for click-to-advance. */
   const saveCourse = async (overrideSubject) => {
-    const courseSubject = overrideSubject ?? subject
+    const courseSubject = typeof overrideSubject === 'string' ? overrideSubject : subject
     if (!courseSubject) {
       setCourseError('Pick a course — it decides which standards your plans are grounded in.')
       return
@@ -1325,8 +1325,8 @@ function SchoolStep({
                   doesn&rsquo;t exist.
                 </p>
                 <p>
-                  Planning, your school&rsquo;s calendar and your district&rsquo;s format all work
-                  anywhere. It&rsquo;s the standards library that&rsquo;s Alabama&rsquo;s for now.
+                  You can save your class, calendar, materials, and format now. Grounded lesson-plan
+                  generation needs a supported course catalog.
                 </p>
                 {requestedState === state ? (
                   <p className="onboarding-state-requested">
@@ -1510,6 +1510,13 @@ function TeachingContextStep({
   const phaseIndex = phase === 'school' ? 1 : phase === 'course' ? 2 : 3
   const phaseLabel = phase === 'school' ? 'School' : phase === 'course' ? 'Course' : 'Calendar'
   const schoolReady = Boolean(state) && isStandardsReady(state, activeStates)
+  const courseActions = !schoolReady && frameworks.length === 0
+    ? { onNext: onSaveCourse, onBack: onBackToSchool, disabled: !grade || !subject.trim() }
+    : courseSubStep === 'grade'
+      ? { onNext: () => setCourseSubStep('discipline'), onBack: onBackToSchool, disabled: !grade }
+      : courseSubStep === 'discipline'
+        ? { onNext: () => setCourseSubStep('course'), onBack: () => setCourseSubStep('grade'), disabled: !courseDiscipline }
+        : { onNext: onSaveCourse, onBack: () => setCourseSubStep('discipline'), disabled: !grade || !subject }
   const actionConfig = phase === 'school'
     ? {
         onNext: onSaveSchool,
@@ -1521,7 +1528,7 @@ function TeachingContextStep({
           : 'Continue without standards for now',
       }
     : phase === 'course'
-      ? { onNext: onSaveCourse, busy: savingCourse, onBack: onBackToSchool }
+      ? { ...courseActions, busy: savingCourse }
       : { onNext: onFinish, onBack: onBackToCourse, onSkip: onFinish, skipLabel: 'Skip — the dates look right' }
 
   useOnboardingActions(actionConfig)
@@ -2018,14 +2025,6 @@ function GradeSubStep({ grade, setGrade, onBack, onNext, registerActions = true 
           grade is picked (no icon, no course count to compare), so waiting
           for a second Continue click is pure friction. */}
       <div className="onboarding-bigchoice-list" role="listbox" aria-label="Grade">
-        <OnboardingBigChoice
-          label="All grades"
-          selected={grade === ''}
-          onClick={() => {
-            setGrade('')
-            onNext()
-          }}
-        />
         {GRADES.map((g) => (
           <OnboardingBigChoice
             key={g.value}
@@ -2251,8 +2250,13 @@ function CourseStep({
       <div className="onboarding-class-step">
         <OnboardingQuestion question="What course do you teach?" />
         <p className="mt-2 text-sm text-ink-muted">
-          Your state is saved. Its standards catalog is still being prepared, so enter the course name now and FlexEd will attach the state standards when they become available.
+          Its standards catalog is not available yet. Save your real grade and course now; grounded plan generation needs a supported catalog.
         </p>
+        <label htmlFor="pending-state-grade" className="mt-6 block text-sm font-medium text-ink">Grade</label>
+        <select id="pending-state-grade" value={grade} onChange={(event) => setGrade(event.target.value)} className="neo-select mt-2 w-full rounded-lg bg-paper-raised px-3 py-2.5 text-sm text-ink">
+          <option value="">Choose a grade</option>
+          {GRADES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+        </select>
         <label htmlFor="pending-state-course" className="mt-6 block text-sm font-medium text-ink">Course name</label>
         <input
           id="pending-state-course"

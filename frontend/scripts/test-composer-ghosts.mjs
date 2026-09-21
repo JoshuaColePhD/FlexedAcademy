@@ -1,37 +1,32 @@
 import assert from 'node:assert/strict'
 import { suggestionCompletion } from '../src/lib/contextualSuggestions.js'
-import {
-  COMPOSER_GHOST_PROMPTS,
-  COMPOSER_GHOST_SUGGESTIONS,
-  pickComposerGhost,
-} from '../src/lib/composerGhosts.js'
+import { composerGhostCandidates, pickComposerGhost } from '../src/lib/composerGhosts.js'
 
-assert.deepEqual(COMPOSER_GHOST_PROMPTS, [
-  'Write a lesson for this week',
-  "Revise this week's plan",
-])
-assert.equal(COMPOSER_GHOST_SUGGESTIONS.length, 2)
-assert.equal(COMPOSER_GHOST_SUGGESTIONS[0].prompt, 'Write a lesson for this week')
-assert.equal(COMPOSER_GHOST_SUGGESTIONS[1].prompt, "Revise this week's plan")
-assert.ok(COMPOSER_GHOST_PROMPTS.every((prompt) => !prompt.endsWith('.')))
-assert.ok(!COMPOSER_GHOST_PROMPTS.some((prompt) => /week\s+\d+/i.test(prompt)))
-assert.ok(!COMPOSER_GHOST_PROMPTS.includes("I want to revise this week's plan."))
-assert.ok(!COMPOSER_GHOST_PROMPTS.includes("Help me plan tomorrow's lesson."))
+const context = { week: { week: 4 }, documents: [{ kind: 'pacing_guide' }], hasPlan: false }
+assert.equal(pickComposerGhost('', context).prompt, 'Plan Week 04 using the pacing guide.')
+assert.equal(pickComposerGhost('plan week', context).prompt, 'Plan Week 04 using the pacing guide.')
+assert.equal(pickComposerGhost('unrelated', context), null)
+assert.equal(pickComposerGhost('', { week: { week: 4 }, hasPlan: true }).prompt, 'Revise the lesson plan for Week 04.')
+assert.equal(pickComposerGhost('', { ...context, attachments: [{ filename: 'Speeches.pdf' }] }).prompt, 'Use Speeches.pdf to plan Week 04.')
+assert.equal(pickComposerGhost('', { ...context, modelSuggestion: 'Plan the argument unit.' }).prompt, 'Plan the argument unit.')
+assert.equal(pickComposerGhost('').prompt, 'Plan this week.')
+assert.ok(!composerGhostCandidates().some((item) => /quiz|week 04|speeches/i.test(item.prompt)), 'unrelated context must not appear in a fresh composer')
+const suggestion = pickComposerGhost('', context)
+assert.equal(suggestionCompletion('Plan Week', suggestion), suggestion.prompt.slice('Plan Week'.length))
+assert.equal(suggestionCompletion('Revise', suggestion), '')
 
-assert.ok(!COMPOSER_GHOST_PROMPTS.some((prompt) => /quiz/i.test(prompt)))
-assert.equal(pickComposerGhost('').prompt, 'Write a lesson for this week')
-assert.equal(pickComposerGhost('   ').prompt, 'Write a lesson for this week')
-assert.equal(pickComposerGhost('Write a').prompt, 'Write a lesson for this week')
-assert.equal(pickComposerGhost('revise this').prompt, "Revise this week's plan")
-assert.equal(pickComposerGhost('Help me plan tomorrow'), null)
-assert.equal(pickComposerGhost('I want to revise'), null)
-assert.equal(pickComposerGhost('unrelated'), null)
-
-const write = COMPOSER_GHOST_SUGGESTIONS[0]
-const revise = COMPOSER_GHOST_SUGGESTIONS[1]
-assert.equal(suggestionCompletion('', write), write.prompt)
-assert.equal(suggestionCompletion('Write a', write), write.prompt.slice('Write a'.length))
-assert.equal(suggestionCompletion('Revise', write), '')
-assert.equal(suggestionCompletion('Revise', revise), revise.prompt.slice('Revise'.length))
-
-console.log('composer ghost tests passed')
+const editing = {
+  ...context,
+  hasPlan: true,
+  planOpen: true,
+  days: [{ name: 'Monday' }, { name: 'Wednesday' }, { name: 'Friday', no_school: true }],
+  modelSuggestion: 'Plan the argument unit.',
+}
+assert.equal(pickComposerGhost('', editing).prompt, "Add support for Wednesday's lesson.", 'an open lesson overrides a stale planning suggestion')
+assert.equal(pickComposerGhost('add a quick', editing).prompt, 'Add a quick check for understanding.')
+assert.equal(pickComposerGhost('', { ...editing, attachments: [{ filename: 'Speeches.pdf' }] }).prompt, 'Use Speeches.pdf to revise Week 04.')
+assert.equal(pickComposerGhost('', { ...editing, days: [{ name: 'Monday' }, { name: 'Wednesday', no_school: true }] }).prompt, "Add support for Monday's lesson.", 'suggest only a known teaching day')
+assert.equal(pickComposerGhost('', { ...editing, days: [{ name: 'Wednesday', pending: true }] }).prompt, 'Add support to this lesson.', 'do not invent a day while the plan is incomplete')
+assert.ok(composerGhostCandidates(editing).every(({ prompt }) => !/^(plan|write a lesson)/i.test(prompt)), 'editing suggestions must not propose another plan')
+assert.equal(pickComposerGhost('', { week: { week: 4 }, hasArtifact: true }).prompt, 'Revise the lesson plan for Week 04.')
+console.log('contextual composer ghost tests passed')

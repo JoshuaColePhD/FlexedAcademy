@@ -55,6 +55,13 @@ EVENT_NAMES = frozenset({
     "flow_skipped",
     "flow_completed",
     "state_unsupported_interest",
+    "first_plan_requested",
+    "first_plan_completed",
+    "first_plan_failed",
+    "citation_opened",
+    "plan_exported",
+    "plan_revised",
+    "second_week_completed",
 })
 
 # The ONLY prop keys that may be stored, and this list is the privacy boundary

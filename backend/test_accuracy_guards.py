@@ -17,7 +17,7 @@ import os
 
 import pytest
 
-from backend import schema, template_context
+from backend import retrieval, schema, template_context
 from backend.retrieval import (
     RetrievalResult,
     act_only_grounding_error,
@@ -122,7 +122,19 @@ def _week(day: dict) -> dict:
     return {"week_of": "2026-01-05", "course": "Test Course", "days": [day]}
 
 
-def test_audit_grounding_raises_when_act_alignment_missing_and_expected():
+@pytest.fixture
+def minimal_corpus(monkeypatch):
+    """Grounding fixtures must not depend on gitignored local corpus files."""
+    primary = frozenset({"RHS-1A", "SKILL CATEGORY 7"})
+    act = frozenset({"R4", "R.WME.701"})
+    inventory = retrieval._CodeInventory(
+        anywhere=primary | act, by_course={"AP_Lang": primary},
+        by_course_and_grade={}, act=act,
+    )
+    monkeypatch.setattr(retrieval, "_code_inventory", lambda: inventory)
+
+
+def test_audit_grounding_raises_when_act_alignment_missing_and_expected(minimal_corpus):
     # AP Lang has a real companion ACT English/Reading/Writing section.
     plan = _week(_full_day(act_alignment=""))
     with pytest.raises(SchemaError) as exc:
@@ -130,14 +142,14 @@ def test_audit_grounding_raises_when_act_alignment_missing_and_expected():
     assert exc.value.code == "day_empty_field"
 
 
-def test_audit_grounding_does_not_raise_when_act_has_no_companion_section():
+def test_audit_grounding_does_not_raise_when_act_has_no_companion_section(minimal_corpus):
     # Counseling is one of act_sections_for's own documented empty cases.
     plan = _week(_full_day(act_alignment=""))
     warnings = audit_grounding(plan, allowed=set(), subject_code="Counseling")
     assert not any("ACT" in w for w in warnings)
 
 
-def test_audit_grounding_does_not_raise_when_act_alignment_present():
+def test_audit_grounding_does_not_raise_when_act_alignment_present(minimal_corpus):
     plan = _week(_full_day(act_alignment="R4"))
     # Should not raise even though R4 isn't in `allowed` — that's a
     # different (warning-only) hallucination check, not this one.
@@ -235,6 +247,41 @@ def test_generated_act_alignment_must_name_the_primary_standard_it_supports():
             subject_code="AP_Lang",
             expected=True,
             result=_act_result(),
+        )
+    assert exc.value.code == "act_skill_primary_link_missing"
+
+
+@pytest.mark.parametrize(("primary", "link"), [
+    ("Skill Category 7", "Supports primary Skill Category 7: Students explain how word choice shapes voice."),
+    ("CLE-1.B", "Supports primary CLE-1.B: Students select precise thesis language."),
+    ("8.C", "Supports primary 8.C: Students revise for clarity."),
+    ("RHS-1A", "Supports primary RHS-1A: both assess relevant evidence."),
+    ("Skill Category 7", "Supports primary [Skill Category 7]: Students explain word choice."),
+    ("Skill Category 7", "Supports  primary [skill\u00a0category\u00a07]: Students explain word choice."),
+    ("Skill Category 7", "Supports\nprimary\nskill category 7: Students explain word choice."),
+])
+def test_primary_link_accepts_equivalent_citation_formatting(primary, link):
+    description = "Determine whether material is relevant to the focus of the paragraph."
+    validate_act_alignment(
+        _week(_full_day(standards=primary, act_alignment=f"E.TOD.301 {description} {link}")),
+        {"E.TOD.301", primary}, subject_code="AP_Lang", expected=True, result=_act_result(),
+    )
+
+
+@pytest.mark.parametrize(("primary", "link"), [
+    ("Skill Category 7", "Supports primary Skill Category 70: Students explain word choice."),
+    ("CLE-1.B", "Supports primary CLE-1.B.1: Students select precise thesis language."),
+    ("8.C", "Supports primary 8.C.1: Students revise for clarity."),
+    ("RHS-1A", "Supports primary RHS-1AB: both assess relevant evidence."),
+    ("Skill Category 7", "Supports primary [Skill Category 8]: connect to Skill Category 7 later."),
+    ("Skill Category 7", "Students review Skill Category 7 before practicing this ACT skill."),
+])
+def test_primary_link_still_requires_an_explicit_exact_standard(primary, link):
+    description = "Determine whether material is relevant to the focus of the paragraph."
+    with pytest.raises(SchemaError) as exc:
+        validate_act_alignment(
+            _week(_full_day(standards=primary, act_alignment=f"E.TOD.301 {description} {link}")),
+            {"E.TOD.301", primary}, subject_code="AP_Lang", expected=True, result=_act_result(),
         )
     assert exc.value.code == "act_skill_primary_link_missing"
 
@@ -355,3 +402,20 @@ def test_grade_3_has_real_standards_for_core_subjects():
             (subject,),
         )
         assert rows[0]["n"] > 0, f"expected some grade-3 chunks for {subject}"
+
+
+def test_reported_poe_week_primary_link_passes_the_complete_grounding_audit(minimal_corpus):
+    description = "Analyze how the choice of a specific word or phrase shapes meaning or tone in passages when the effect is subtle or complex."
+    result = _act_result("R.WME.701", description)
+    plan = _week(_full_day(
+        standards="Skill Category 7 -- Explain how writers' stylistic choices contribute to the purpose of an argument.",
+        act_alignment=(
+            f"R.WME.701 -- {description} Supports primary Skill Category 7: "
+            "Students examine Poe’s precise word choices and explain how they shape the narrator’s tone and rhetorical effect."
+        ),
+    ))
+    warnings = audit_grounding(
+        plan, {"SKILL CATEGORY 7", "R.WME.701"}, subject_code="AP_Lang",
+        act_expected=True, result=result,
+    )
+    assert warnings == []

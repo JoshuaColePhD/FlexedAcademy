@@ -559,8 +559,8 @@ const latency = {
 
 const calls = []
 const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-const json = (body) =>
-  new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+const json = (body, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
 function sse(chunks) {
   const enc = new TextEncoder()
@@ -580,6 +580,22 @@ function sse(chunks) {
 
 export function installMockApi() {
   const real = window.fetch.bind(window)
+  const persistKey = 'flexed:preview-session'
+  if (previewParams.get('persist') === '1') sessionStorage.setItem('flexed:preview-persist', '1')
+  if (previewParams.has('fresh')) sessionStorage.removeItem(persistKey)
+  const persist = sessionStorage.getItem('flexed:preview-persist') === '1'
+  let restored = false
+  if (persist) {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(persistKey) || 'null')
+      if (saved) { Object.assign(state, saved.state); seq = saved.seq || 0; restored = true }
+    } catch { /* A damaged preview snapshot starts a fresh fixture. */ }
+  }
+  state.delivery ||= {}
+  state.versions ||= {}
+  for (const [id, plan] of Object.entries(state.plans)) {
+    if (!state.versions[id]) state.versions[id] = [{ revision: 1, saved_at: '2026-09-20T12:00:00Z', plan_json: structuredClone(plan), provenance: {} }]
+  }
 
   window.fetch = async (input, init = {}) => {
     const url = typeof input === 'string' ? input : input.url
@@ -590,7 +606,41 @@ export function installMockApi() {
     // before any route matched — so every upload failed inside the mock and the
     // app dutifully reported "Could not read that file".
     const body = typeof init.body === 'string' ? JSON.parse(init.body) : null
-    calls.push({ path, method, at: performance.now() })
+    calls.push({ path, method, at: performance.now(), ...(['/api/chat_stream', '/api/generate_stream'].includes(path) ? { body } : {}) })
+
+    const teachingMatch = path.match(/^\/api\/teaching\/plans\/([^/]+)(.*)$/)
+    if (teachingMatch) {
+      const [, id, suffix] = teachingMatch
+      const plan = state.plans[id]
+      if (!plan) return json({ error: { message: 'No such plan.' } }, 404)
+      const history = state.versions[id] ||= [{ revision: 1, saved_at: new Date().toISOString(), plan_json: structuredClone(plan) }]
+      const revision = history.at(-1).revision
+      const days = state.delivery[id] ||= []
+      if (suffix === '/versions' && method === 'GET') return json([...history].reverse())
+      if (suffix === '/handoff') {
+        const unfinished = plan.days.filter((day, index) => !day.no_school && !['taught', 'assessed'].includes(days.find((item) => item.day_index === index)?.status))
+        const notes = days.filter((item) => item.notes).map((item) => item.notes)
+        return json({ week_number: Number(plan.week_of.match(/Week\s*(\d+)/i)?.[1] || 3) + 1, prompt: `Build next week's lesson plan for ${plan.course}. Carry forward these unfinished learning targets: ${unfinished.map((day) => day.learning_targets).join('; ')}. Teaching reflections: ${notes.join('; ') || 'None yet.'}` })
+      }
+      const restore = suffix.match(/^\/versions\/(\d+)\/restore$/)
+      if (restore && method === 'POST') {
+        if (body.expected_revision !== revision) return new Response(JSON.stringify({ error: { code: 'plan_changed', message: 'Reload the changed plan before restoring.' } }), { status: 409 })
+        const old = history.find((version) => version.revision === Number(restore[1]))
+        if (!old) return new Response('{}', { status: 404 })
+        state.plans[id] = structuredClone(old.plan_json)
+        return json({ id, plan_json: state.plans[id], revision: revision + 1, retrieved_ids: RETRIEVED, warnings: WARNINGS, week_label: state.plans[id].week_of })
+      }
+      const dayMatch = suffix.match(/^\/days\/(\d+)$/)
+      if (dayMatch && method === 'PUT') {
+        const index = Number(dayMatch[1])
+        if (body.revision !== revision) return new Response(JSON.stringify({ error: { message: 'This plan changed. Reload before saving.' } }), { status: 409 })
+        const row = { day_index: index, plan_revision: revision, status: body.status, notes: body.notes, review_checks: body.review_checks, updated_at: new Date().toISOString(), outdated: false }
+        state.delivery[id] = [...days.filter((item) => item.day_index !== index), row]
+        return json(row)
+      }
+      return json({ plan_id: id, revision, days: days.map((item) => ({ ...item, outdated: item.plan_revision !== revision })), warnings: WARNINGS,
+        readiness: plan.days.map((day, day_index) => ({ day_index, name: day.name, issues: !day.no_school && !day.assessment ? [{ code: 'missing_assessment', message: 'Add a concrete assessment.' }] : [], explicit_minutes: null })), provenance: history.at(-1).provenance || {} })
+    }
 
     const currentUser = () => ({
       id: state.me.id,
@@ -874,6 +924,7 @@ export function installMockApi() {
         summary: { total: weeks.length, done: 1, behind: 0, current_week_label: 'Week 04', on_pace: true },
       })
     }
+    if (path === '/api/frameworks' && new URL(url, location.origin).searchParams.has('state') && new URL(url, location.origin).searchParams.get('state') !== 'AL') return json([])
     if (path === '/api/frameworks')
       // `chunks` and `verbatim_ok` are not optional — FrameworkPicker calls
       // .toLocaleString() on chunks directly. Keyed by `id` (findFramework's
@@ -1032,9 +1083,25 @@ export function installMockApi() {
           original_name: f?.name || 'upload.pdf',
           chars: 12345,
           uploaded_at: new Date().toISOString(),
+          processing_status: 'queued',
+          chunk_count: 0,
+          week_count: 0,
+          processing_ready_at: Date.now() + 2500,
         })
       }
-      return json({ id, weeks_parsed: 12 })
+      return json({ id, processing_status: 'queued', weeks_parsed: 0 })
+    }
+    const docPreview = path.match(/^\/api\/curriculum_map\/([^/]+)\/preview$/)
+    if (docPreview) {
+      const doc = state.documents.find((item) => item.id === docPreview[1])
+      return doc ? json({ ...doc, excerpts: doc.processing_status === 'queued' ? [] : ['UNIT 2: Voice and tone. Students analyze choices in diction and syntax, then explain how those choices influence the audience.', 'Week 3: Compare two short arguments. Model annotation, discuss evidence in pairs, and write a short rhetorical analysis.'] }) : json({}, 404)
+    }
+    const docRetry = path.match(/^\/api\/curriculum_map\/([^/]+)\/retry$/)
+    if (docRetry && method === 'POST') {
+      const doc = state.documents.find((item) => item.id === docRetry[1])
+      if (!doc) return json({}, 404)
+      Object.assign(doc, { processing_status: 'queued', processing_error: null, processing_ready_at: Date.now() + 2500 })
+      return json(doc)
     }
     const docDel = path.match(/^\/api\/curriculum_map\/([^/]+)$/)
     if (docDel && method === 'DELETE') {
@@ -1045,6 +1112,9 @@ export function installMockApi() {
     const docList = path.match(/^\/api\/classes\/([^/]+)\/documents$/)
     if (docList && method === 'GET') {
       await wait(120)
+      state.documents.forEach((doc) => {
+        if (doc.processing_ready_at && doc.processing_ready_at <= Date.now()) Object.assign(doc, { processing_status: 'ready', processing_ready_at: null, chunk_count: 8, week_count: doc.kind === 'pacing_guide' ? 12 : 0 })
+      })
       return json(state.documents.filter((d) => d.class_id === docList[1]))
     }
     if (path === '/api/extract_text' && method === 'POST') {
@@ -1174,6 +1244,8 @@ export function installMockApi() {
       if (!p) return new Response('{}', { status: 404 })
       return json({
         id: planMatch[1],
+        class_id: state.chats.find((chat) => chat.id === state.planChat[planMatch[1]])?.class_id || 'c1',
+        revision: state.versions[planMatch[1]]?.at(-1)?.revision || 1,
         plan_json: p,
         warnings: WARNINGS,
         retrieved_ids: RETRIEVED,
@@ -1452,6 +1524,10 @@ export function installMockApi() {
       // the transcript shows — the two are deliberately different once a file
       // is attached.
       state.lastPrompt = body?.query ?? null
+      if (state.failNextGeneration) {
+        state.failNextGeneration = false
+        return sse([[{ error: { code: 'model_refusal', message: 'The preview build could not finish. Please retry.' } }, 100]])
+      }
       if (body?.revise_plan_id) {
         const planId = body.revise_plan_id
         const current = state.plans[planId] || Object.values(state.plans)[0]
@@ -1477,7 +1553,7 @@ export function installMockApi() {
         ])
       }
       const planId = uid('plan')
-      const label = `Week ${String(seq).padStart(2, '0')} — Aug 17-21, 2026`
+      const label = `Week ${String(body?.week_number || seq).padStart(2, '0')} — Aug 17-21, 2026`
       state.plans[planId] = makePlan(label)
       // Production service.finalize persists plans.chat_id. Keep the preview
       // linked too, so reopening a generated chat exercises the same Outputs
@@ -1508,6 +1584,17 @@ export function installMockApi() {
        anything else just talks back, so both branches are drivable. */
     if (path === '/api/chat_stream') {
       const last = [...(body?.messages || [])].reverse().find((m) => m.role === 'user')?.content || ''
+      if (body?.voice && /^would (?:a|an|the|this|that)\b/i.test(last)) {
+        return sse([[{ chunk: 'A debate could work if students defend a claim with evidence. Would you keep the focus on close reading or speaking practice?' }, 120], [{ done: true }, 60]])
+      }
+      if (body?.voice && body?.plan_work_pending) {
+        const change = /\b(add|change|make|replace|shorten|include|remove|build|revise)\b/i.test(last)
+        return sse([
+          [{ chunk: change ? 'I’ve noted that change for the draft. We can keep discussing it while the current version finishes.' : 'Try a brief worked example, then have students explain their choice to a partner. What would show you that they can do it independently?' }, 120],
+          ...(change ? [[{ tool_call: 'generate_lesson_plan', action: body.active_plan_id ? 'revise_week' : 'create', target_plan_id: body.active_plan_id || null, instruction: last, days: [], field: null, week_number: body.week_number }, 120]] : []),
+          [{ done: true }, 60],
+        ])
+      }
       const quizzesOn = Boolean(state.me.beta_features)
       const wantsQuiz = quizzesOn && /\bquiz\b/i.test(last)
       const quizTypeNamed = /\b(multiple.choice|true.false|short.answer|matching|a mix)\b/i.test(last)
@@ -1612,7 +1699,9 @@ export function installMockApi() {
       return json({ items, total: items.length })
     }
     if (path === '/api/standards/coverage' && method === 'GET') {
-      return json({ 'ELA21.11.R2': 2, 'RHS-2': 1, 'CLE-4': 1, 'R.TST.701': 2, 'ORG 403': 1 })
+      const counts = { 'ELA21.11.R2': 2, 'RHS-2': 1, 'CLE-4': 1, 'R.TST.701': 2, 'ORG 403': 1 }
+      if (new URL(url, location.origin).searchParams.get('summary') === 'true') return json({ counts, total_standards: 12, covered_standards: 5, strands: 2 })
+      return json(counts)
     }
     const lessonsMatch = path.match(/^\/api\/standards\/([^/]+)\/lessons$/)
     if (lessonsMatch && method === 'GET') {
@@ -1630,6 +1719,16 @@ export function installMockApi() {
     return json({})
   }
 
-  // Handle for the test driver.
-  window.__mock = { state, latency, calls, reset: () => calls.splice(0) }
+  const mocked = window.fetch
+  window.fetch = async (input, init = {}) => {
+    const response = await mocked(input, init)
+    for (const [id, plan] of Object.entries(state.plans)) {
+      const versions = state.versions[id] ||= []
+      if (JSON.stringify(versions.at(-1)?.plan_json) !== JSON.stringify(plan)) versions.push({ revision: (versions.at(-1)?.revision || 0) + 1, saved_at: new Date().toISOString(), plan_json: structuredClone(plan), provenance: {} })
+    }
+    if (persist) sessionStorage.setItem(persistKey, JSON.stringify({ state, seq }))
+    return response
+  }
+  // Handle for the test driver. Persistence is opt-in and never uses real data.
+  window.__mock = { state, latency, calls, restored, reset: () => calls.splice(0) }
 }

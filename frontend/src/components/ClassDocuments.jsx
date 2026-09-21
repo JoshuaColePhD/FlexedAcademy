@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, FileText, Link2, Loader2, Trash2, Upload } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '../lib/api'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { api, request } from '../lib/api'
 import { useConfirm } from '../lib/confirmContext'
 import { useToast } from '../lib/toastContext'
 import { qk } from '../lib/queryKeys'
@@ -9,6 +9,16 @@ import { errorParts } from '../lib/apiError'
 import { KIND_LABEL } from './documentKinds'
 
 function DocumentRow({ doc, removing, featured, onRemove }) {
+  const [previewOpen, setPreviewOpen] = useState(false)
+  const qc = useQueryClient()
+  const toast = useToast()
+  const preview = useQuery({ queryKey: ['document-preview', doc.id, doc.processing_status], queryFn: () => request(`/api/curriculum_map/${doc.id}/preview`), enabled: previewOpen })
+  const retry = useMutation({
+    mutationFn: () => request(`/api/curriculum_map/${doc.id}/retry`, { method: 'POST' }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: qk.classDocuments(doc.class_id) }); toast.success('Document queued for another attempt') },
+    onError: (error) => toast.apiError('Could not retry this document', error),
+  })
+  const processing = doc.processing_status
   return (
     <li
       className={`flex items-center gap-3 px-3 py-3${removing ? ' fa-row-exit' : ''}`}
@@ -16,7 +26,7 @@ function DocumentRow({ doc, removing, featured, onRemove }) {
       <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${featured ? 'bg-accent/10 text-accent' : 'bg-paper-raised text-ink-muted'}`}>
         <FileText size={15} aria-hidden="true" />
       </span>
-      <span className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate text-sm font-medium text-ink">{doc.original_name}</span>
           {featured ? <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">Featured</span> : null}
@@ -24,7 +34,18 @@ function DocumentRow({ doc, removing, featured, onRemove }) {
         <span className="block text-xs text-ink-muted">
           {KIND_LABEL[doc.kind] || doc.kind} · {(doc.chars || 0).toLocaleString()} characters
         </span>
-      </span>
+        <span className="block mt-1 text-xs text-ink-muted" role="status">
+          {processing === 'queued' ? 'Saved · waiting to be read' : processing === 'processing' ? 'Saved · reading your document…' : processing === 'needs_attention' ? 'Saved · needs attention' : doc.chunk_count ? `Ready · ${doc.chunk_count} passages${doc.week_count ? ` · ${doc.week_count} weeks` : ''}` : 'Saved'}
+        </span>
+        {doc.processing_error && <p className="mt-1 text-xs text-ink-muted">{doc.processing_error}</p>}
+        <div className="flex flex-wrap gap-2 mt-2">
+          <button type="button" className="text-xs underline min-h-touch" aria-expanded={previewOpen} onClick={() => setPreviewOpen(!previewOpen)}>{previewOpen ? 'Hide what was read' : 'See what was read'}</button>
+          {processing === 'needs_attention' && <button type="button" className="btn" disabled={retry.isPending} onClick={() => retry.mutate()}>Retry processing</button>}
+        </div>
+        {previewOpen && <div className="mt-2 text-sm whitespace-pre-wrap text-ink-muted">
+          {preview.isPending ? 'Loading extracted passages…' : preview.isError ? <button type="button" className="btn" onClick={() => preview.refetch()}>Could not load passages. Try again</button> : preview.data?.excerpts?.length ? preview.data.excerpts.map((excerpt, index) => <p className="mb-3" key={index}>{excerpt}</p>) : 'No passages are available yet. Processing may still be in progress.'}
+        </div>}
+      </div>
       <button
         type="button"
         className="btn-icon shrink-0"
@@ -171,6 +192,7 @@ function OnboardingMaterialsFlow({
   setSupportingOpen,
 }) {
   const hasPacingGuide = pacingGuides.length > 0
+  const pacingReady = pacingGuides.some((doc) => !doc.processing_status || doc.processing_status === 'ready')
   const hasSupportingDocs = supportingDocs.length > 0
   return (
     <div className="space-y-4" aria-label="Teaching materials setup">
@@ -178,8 +200,8 @@ function OnboardingMaterialsFlow({
         <MaterialStep
           number="1"
           title="Planning source"
-          detail={hasPacingGuide ? 'Pacing source added.' : 'Pacing guide or curriculum map recommended.'}
-          state={hasPacingGuide ? 'complete' : 'active'}
+          detail={pacingReady ? 'Pacing source ready.' : hasPacingGuide ? 'Source saved. Check its processing status below.' : 'Pacing guide or curriculum map recommended.'}
+          state={pacingReady ? 'complete' : 'active'}
         />
         <MaterialStep
           number="2"
@@ -198,7 +220,7 @@ function OnboardingMaterialsFlow({
           <p className="mt-1 max-w-xl text-xs text-ink-muted">Add a pacing guide, curriculum map, or syllabus—the source FlexEd uses to organize your plans.</p>
           </div>
           <span className={`shrink-0 rounded-full px-2 py-1 text-2xs font-semibold ${hasPacingGuide ? 'bg-ok/10 text-ok' : 'bg-accent/10 text-accent-text'}`}>
-            {hasPacingGuide ? 'Ready for plans' : 'Recommended'}
+            {pacingReady ? 'Ready for plans' : hasPacingGuide ? 'Saved · processing' : 'Recommended'}
           </span>
         </div>
         {hasPacingGuide ? (
@@ -304,6 +326,7 @@ export function ClassDocuments({ cls, onChanged, onKindChange, variant = 'defaul
     queryKey: qk.classDocuments(cls.id),
     queryFn: () => api.listClassDocuments(cls.id),
     retry: false,
+    refetchInterval: (query) => query.state.data?.some((doc) => ['queued', 'processing'].includes(doc.processing_status)) ? 2000 : false,
   })
 
   const save = async (fileOrNull, sourceUrl) => {
@@ -313,7 +336,7 @@ export function ClassDocuments({ cls, onChanged, onKindChange, variant = 'defaul
       const res = await api.uploadCurriculumMap(cls.subject, fileOrNull, { classId: cls.id, kind, sourceUrl })
       toast.success(
         `${KIND_LABEL[kind]} saved`,
-        res?.weeks_parsed ? `${res.weeks_parsed} weeks read from it.` : undefined
+        res?.processing_status === 'queued' ? 'We’ll read it in the background. You can keep planning.' : res?.weeks_parsed ? `${res.weeks_parsed} weeks read from it.` : undefined
       )
       docs.refetch()
       onChanged?.()

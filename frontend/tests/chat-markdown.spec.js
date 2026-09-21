@@ -176,6 +176,8 @@ test('the new question pins to the top and the reply fills in beneath it', async
   await expect(reply(page)).toContainText('More text that makes the reply tall.')
   // The spacer shrinks by exactly what the reply grows, so the pinned question
   // does not drift while the answer arrives.
-  const after = await topOf()
-  expect(Math.abs(after - before)).toBeLessThan(24)
+  // Text appears before the ResizeObserver/animation-frame scroll correction.
+  // Assert the settled position using the same tolerance, rather than reading
+  // the one intermediate frame in which the reply has grown but its spacer hasn't.
+  await expect.poll(async () => Math.abs((await topOf()) - before)).toBeLessThan(24)
 })

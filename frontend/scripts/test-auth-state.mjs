@@ -27,7 +27,7 @@
  */
 import assert from 'node:assert/strict'
 import { QueryClient, QueryObserver } from '@tanstack/query-core'
-import { applyIdentityToCache, deriveAuthStatus } from '../src/lib/authState.js'
+import { applyIdentityToCache, deriveAuthStatus, hasCompletedOnboarding } from '../src/lib/authState.js'
 
 const ME = ['me']
 const OTHER = ['classes']
@@ -35,8 +35,19 @@ const OTHER = ['classes']
 // ── the status rule ───────────────────────────────────────────────────────
 // undefined and null must NOT collapse together: a timeout is not a logout.
 assert.equal(deriveAuthStatus(undefined), 'loading', 'unknown holds, it does not log you out')
+assert.equal(deriveAuthStatus(undefined, { isError: true }), 'unavailable', 'exhausted transport failures need a retry screen')
+assert.equal(deriveAuthStatus(undefined, { isError: true, isFetching: true }), 'loading', 'retrying returns to loading')
+assert.equal(deriveAuthStatus({ id: 'u1' }, { isError: true }), 'authed', 'a failed background refresh preserves an existing session')
 assert.equal(deriveAuthStatus(null), 'anon', 'a definitive 401 is signed out')
 assert.equal(deriveAuthStatus({ id: 'u1' }), 'authed', 'a user object is signed in')
+
+// A mutation can finish and navigate before the provider's batched observer
+// notification renders. The guard must recognize the confirmed same-account
+// cache result, while rejecting an unrelated account's completion state.
+assert.equal(hasCompletedOnboarding({ id: 'u1', onboarding_seen_at: null }, { id: 'u1', onboarding_seen_at: '2026-09-20' }), true)
+assert.equal(hasCompletedOnboarding({ id: 'u1', onboarding_seen_at: null }, { id: 'u2', onboarding_seen_at: '2026-09-20' }), false)
+assert.equal(hasCompletedOnboarding({ id: 'u1', onboarding_seen_at: null }, { id: 'u1', onboarding_seen_at: null }), false)
+assert.equal(hasCompletedOnboarding(null, { id: 'u1', onboarding_seen_at: '2026-09-20' }), false)
 
 /** A live qk.me observer, exactly as AuthProvider subscribes to one.
  *

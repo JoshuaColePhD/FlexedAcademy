@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ApiError, api, apiErrorFromBody } from '../lib/api'
+import { ApiError, api, toError } from '../lib/api'
 import * as metrics from '../lib/voiceMetrics'
 import { createSmoother } from '../lib/streamSmoother'
 import * as perf from '../lib/performanceMetrics'
@@ -34,7 +34,12 @@ const RETRY_DELAY_MS = 800
 // slow but live reply is not aborted at 25s the way a hung connection is.
 const ATTEMPT_TIMEOUT_MS = 25000
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const sleep = (ms, signal) => new Promise((resolve) => {
+  const finish = () => { clearTimeout(timer); signal.removeEventListener('abort', finish); resolve() }
+  const timer = setTimeout(finish, ms)
+  signal.addEventListener('abort', finish, { once: true })
+  if (signal.aborted) finish()
+})
 
 // The backend removes this at the normal tool boundary. Keep the same small
 // guard here for the defensive path below, where a model occasionally writes
@@ -275,7 +280,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
   // they arrive, and either returns the finished result or throws. Retrying
   // lives in `start`, not here, so a retry can't accidentally fire onDone
   // twice for the same logical request.
-  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, activePlanId, activeQuizId, referenceContext, hasQuiz, planOpen, controller, requestId, attempt, onProgress, emitAction }) => {
+  const attempt = useCallback(async (messages, { chatId, classId, mode, voice, weekNumber, activePlanId, activeQuizId, referenceContext, hasQuiz, planOpen, planWorkPending, controller, requestId, attempt, onProgress, emitAction }) => {
     let accumulated = ''
     cancelQueuedText()
     setText('')
@@ -297,6 +302,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
           week_number: weekNumber ?? null,
           has_quiz: Boolean(hasQuiz),
           plan_open: Boolean(planOpen),
+          plan_work_pending: Boolean(planWorkPending),
           request_id: requestId,
           attempt,
         }),
@@ -317,12 +323,11 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
       })
     }
 
-    if (!res.ok || !res.body) {
-      let payload = null
-      try {
-        payload = await res.json()
-      } catch {}
-      throw apiErrorFromBody(payload, res.status)
+    if (!res.ok) throw await toError(res)
+    if (!res.body) {
+      throw new ApiError('The connection closed before the reply arrived.', {
+        code: 'stream_connection_error', extra: { retryable: true },
+      })
     }
 
     const reader = res.body.getReader()
@@ -528,8 +533,15 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
 
           if (event.done) {
             finished = event
+            break
           }
         }
+      }
+      if (finished) {
+        // The terminal event is authoritative. A proxy keeping the socket
+        // open must not turn a completed reply/save into a timeout and retry.
+        void reader.cancel().catch(() => {})
+        break
       }
       if (done) break
     }
@@ -604,7 +616,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
   }, [cancelQueuedText, queueText, flushText])
 
   const start = useCallback(
-    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber, activePlanId, activeQuizId, referenceContext = '', hasQuiz = false, planOpen = false, requestId: requestedRequestId } = {}) => {
+    async (messages, { chatId, classId, mode = 'standard', voice = false, weekNumber, activePlanId, activeQuizId, referenceContext = '', hasQuiz = false, planOpen = false, planWorkPending = false, requestId: requestedRequestId } = {}) => {
       abortRef.current?.abort()
       const controller = new AbortController()
       abortRef.current = controller
@@ -637,7 +649,10 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
         let lastErr = null
         for (let tryNum = 0; tryNum <= MAX_AUTO_RETRIES; tryNum++) {
           if (controller.signal.aborted) return null
-          if (tryNum > 0) await sleep(RETRY_DELAY_MS * tryNum)
+          if (tryNum > 0) {
+            const backoff = RETRY_DELAY_MS * (2 ** (tryNum - 1)) + Math.random() * 300
+            await sleep(Math.max(backoff, (lastErr?.extra?.retry_after_seconds || 0) * 1000), controller.signal)
+          }
           if (controller.signal.aborted) return null
           const attemptController = new AbortController()
           const onParentAbort = () => attemptController.abort()
@@ -655,6 +670,7 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
               mode,
               voice,
               weekNumber,
+              planWorkPending,
               activePlanId,
               activeQuizId,
               referenceContext,
@@ -676,16 +692,17 @@ export function useChatStream({ onDone, onError, onGeneratePlan, onAction, onSen
           } catch (err) {
             if (controller.signal.aborted || activeRequestRef.current !== requestId) return null
             lastErr = err.name === 'AbortError'
-              ? new ApiError('The connection dropped before the reply started.', {
+              ? new ApiError('The connection went quiet while the reply was loading.', {
                 code: 'stream_connection_error',
                 extra: { retryable: true },
               })
               : err
-            const retryable = RETRYABLE_CODES.has(lastErr.code) || lastErr.extra?.retryable
+            const retryable = lastErr.extra?.retryable !== false
+              && (RETRYABLE_CODES.has(lastErr.code) || lastErr.extra?.retryable)
             const maxTries = (lastErr.code === 'malformed_tool_call' || lastErr.code === 'empty_reply')
               ? 1
               : MAX_AUTO_RETRIES
-            if (!retryable || tryNum >= maxTries) break
+            if (!retryable || tryNum >= maxTries || lastErr.extra?.retry_after_seconds > 60) break
             onRetryRef.current?.()
             const retryStatus = { code: 'retrying', label: 'Still working…', requestId, attempt: tryNum }
             setStatus(retryStatus)

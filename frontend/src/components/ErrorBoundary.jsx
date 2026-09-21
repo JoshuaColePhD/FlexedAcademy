@@ -1,6 +1,6 @@
 import { Component } from 'react'
 import { RotateCcw } from 'lucide-react'
-import * as Sentry from '@sentry/react'
+import * as Sentry from '../lib/monitoringClient'
 
 const CHUNK_RELOAD_KEY = 'flexed.chunk-reload'
 const CHUNK_ERROR_RE = /failed to fetch dynamically imported module|imported module|loading (?:chunk|css chunk)|chunkloaderror/i

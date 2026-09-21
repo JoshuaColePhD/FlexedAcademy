@@ -41,8 +41,7 @@ def _run_request(middleware, method: str, path: str, *, cookie: bool = True):
 
 
 def test_demo_blocks_mutations_but_allows_reads_and_logout(monkeypatch):
-    monkeypatch.setattr(server, "_verify_current", lambda token: "demo")
-    monkeypatch.setattr(server.db, "get_user_by_id", lambda user_id: {"is_read_only": True})
+    monkeypatch.setattr(server, "verified_user", lambda token: {"id": "demo", "is_read_only": True})
     middleware = server.ReadOnlyDemoMiddleware(None)
 
     blocked, called = _run_request(middleware, "POST", "/api/chats")

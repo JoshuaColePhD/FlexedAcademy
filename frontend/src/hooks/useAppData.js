@@ -5,6 +5,7 @@ import { useParams } from 'react-router-dom'
 import { api } from '../lib/api'
 import { qk } from '../lib/queryKeys'
 import { useToast } from '../lib/toastContext'
+import { invalidatePlanViews } from '../lib/planQueries'
 
 /* The data layer that replaced the Shell god object.
  *
@@ -181,19 +182,20 @@ export function usePlanWeeks() {
   const { classId } = useParams()
   return useQuery({
     queryKey: qk.planWeeks(classId),
-    queryFn: () => api.listPlanWeeks(classId),
+    queryFn: ({ signal }) => api.listPlanWeeks(classId, { signal }),
     enabled: Boolean(classId),
   })
 }
 
 export function useDeletePlan() {
   const qc = useQueryClient()
+  const { classId } = useParams()
   return useMutation({
     mutationFn: (id) => api.deletePlan(id),
     // Deleting a plan can turn a week's `latest` into its next-newest
     // revision, or just drop a revision — either way the grouped view is
     // stale.
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['plan-weeks'] }),
+    onSuccess: () => invalidatePlanViews(qc, classId),
   })
 }
 

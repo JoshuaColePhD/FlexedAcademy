@@ -83,7 +83,7 @@ def test_explicit_create_and_revision_targets():
         validate_action_target({"tool_call": "update_lesson_day"}, "p1")
 
 
-def test_voice_tools_unchanged_and_typed_questions_are_single():
+def test_shared_tools_preserve_base_definitions_and_questions_are_single():
     before = deepcopy(llm.CHAT_TOOLS)
     typed = {t["function"]["name"]: t["function"] for t in typed_chat_tools(llm.CHAT_TOOLS)}
     assert llm.CHAT_TOOLS == before
@@ -291,10 +291,10 @@ def test_command_surface_needs_both_an_open_plan_and_a_plan(monkeypatch):
     assert chat_turn_policy("brainstorm", plan_open=True, has_plan=True).command_surface is True
     assert chat_turn_policy("brainstorm", plan_open=True, has_plan=False).command_surface is False
     assert chat_turn_policy("brainstorm", plan_open=False, has_plan=True).command_surface is False
-    # Voice keeps its own prompt path and never gets the typed overlay.
+    # Voice has the same explicit edit target while its spoken style stays short.
     assert chat_turn_policy(
         "brainstorm", plan_open=True, has_plan=True, voice=True
-    ).command_surface is False
+    ).command_surface is True
 
 
 def test_conversational_stream_omits_tools_and_uses_light_reasoning(monkeypatch):
@@ -368,10 +368,10 @@ def test_tool_turns_force_reasoning_none_for_luna(monkeypatch):
     assert calls[0]["max_completion_tokens"] == 2200 + llm._TOOL_ARG_HEADROOM
 
 
-def fake_stream(monkeypatch, payload, *, truncated=False):
+def fake_stream(monkeypatch, payload, *, truncated=False, tool_name="generate_lesson_plan", finish_reason="tool_calls"):
     chunks = []
     for i, fragment in enumerate([payload[:12], payload[12:35], payload[35:]]):
-        fn = NS(name="generate_lesson_plan" if i == 0 else None, arguments=fragment)
+        fn = NS(name=tool_name if i == 0 else None, arguments=fragment)
         chunks.append(
             NS(
                 usage=None,
@@ -385,7 +385,7 @@ def fake_stream(monkeypatch, payload, *, truncated=False):
         )
     if not truncated:
         chunks.append(
-            NS(usage=None, choices=[NS(delta=NS(content=None), finish_reason="tool_calls")])
+            NS(usage=None, choices=[NS(delta=NS(content=None), finish_reason=finish_reason)])
         )
 
     class Stream:
@@ -527,9 +527,65 @@ def test_incomplete_tool_never_dispatches(monkeypatch, payload, truncated):
     assert stream.closed
 
 
-def test_voice_retains_early_argumentless_action(monkeypatch):
-    fake_stream(monkeypatch, "", truncated=True)
-    assert list(llm.stream_chat("u", [], voice=True)) == [{"tool_call": "generate_lesson_plan"}]
+def test_voice_rejects_early_argumentless_action(monkeypatch):
+    stream = fake_stream(monkeypatch, "", truncated=True)
+    with pytest.raises(AppError, match="interrupted"):
+        list(llm.stream_chat("u", [], voice=True))
+    assert stream.closed
+
+
+def test_voice_and_written_chat_get_same_structured_tools():
+    assert llm._chat_tools_for("u", voice=True, quizzes_on=False) == llm._chat_tools_for("u", voice=False, quizzes_on=False)
+    assert llm._chat_tools_for("u", voice=True, actions_enabled=False) == []
+
+
+def test_voice_waits_for_complete_scope_and_instruction(monkeypatch):
+    requested = {**action(), "action": "revise_days", "target_plan_id": "p1", "days": ["Wednesday", "Thursday"], "field": "assessment", "instruction": "Use individual exit tickets on Wednesday and Thursday, keeping the reading."}
+    stream = fake_stream(monkeypatch, json.dumps({"preamble": "I'll adjust those exit tickets.", **requested}))
+    events = list(llm.stream_chat("u", [], voice=True))
+    assert [event for event in events if "tool_call" in event] == [{"tool_call": "generate_lesson_plan", **requested}]
+    assert "".join(event.get("chunk", "") for event in events) == "I'll adjust those exit tickets."
+    assert stream.closed
+
+
+@pytest.mark.parametrize("payload,truncated,finish", [
+    ("{", False, "tool_calls"), ("[]", False, "tool_calls"),
+    (json.dumps(action()), True, "tool_calls"),
+    (json.dumps({"preamble": "I'll adjust Wednesday.", **action()}), True, "tool_calls"),
+    (json.dumps(action()), False, "length"),
+])
+def test_voice_never_dispatches_incomplete_or_truncated_calls(monkeypatch, payload, truncated, finish):
+    stream = fake_stream(monkeypatch, payload, truncated=truncated, finish_reason=finish)
+    events = []
+    with pytest.raises(AppError):
+        events.extend(llm.stream_chat("u", [], voice=True))
+    assert not any("tool_call" in event for event in events)
+    assert stream.closed
+
+
+def test_voice_day_edit_preserves_completed_target_and_feedback(monkeypatch):
+    requested = {"day": "Thursday", "field": "do_now", "feedback": "Use a two-minute retrieval practice warm-up.", "target_plan_id": "p1"}
+    fake_stream(monkeypatch, json.dumps(requested), tool_name="update_lesson_day")
+    events = list(llm.stream_chat("u", [], voice=True))
+    assert events[-1] == {"tool_call": "update_lesson_day", **requested}
+
+
+def test_voice_quiz_preserves_source_and_revision_target(monkeypatch):
+    requested = {"question_types": ["multiple_choice"], "num_questions": 5, "revises_current": True, "source_plan_id": "p1", "target_quiz_id": "q1", "instruction": "Make question 3 check inference.", "question_numbers": [3]}
+    fake_stream(monkeypatch, json.dumps(requested), tool_name="generate_quiz")
+    monkeypatch.setattr(llm, "beta_features_for", lambda _: True)
+    event = list(llm.stream_chat("u", [], voice=True))[-1]
+    assert event["source_plan_id"] == "p1" and event["target_quiz_id"] == "q1"
+    assert event["question_numbers"] == [3] and event["instruction"] == requested["instruction"]
+
+
+def test_voice_asks_one_completed_question(monkeypatch):
+    question = {"id": "goal", "text": "Should students identify claims or evaluate evidence?", "options": ["Identify claims", "Evaluate evidence"]}
+    payload = {"preamble": question["text"], "questions": [question, {**question, "id": "redundant"}]}
+    fake_stream(monkeypatch, json.dumps(payload), tool_name="ask_clarifying_questions")
+    events = list(llm.stream_chat("u", [], voice=True))
+    assert events[-1]["questions"] == [question]
+    assert "".join(event.get("chunk", "") for event in events) == question["text"]
 
 
 @pytest.fixture
@@ -635,6 +691,9 @@ def chat_client(monkeypatch):
     monkeypatch.setattr(generate.db, "get_plan", lambda user, id: plan if id == "p1" else None)
     monkeypatch.setattr(generate.db, "list_quizzes_for_plan", lambda *a: [])
     monkeypatch.setattr(generate, "beta_features_for", lambda uid: False)
+    monkeypatch.setattr(generate, "voice_consultation_queue", generate.GenerationQueue(
+        max_concurrent=1, max_per_user=1, max_queue=10, max_queue_per_user=2, min_start_interval=0,
+    ))
     monkeypatch.setattr(generate.llm, "extract_and_persist_coaching_memory", lambda *a: None)
 
     def stream(user, messages, **kw):
@@ -678,6 +737,88 @@ def test_route_uses_active_plan_and_prior_answers_without_forcing_build(chat_cli
     assert "Do NOT call" not in system
     assert "call generate_lesson_plan (or" not in system
     assert captured[0][1:] == messages
+
+
+def test_voice_route_loads_saved_plan_week_and_scopes_revision(chat_client, monkeypatch):
+    from backend.routes import generate
+    client, captured, emitted = chat_client
+    context_calls = []
+    saved = {"id": "p1", "chat_id": "chat1", "class_id": "c1", "week_number": 7,
+             "plan_json": {"days": [{"name": "Wednesday", "during": "Analyze paper evidence"}]},
+             "provenance": {"sources": [{"id": "A.1", "text": "Use sufficient evidence."}]}}
+    monkeypatch.setattr(generate.db, "get_plan", lambda owner, plan: saved if (owner, plan) == ("u", "p1") else None)
+    def context(*args, **kwargs):
+        context_calls.append((args, kwargs))
+        return "BASE CLASS CONTEXT"
+    monkeypatch.setattr(generate, "_build_chat_system_prompt", context)
+    emitted.append({"tool_call": "update_lesson_day", "day": "Wednesday", "field": "assessment", "feedback": "Use an exit ticket."})
+    response = client.post("/api/chat_stream", json={"messages": [{"role": "user", "content": "Use an exit ticket on Wednesday."}], "chat_id": "chat1", "class_id": "c1", "week_number": 8, "voice": True, "plan_open": True, "reference_context": "Teacher passage"})
+    assert response.status_code == 200
+    system = captured[0][0]["content"]
+    assert "LIVE TEACHING CONSULTATION" in system and "Active target_plan_id: p1" in system
+    assert "Analyze paper evidence" in system and "Use sufficient evidence." in system
+    assert context_calls[0][0][2] == 7
+    assert context_calls[0][1]["reference_context"] == "Teacher passage"
+    assert '"target_plan_id": "p1"' in response.text
+
+
+def test_voice_route_rejects_foreign_plan_before_consultation(chat_client):
+    client, captured, _ = chat_client
+    response = client.post("/api/chat_stream", json={"messages": [], "chat_id": "chat1", "class_id": "c1", "active_plan_id": "not-owned", "voice": True})
+    assert 'invalid_plan_target' in response.text
+    assert not captured
+
+
+def test_voice_route_rejects_plan_from_a_different_resolved_class(chat_client, monkeypatch):
+    from backend.routes import generate
+    client, captured, _ = chat_client
+    monkeypatch.setattr(generate, "_request_class", lambda *_: {"id": "different-class", "subject": "Math", "grade": "8"})
+    response = client.post("/api/chat_stream", json={"messages": [], "chat_id": "chat1", "active_plan_id": "p1", "voice": True})
+    assert "invalid_plan_target" in response.text and not captured
+
+
+def test_voice_consults_during_first_build_with_structured_deferred_instruction(chat_client, monkeypatch):
+    from backend.routes import generate
+    client, captured, emitted = chat_client
+    monkeypatch.setattr(generate.db, "list_plans", lambda *_args, **_kwargs: {"items": []})
+    instruction = "Keep the paper-based inference lesson, but shorten Wednesday's warm-up to two minutes."
+    emitted.append({"tool_call": "generate_lesson_plan", **action(), "instruction": instruction})
+    response = client.post("/api/chat_stream", json={"messages": [{"role": "user", "content": instruction}], "chat_id": "chat1", "class_id": "c1", "voice": True, "plan_work_pending": True})
+    system = captured[0][0]["content"]
+    assert "PLAN WORK IS ALREADY UNDERWAY" in system
+    assert "No first draft has been saved yet" in system
+    assert "ongoing conversation" in system and "Advice alone must not create a queued edit" in system
+    assert instruction in response.text and '"target_plan_id": null' in response.text
+
+
+def test_voice_consultation_admission_does_not_wait_for_artifact_slot(chat_client, monkeypatch):
+    from backend.routes import generate
+    client, captured, _ = chat_client
+    main_queue = generate.GenerationQueue(max_concurrent=1, max_per_user=1, max_queue=5, max_queue_per_user=2, min_start_interval=0)
+    monkeypatch.setattr(generate, "generation_queue", main_queue)
+    artifact = main_queue.enqueue("u")
+    assert artifact.wait(timeout=0)
+    # A regular second artifact cannot start. A voice consultation must use its
+    # own bounded admission lane and leave this mutation lease untouched.
+    blocked = main_queue.enqueue("u")
+    assert not blocked.wait(timeout=0)
+    try:
+        response = client.post("/api/chat_stream", json={"messages": [{"role": "user", "content": "Why would an example help?"}], "chat_id": "chat1", "voice": True, "plan_work_pending": True})
+        assert "Try modeling one example." in response.text and captured
+        assert artifact.acquired and not blocked.acquired
+    finally:
+        blocked.cancel()
+        artifact.release()
+
+
+def test_voice_pending_answer_carries_prior_decision_without_forced_interview(chat_client):
+    client, captured, _ = chat_client
+    response = client.post("/api/chat_stream", json={"messages": [{"role": "user", "content": "Build a week on claims."}, {"role": "assistant", "content": "Should students identify or evaluate claims?", "kind": "clarifying_questions"}, {"role": "user", "content": "Evaluate them."}], "chat_id": "chat1", "voice": True})
+    assert response.status_code == 200
+    system = captured[0][0]["content"]
+    assert "answers the question you just asked" in system
+    assert "at most one clarifying round" not in system
+    assert "OPEN EVERY TURN" not in system
 
 
 def test_route_uses_one_persona_and_always_sends_tools(chat_client):

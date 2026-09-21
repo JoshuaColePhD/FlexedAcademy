@@ -1,15 +1,22 @@
 import React, { useEffect, useState } from 'react'
 import { Command } from 'cmdk'
-import { useNavigate } from 'react-router-dom'
+import { useMatch, useNavigate } from 'react-router-dom'
 import { Settings, ShieldCheck, History, BookOpen, Library, GraduationCap, Plus, Calendar, Sparkles } from 'lucide-react'
-import { useActiveClass, useCalendar } from '../hooks/useAppData'
+import { useClasses, useCalendar } from '../hooks/useAppData'
 import { getContextualSuggestions } from '../lib/contextualSuggestions'
 import { useAuth } from '../lib/authContext'
 
 export function CommandPalette() {
+  const { status } = useAuth()
+  return status === 'authed' ? <AuthenticatedCommandPalette /> : null
+}
+
+function AuthenticatedCommandPalette() {
   const [open, setOpen] = useState(false)
   const navigate = useNavigate()
-  const { activeClass } = useActiveClass()
+  const match = useMatch('/c/:classId/*')
+  const { data: classes = [] } = useClasses()
+  const activeClass = classes.find((item) => item.id === match?.params.classId)
   const { user } = useAuth()
   const classPath = activeClass ? `/c/${activeClass.id}` : null
   const { data: calendar } = useCalendar(activeClass?.id)

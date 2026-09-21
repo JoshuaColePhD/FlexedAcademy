@@ -11,15 +11,18 @@ import logging
 import re
 from collections import Counter
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
 from .. import db, llm, retrieval
 from ..config import settings
 from ..deps import get_current_admin, get_current_user
+from ..entitlement import require_entitlement
 from ..errors import AppError
+from ..generation_queue import generation_queue
 from ..prompts import known_gaps
+from ..ratelimit import limiter
 
 router = APIRouter(prefix="/api/standards", tags=["standards"])
 log = logging.getLogger("flexedacademy.routes.standards")
@@ -257,19 +260,18 @@ def active_states():
 
 
 @router.post("/search")
-def search(req: SearchRequest):
+@limiter.limit("20/minute")
+def search(req: SearchRequest, request: Request, user_id: str = Depends(get_current_user)):
     """Semantic search that SHOWS what the floor rejected, rather than hiding it.
 
     The point is that the relevance floor is inspectable — a teacher can see
     "your query's nearest standard was 0.83, above the 0.78 cutoff" instead of
     being handed five confident-looking irrelevant results.
     """
+    require_entitlement(user_id)
     raw = retrieval.retrieve_raw(
-        req.query,
-        n=req.top_k,
-        course=req.subject,
-        grade=req.grade,
-        state=req.state,
+        req.query, n=req.top_k, course=req.subject, grade=req.grade,
+        state=req.state, user_id=user_id,
     )
     raw.sort(key=lambda c: c["distance"])
     floor = settings.retrieval_max_distance
@@ -302,19 +304,34 @@ def get_standards_batch(codes: str = Query(..., max_length=4000), subject: str |
     that a querystring doesn't need the ceremony of a request model.
     """
     requested = [c.strip() for c in codes.split(",") if c.strip()]
-    return {code: retrieval.chunk_for_code(code, subject_code=subject, state=state) for code in requested}
+    return retrieval.chunks_for_codes(requested, subject_code=subject, state=state)
 
 @router.get("/coverage")
-def get_coverage(class_id: str = Query(...), user_id: str = Depends(get_current_user)):
+def get_coverage(class_id: str = Query(...), summary: bool = Query(False), user_id: str = Depends(get_current_user)):
     """Returns a mapping of standard code to citation count for the caller's class.
 
     `class_id` is a browser-visible identifier, not an authorization proof. The
     ownership check has to happen before the class-scoped query so a teacher
     cannot use the coverage endpoint as a cross-account oracle.
     """
-    if not db.get_class(user_id, class_id):
+    cls = db.get_class(user_id, class_id)
+    if not cls:
         raise AppError("class_not_found", "That class doesn't exist.", status=404)
-    return db.get_standards_coverage(class_id)
+    counts = db.get_standards_coverage(class_id)
+    if not summary:
+        return counts
+    subject = cls.get("subject")
+    partition = _standards_partition(cls.get("state") or "AL", subject)
+    used_codes = [code.upper() for code, count in counts.items() if count > 0]
+    row = db._row(
+        "SELECT COUNT(DISTINCT metadata->>'code') AS total_standards, "
+        "COUNT(DISTINCT metadata->>'code') FILTER (WHERE upper(metadata->>'code') = ANY(%s)) AS covered_standards, "
+        "COUNT(DISTINCT NULLIF(metadata->>'strand','')) AS strands FROM chunks "
+        "WHERE upper(metadata->>'state') = %s AND metadata->>'course' = ANY(%s) "
+        "AND (metadata->>'grade' = %s OR metadata->>'source_type' IN ('college_board','ap_skills'))",
+        (used_codes, partition.upper(), list(retrieval.course_variants(subject)), str(cls.get("grade"))),
+    ) or {}
+    return {"counts": counts, **{key: int(row.get(key) or 0) for key in ("total_standards", "covered_standards", "strands")}}
 
 
 @router.get("/{code:path}/lessons")
@@ -328,14 +345,19 @@ def get_standard_lessons(
 
 
 @router.get("/{code:path}/deconstruct")
-def deconstruct_standard(code: str, subject: str | None = Query(None), state: str = Query("AL", max_length=2), user_id: str = Depends(get_current_user)):
+@limiter.limit("20/minute")
+def deconstruct_standard(code: str, request: Request, subject: str | None = Query(None), state: str = Query("AL", max_length=2), user_id: str = Depends(get_current_user)):
     """Uses LLM to simplify a dense standard into an 'I can' statement."""
     chunk = retrieval.chunk_for_code(code, subject_code=subject, state=state)
     if not chunk:
         raise AppError("standard_not_found", f"No standard with code {code!r}.", status=404)
         
-    description = (chunk.get("metadata") or {}).get("description") or chunk.get("document", "")
-    simplified = llm.deconstruct_standard(user_id, code, description)
+    description = chunk.get("description") or (chunk.get("metadata") or {}).get("description") or chunk.get("document", "")
+    if not description.strip():
+        raise AppError("standard_text_missing", "This standard has no source text to simplify.", status=422)
+    with generation_queue.slot(user_id):
+        require_entitlement(user_id)
+        simplified = llm.deconstruct_standard(user_id, code, description)
     return {"simplified": simplified}
 
 

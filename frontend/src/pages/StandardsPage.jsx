@@ -6,6 +6,8 @@ import { api } from '../lib/api'
 import { useActiveClass } from '../hooks/useAppData'
 import { useToast } from '../lib/toastContext'
 import { haptic } from '../lib/haptics'
+import { useDebouncedValue } from '../hooks/useDebouncedValue'
+import { qk } from '../lib/queryKeys'
 
 const EMPTY_STANDARDS = []
 
@@ -37,7 +39,7 @@ function StandardRow({ standard, classId, coverageCount }) {
         },
       },
     })
-    toast({ title: 'Added to chat', type: 'success' })
+    toast.success('Added to chat')
   }
 
   const detailsLabel = expanded ? `Hide details for ${standard.code}` : `Show details for ${standard.code}`
@@ -101,6 +103,7 @@ export function StandardsPage() {
   const grade = activeClass?.grade
   const state = activeClass?.state
   const [search, setSearch] = useState('')
+  const searchQuery = useDebouncedValue(search.trim(), 300)
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [standardsView, setStandardsView] = useState('browse')
 
@@ -111,9 +114,10 @@ export function StandardsPage() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    refetch,
   } = useInfiniteQuery({
-    queryKey: ['standards', subject, grade, state, search],
-    queryFn: ({ pageParam = 0 }) => api.listStandards({ subject, grade, state, q: search, limit: 200, offset: pageParam }),
+    queryKey: ['standards', subject, grade, state, searchQuery],
+    queryFn: ({ pageParam = 0, signal }) => api.listStandards({ subject, grade, state, q: searchQuery, limit: 200, offset: pageParam, signal }),
     initialPageParam: 0,
     getNextPageParam: (lastPage, pages) => {
       const loaded = pages.reduce((sum, page) => sum + (page.items?.length || 0), 0)
@@ -123,10 +127,10 @@ export function StandardsPage() {
     enabled: !!subject && grade !== undefined,
   })
 
-  const { data: coverageData } = useQuery({
-    queryKey: ['standards', 'coverage', classId],
-    queryFn: () => api.getStandardsCoverage(classId),
-    staleTime: Infinity,
+  const { data: coverageData, isError: coverageError, refetch: retryCoverage } = useQuery({
+    queryKey: qk.standardsCoverage(classId),
+    queryFn: ({ signal }) => api.getStandardsCoverage(classId, { signal, summary: true }),
+    staleTime: 60_000,
     enabled: !!classId,
   })
 
@@ -140,7 +144,7 @@ export function StandardsPage() {
     })
   }, [data])
   const totalStandards = data?.pages?.[0]?.total || 0
-  const coverage = useMemo(() => coverageData || {}, [coverageData])
+  const coverage = useMemo(() => coverageData?.counts || {}, [coverageData])
 
   const categories = useMemo(() => {
     const counts = new Map()
@@ -157,7 +161,7 @@ export function StandardsPage() {
     : 'all'
 
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase()
+    const query = searchQuery.toLowerCase()
     return standards.filter((standard) => {
       if (activeCategory !== 'all' && standardCategory(standard) !== activeCategory) return false
       if (!query) return true
@@ -165,7 +169,7 @@ export function StandardsPage() {
         .filter(Boolean)
         .some((value) => value.toLowerCase().includes(query))
     })
-  }, [activeCategory, search, standards])
+  }, [activeCategory, searchQuery, standards])
 
   const groupedFiltered = useMemo(() => {
     const groups = new Map()
@@ -177,17 +181,16 @@ export function StandardsPage() {
     return Array.from(groups, ([name, items]) => ({ name, items }))
   }, [filtered])
 
-  const coveredCount = useMemo(
-    () => standards.filter((standard) => coverage[standard.code] > 0).length,
-    [coverage, standards],
-  )
-  const coveragePercent = standards.length ? Math.round((coveredCount / standards.length) * 100) : 0
+  const courseTotal = coverageData?.total_standards
+  const coveredCount = coverageData?.covered_standards
+  const coveragePercent = courseTotal ? Math.round((coveredCount / courseTotal) * 100) : 0
   const maxCoverage = useMemo(
     () => Math.max(0, ...standards.map((standard) => coverage[standard.code] || 0)),
     [coverage, standards],
   )
 
   const focusStandard = (code) => {
+    setStandardsView('browse')
     setSelectedCategory('all')
     setSearch(code)
     requestAnimationFrame(() => document.getElementById('standards-results')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
@@ -264,29 +267,31 @@ export function StandardsPage() {
           {standardsView === 'browse' ? (
           <section className="neo-world neo-panel rounded-3xl border border-edge/80 bg-paper-raised/85 p-4 sm:p-5" aria-label="Standards overview">
             <div className="flex items-center gap-2 text-2xs font-semibold uppercase tracking-[0.16em] text-ink-muted">
-              <BarChart3 size={14} aria-hidden="true" /> Course coverage
+              <BarChart3 size={14} aria-hidden="true" /> Planned coverage
             </div>
             <div className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
               <div className="rounded-2xl bg-paper-sunken/70 p-3">
                 <p className="text-2xs font-semibold uppercase tracking-wider text-ink-muted">Standards</p>
-                <p className="mt-1 text-xl font-semibold tracking-tight text-ink">{standards.length}</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight text-ink">{courseTotal ?? '—'}</p>
               </div>
               <div className="rounded-2xl bg-paper-sunken/70 p-3">
                 <p className="text-2xs font-semibold uppercase tracking-wider text-ink-muted">Strands</p>
-                <p className="mt-1 text-xl font-semibold tracking-tight text-ink">{categories.length}</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight text-ink">{coverageData?.strands ?? '—'}</p>
               </div>
               <div className="rounded-2xl bg-paper-sunken/70 p-3">
                 <p className="text-2xs font-semibold uppercase tracking-wider text-ink-muted">Used in plans</p>
-                <p className="mt-1 text-xl font-semibold tracking-tight text-ink">{coveragePercent}%</p>
+                <p className="mt-1 text-xl font-semibold tracking-tight text-ink">{courseTotal == null ? '—' : `${coveragePercent}%`}</p>
               </div>
             </div>
             <div className="mt-4 flex items-center justify-between gap-3 text-xs text-ink-muted">
-              <span>{coveredCount} of {standards.length || 0} standards have been used in a plan</span>
+              <span>{courseTotal == null ? coverageError ? 'Course totals couldn’t load.' : 'Loading course totals…' : `${coveredCount} of ${courseTotal} course standards have been used in a plan`}</span>
               <Layers3 size={16} className="shrink-0 text-accent" aria-hidden="true" />
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-paper-sunken" aria-hidden="true">
               <div className="h-full rounded-full bg-accent transition-[width] duration-300" style={{ width: `${coveragePercent}%` }} />
             </div>
+            <p className="mt-3 text-xs text-ink-muted">Counts reflect saved plans, not lessons taught or student mastery. Search does not change these course totals.</p>
+            {coverageError ? <button type="button" className="btn mt-2" onClick={() => retryCoverage()}>Retry course totals</button> : null}
           </section>
           ) : null}
 
@@ -329,7 +334,6 @@ export function StandardsPage() {
                       <button
                         key={standard.code}
                         type="button"
-                        role="listitem"
                         onClick={() => focusStandard(standard.code)}
                         className={`fa-press min-h-12 rounded-xl border px-2 py-2 text-left transition-colors ${levelClass}`}
                         aria-label={`Filter to ${standard.code}; used in ${count} ${count === 1 ? 'plan' : 'plans'}`}
@@ -409,7 +413,7 @@ export function StandardsPage() {
           ) : isError ? (
             <div className="py-24 text-center">
               <p className="text-base font-medium text-ink">Standards couldn’t load.</p>
-              <p className="mt-1 text-sm text-ink-muted">Try refreshing the page.</p>
+              <button type="button" className="btn mt-3" onClick={() => refetch()}>Try again</button>
             </div>
           ) : filtered.length === 0 ? (
             <div className="py-24 text-center">

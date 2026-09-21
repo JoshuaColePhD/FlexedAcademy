@@ -1,8 +1,21 @@
 import { useEffect, useRef } from 'react'
-import { useDebouncedValue } from './useDebouncedValue'
 import { accountStorageKey } from '../lib/accountStorage'
 
 const PREFIX = 'composer-draft'
+// Only mounted writers are retained. Explicit sends invalidate their pending
+// writes as well as storage, so cleanup cannot restore text that was sent.
+const activeDrafts = new Map()
+
+function persistDraft(draft) {
+  if (!draft.dirty) return
+  try {
+    if (draft.value) localStorage.setItem(draft.key, draft.value)
+    else localStorage.removeItem(draft.key)
+    draft.dirty = false
+  } catch {
+    // Draft storage is best-effort when the browser blocks localStorage.
+  }
+}
 
 // One narrow migration for drafts produced by the old contextual-completion
 // loop. Those drafts are recognizable because the generated wrapper appears
@@ -34,65 +47,72 @@ function repairLegacyGhostDraft(value) {
  * `new:${classId}` for a chat that doesn't exist yet — a draft started
  * before the first message creates the chat still isn't lost.
  *
- * Writes debounce off the SAME trailing-value hook Standards' search filter
- * already uses (useDebouncedValue) rather than writing on every keystroke.
- * Clearing on an actual send is the caller's job (see clearComposerDraft,
- * used from ChatPage's submit()) — this hook only reacts to `value` itself
- * going empty, which is one render behind a fresh send. */
+ * Writes debounce while typing, but the old key's latest draft is flushed
+ * before restoring a new key or unmounting. Explicit sends also invalidate
+ * the pending writer before the cleared value reaches React. */
 export function useComposerDraft(key, value, setValue, accountId) {
-  // useDebouncedValue's own `debounced` state initializes to whatever
-  // `value` IS on this hook's first call for a given mount — '' at that
-  // point, since the restore effect below hasn't run yet. Without this
-  // flag, the write-back effect's first firing (same commit, `debounced`
-  // still '') would `removeItem` the draft this render is in the middle of
-  // restoring, before React ever paints the restored text. Set back to
-  // true by the restore effect itself (declared first, so it runs first)
-  // whenever `key` changes, so a chat switch gets the same one-render
-  // grace period a fresh mount does.
-  const skipNextWriteRef = useRef(true)
+  const storageKey = accountStorageKey(PREFIX, accountId, key)
+  const currentDraft = useRef(null)
+  const restoreValue = useRef(setValue)
+  restoreValue.current = setValue
 
   useEffect(() => {
-    skipNextWriteRef.current = true
-    const storageKey = accountStorageKey(PREFIX, accountId, key)
-    if (!storageKey) return
-    let saved = ''
-    try {
-      saved = localStorage.getItem(storageKey) || ''
-    } catch {
-      // localStorage blocked (private mode, storage full) — draft recovery
-      // just doesn't happen; nothing else here depends on it.
+    if (!storageKey) {
+      currentDraft.current = null
+      return undefined
     }
-    const repaired = repairLegacyGhostDraft(saved)
-    setValue(repaired)
-    if (repaired !== saved) {
+    let draft = currentDraft.current
+    if (draft?.key !== storageKey) {
+      let saved = ''
       try {
-        if (repaired) localStorage.setItem(storageKey, repaired)
-        else localStorage.removeItem(storageKey)
+        saved = localStorage.getItem(storageKey) || ''
       } catch {
-        // ignore — draft recovery remains best-effort in private mode.
+        // Recovery remains optional when browser storage is unavailable.
       }
+      const repaired = repairLegacyGhostDraft(saved)
+      draft = { key: storageKey, value: repaired, dirty: repaired !== saved, timer: null }
+      currentDraft.current = draft
+      restoreValue.current(repaired)
+      persistDraft(draft)
     }
-    // Only re-run when the KEY changes — re-firing on every `value` change
-    // would fight the user's own typing by resetting it back to whatever
-    // was last saved.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, accountId])
+    // The same commit still contains the previous key's value. StrictMode
+    // also replays this setup; reuse its restored draft without restoring a
+    // second time or overwriting a route handoff applied by a later effect.
+    draft.skipObservation = true
+    const writers = activeDrafts.get(storageKey) || new Set()
+    writers.add(draft)
+    activeDrafts.set(storageKey, writers)
+    const flush = () => {
+      clearTimeout(draft.timer)
+      draft.timer = null
+      persistDraft(draft)
+    }
+    if (typeof window !== 'undefined') window.addEventListener('pagehide', flush)
+    return () => {
+      flush()
+      if (typeof window !== 'undefined') window.removeEventListener('pagehide', flush)
+      writers.delete(draft)
+      if (!writers.size) activeDrafts.delete(storageKey)
+    }
+  }, [storageKey])
 
-  const debouncedValue = useDebouncedValue(value, 400)
   useEffect(() => {
-    const storageKey = accountStorageKey(PREFIX, accountId, key)
-    if (!storageKey) return
-    if (skipNextWriteRef.current) {
-      skipNextWriteRef.current = false
-      return
+    const draft = currentDraft.current
+    if (!draft || draft.key !== storageKey) return undefined
+    if (draft.skipObservation) {
+      draft.skipObservation = false
+      return undefined
     }
-    try {
-      if (debouncedValue) localStorage.setItem(storageKey, debouncedValue)
-      else localStorage.removeItem(storageKey)
-    } catch {
-      // ignore — see above
+    if (draft.value === value) return undefined
+    draft.value = value
+    draft.dirty = true
+    if (!value) {
+      persistDraft(draft)
+      return undefined
     }
-  }, [key, accountId, debouncedValue])
+    draft.timer = setTimeout(() => persistDraft(draft), 400)
+    return () => { clearTimeout(draft.timer); draft.timer = null }
+  }, [storageKey, value])
 }
 
 /** Explicit clear at the moment a message actually sends — a message that
@@ -103,6 +123,11 @@ export function useComposerDraft(key, value, setValue, accountId) {
 export function clearComposerDraft(key, accountId) {
   const storageKey = accountStorageKey(PREFIX, accountId, key)
   if (!storageKey) return
+  for (const draft of activeDrafts.get(storageKey) || []) {
+    clearTimeout(draft.timer)
+    draft.timer = null
+    draft.dirty = false
+  }
   try {
     localStorage.removeItem(storageKey)
   } catch {

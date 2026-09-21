@@ -19,11 +19,14 @@
     "test:markdown": "node --test scripts/test-markdown-blocks.mjs",
     "test:week-access": "node --experimental-vm-modules scripts/test-week-access.mjs",
     "test:e2e": "playwright test",
-    "test:all": "npm run test:chat && npm run test:voice && npm run test:contextual && npm run test:composer-ghosts && npm run test:week-access && npm run test:onboarding && npm run test:auth && npm run test:return-to && npm run test:work-activity && npm run test:stream-transport && npm run test:markdown && npm run test:e2e",
+    "test:all": "npm run test:chat && npm run test:voice && npm run test:voice:runtime && npm run test:contextual && npm run test:composer-ghosts && npm run test:week-access && npm run test:onboarding && npm run test:auth && npm run test:return-to && npm run test:work-activity && npm run test:stream-transport && npm run test:markdown && npm run test:api && npm run test:setup && npm run test:e2e",
     "check:tokens": "node scripts/check-tokens.mjs",
     "check:classes": "node scripts/check-classes.mjs",
     "check": "npm run lint && npm run check:tokens && npm run check:classes && npm run build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:api": "node scripts/test-api.mjs",
+    "test:setup": "node scripts/test-first-plan-setup.mjs",
+    "test:voice:runtime": "node --test scripts/test-voice-feedback.mjs scripts/test-voice-provider.mjs scripts/test-voice-transport.mjs scripts/test-voice-consultation.mjs"
   },
   "dependencies": {
     "@react-oauth/google": "^0.13.5",

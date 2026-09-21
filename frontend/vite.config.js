@@ -48,7 +48,11 @@ export default defineConfig({
     // or markdown for every teacher returning to the app.
     rollupOptions: {
       output: {
-        manualChunks(id) {
+        codeSplitting: {
+          // Explicit module membership avoids pulling shared React utilities
+          // into a lazy markdown chunk and eagerly preloading the entire math stack.
+          includeDependenciesRecursively: false,
+          groups: [{ name(id) {
           if (!id.includes('node_modules')) return undefined
           // KaTeX FIRST: `rehype-katex` contains the substring "katex", and the
           // plugin belongs in the same chunk as the runtime it drives rather
@@ -67,10 +71,11 @@ export default defineConfig({
             return 'vendor-markdown'
           }
           if (id.includes('framer-motion')) return 'vendor-motion'
-          if (id.includes('react/') || id.includes('react-dom') || id.includes('scheduler')) {
+          if (/[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
             return 'vendor-react'
           }
           return undefined
+          } }],
         },
       },
     },

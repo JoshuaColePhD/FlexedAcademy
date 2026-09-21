@@ -1,29 +1,14 @@
-/* Per-turn latency for voice mode, measured where the teacher actually
- * experiences it: in the browser.
+/* Per-turn timing from voice events. The endpoint is WebRTC's output-buffer
+ * started event, a transport measurement rather than proof of audible playback
+ * at the teacher's speaker. Device buffering and autoplay can add delay.
  *
- * This exists because the honest answer to "is voice mode fast enough now" is a
- * measurement, and there wasn't one. LiveKit deliberately publishes no latency
- * table and tells you to instrument instead — their reasoning being that the
- * number depends on your models, your region and your architecture, so someone
- * else's figure tells you nothing about yours. The three names below are theirs,
- * kept verbatim so the numbers are comparable to anything published.
+ * endToEnd: speech stopped -> first output starts
+ * stt: speech stopped -> final transcript
+ * llmTtft: final transcript -> first grounded reply token
+ * ttsTtfb: first queued sentence -> output starts
  *
- *   endToEnd  the whole thing: teacher stops talking -> first syllable back.
- *             This is THE number. Human conversation runs a ~200ms median gap;
- *             past ~300ms a silence starts reading as hesitation and past
- *             ~700ms as reluctance; production voice agents target ~800ms
- *             median. Anything over about 1500ms reads as broken.
- *   stt       stopped talking -> transcript in hand (upload + Whisper).
- *   llmTtft   transcript sent -> first token of the reply.
- *   ttsTtfb   first sentence handed to TTS -> its first audio scheduled.
- *
- * Deliberately console-and-memory rather than a telemetry pipeline. There is no
- * analytics infrastructure in this app to plug into, and inventing one to answer
- * a tuning question would be the wrong order of work. `window.__voiceMetrics`
- * holds the session's turns and `window.__voiceStats()` prints percentiles, so
- * the question is answerable from the devtools console after a real
- * conversation — which is all that's needed to decide whether the remaining
- * latency justifies moving to a realtime speech-to-speech model.
+ * In-memory diagnostics only. Synthetic preview responses are excluded by the
+ * provider. No transcript, audio, or teacher identifiers enter these samples.
  */
 
 const LIMIT = 200
@@ -125,17 +110,6 @@ export function stats() {
     'llm ttft': out.llmTtft,
     'tts ttfb': out.ttsTtfb,
   })
-  const p50 = out.endToEnd?.p50
-  if (p50 != null) {
-    const read =
-      p50 < 800
-        ? 'at the production target (~800ms median)'
-        : p50 < 1500
-          ? 'usable, above target — worth another pass before considering realtime'
-          : 'reads as broken to a listener; fix this before anything else'
-    // eslint-disable-next-line no-console
-    console.info(`[voice] median end-to-end ${p50}ms — ${read}`)
-  }
   return out
 }
 

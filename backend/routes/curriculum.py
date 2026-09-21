@@ -13,10 +13,11 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
-from .. import curriculum, db, storage
+from .. import curriculum, db, material_jobs, storage
 from ..calendar_intake import fetch_url_text
 from ..config import settings
 from ..deps import get_current_user
+from ..entitlement import require_entitlement
 from ..errors import AppError
 from .misc import _download_google_doc_as_docx, _spool, read_text_from_path
 
@@ -77,6 +78,10 @@ def _map_out(row: dict) -> dict:
         "original_name": row["original_name"],
         "chars": row["chars"],
         "uploaded_at": row["uploaded_at"],
+        "processing_status": row.get("processing_status", "ready"),
+        "processing_error": row.get("processing_error"),
+        "chunk_count": row.get("chunk_count", 0),
+        "week_count": row.get("week_count", 0),
     }
 
 
@@ -113,6 +118,7 @@ def upload_curriculum_map(
     is_global: bool = Form(default=False),
     user_id: str = Depends(get_current_user),
 ):
+    require_entitlement(user_id)
     if class_id and not db.get_class(user_id, class_id):
         raise AppError("not_found", "That class doesn't exist.", status=404)
     if kind not in db.DOCUMENT_KINDS:
@@ -140,7 +146,9 @@ def upload_curriculum_map(
         # The ORIGINAL bytes, not the extracted text, so a later download or
         # re-embed reflects exactly what the teacher uploaded.
         stored_path.write_bytes(spooled.read_bytes())
-        storage.mirror_file(stored_path)
+        if not storage.mirror_file(stored_path):
+            stored_path.unlink(missing_ok=True)
+            raise AppError('storage_unavailable', 'The upload could not be saved safely. Try again shortly.', status=503)
     finally:
         spooled.unlink(missing_ok=True)
 
@@ -179,24 +187,31 @@ def upload_curriculum_map(
             chars=len(text),
         )
 
-    try:
-        chunk_count = curriculum.embed_map(map_id, user_id, subject, text)
-    except Exception as e:  # noqa: BLE001 — the DB row is the record of truth; embedding can be retried
-        log.warning("embedding failed for map %s: %s", map_id, e)
-        chunk_count = 0
-
-    try:
-        weeks = curriculum.parse_curriculum_progress(text, subject, user_id)
-        db.replace_curriculum_progress(user_id, map_id, subject, weeks)
-    except Exception as e:  # noqa: BLE001 — same: upload succeeds even if the LLM parse fails
-        log.warning("progress parse failed for map %s: %s", map_id, e)
-        weeks = []
-
-    out = _map_out(row)
+    # The insertion trigger durably queued the job with the source row. A
+    # second enqueue could restart a very fast job that already finished.
+    out = _map_out(db.get_curriculum_map(user_id, map_id) or row)
     out["kind"] = row.get("kind")
-    out["chunks_embedded"] = chunk_count
-    out["weeks_parsed"] = len(weeks)
+    out.update(chunks_embedded=out['chunk_count'], weeks_parsed=out['week_count'])
     return out
+
+
+@router.post('/curriculum_map/{map_id}/retry')
+def retry_curriculum_map(map_id: str, user_id: str = Depends(get_current_user)):
+    require_entitlement(user_id)
+    row = db.get_curriculum_map(user_id, map_id)
+    if not row:
+        raise AppError('map_not_found', 'No such document.', status=404)
+    status = material_jobs.enqueue(map_id, user_id)
+    return _map_out(row) | {'processing_status': status, 'processing_error': None}
+
+
+@router.get('/curriculum_map/{map_id}/preview')
+def preview_curriculum_map(map_id: str, user_id: str = Depends(get_current_user)):
+    row = db.get_curriculum_map(user_id, map_id)
+    if not row:
+        raise AppError('map_not_found', 'No such document.', status=404)
+    chunks = db._rows('SELECT document FROM curriculum_chunks WHERE map_id=? AND user_id=? ORDER BY chunk_index LIMIT 3', (map_id, user_id))
+    return _map_out(row) | {'excerpts': [item['document'][:1500] for item in chunks]}
 
 
 @router.delete("/curriculum_map/{map_id}", status_code=204)

@@ -57,10 +57,14 @@ export function apiErrorFromBody(body, status = 0) {
   return new ApiError(`Request failed (${status})`, {
     code: 'http_error',
     status,
+    // Gateways often send HTML instead of our JSON envelope. Streaming
+    // callers still need to recognize a temporary outage. This flag does
+    // not cause the request() client to retry non-idempotent writes.
+    extra: { retryable: [408, 429, 502, 503, 504].includes(status) },
   })
 }
 
-async function toError(res) {
+export async function toError(res) {
   let body = null
   try {
     body = await res.json()
@@ -75,57 +79,75 @@ async function toError(res) {
   if (res.status === 401 && !res.url.includes('/api/auth/')) {
     window.dispatchEvent(new CustomEvent('flexed:unauthorized'))
   }
-  return apiErrorFromBody(body, res.status)
+  const error = apiErrorFromBody(body, res.status)
+  const retryAfter = res.headers?.get('retry-after')
+  if (retryAfter) {
+    const seconds = Number(retryAfter)
+    const delay = Number.isFinite(seconds) ? seconds : (Date.parse(retryAfter) - Date.now()) / 1000
+    if (Number.isFinite(delay) && delay >= 0) error.extra.retry_after_seconds = delay
+  }
+  return error
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const sleep = (ms, signal) => new Promise((resolve, reject) => {
+  const abort = () => {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', abort)
+    reject(Object.assign(new Error('Aborted'), { name: 'AbortError' }))
+  }
+  const timer = setTimeout(() => {
+    signal?.removeEventListener('abort', abort)
+    resolve()
+  }, ms)
+  if (signal?.aborted) abort()
+  else signal?.addEventListener('abort', abort, { once: true })
+})
 const isSafeRead = (method) => method === 'GET' || method === 'HEAD'
 
-async function request(path, { method = 'GET', body, signal, timeoutMs = 20000 } = {}) {
-  // A bare fetch has no default timeout, so a backend that stalls without
-  // ever sending a response (a stuck DB connection, a dead proxy) leaves the
-  // promise pending forever and callers like OnboardingWizard.finish() never
-  // resolve their try/finally. Bound every request so a stall surfaces as an
-  // ordinary network error instead.
-  // Retries belong here, not scattered across every list view. Only safe reads
-  // retry automatically: a transient gateway failure should not create a
-  // second plan, revision, or upload. Writes already carry explicit
-  // idempotency where needed (messages) and otherwise remain one deliberate
-  // request the UI can report honestly.
+export async function request(path, { method = 'GET', body, signal, timeoutMs = 20000 } = {}) {
+  // One deadline includes retries, backoff AND response-body consumption.
+  // Callers must not add another retry loop around this transport policy.
   const maxAttempts = isSafeRead(method) ? 3 : 1
-  let res
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const timeoutController = new AbortController()
-    const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
-    const combinedSignal = signal
-      ? AbortSignal.any([signal, timeoutController.signal])
-      : timeoutController.signal
-    try {
-      res = await fetch(`${API_BASE}${path}`, {
-        method,
-        signal: combinedSignal,
-        credentials: 'include',
-        headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      })
-      if (res.ok || !isSafeRead(method) || ![502, 503, 504].includes(res.status) || attempt === maxAttempts - 1) break
-    } catch (err) {
-      if (err.name === 'AbortError' && signal?.aborted) throw err
-      if (attempt === maxAttempts - 1) {
-        if (err.name === 'AbortError') throw new ApiError('The server took too long to respond.', { code: 'timeout' })
-        throw new ApiError('Can’t reach the server.', {
-          code: 'network_error',
-          hint: 'Check your connection and try again.',
+  const timeoutController = new AbortController()
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs)
+  const combinedSignal = signal
+    ? AbortSignal.any([signal, timeoutController.signal])
+    : timeoutController.signal
+  try {
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        const res = await fetch(`${API_BASE}${path}`, {
+          method,
+          signal: combinedSignal,
+          credentials: 'include',
+          headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+          body: body === undefined ? undefined : JSON.stringify(body),
         })
+        if (!res.ok) {
+          if (isSafeRead(method) && [502, 503, 504].includes(res.status) && attempt < maxAttempts - 1) {
+            await res.body?.cancel()
+          } else {
+            throw await toError(res)
+          }
+        } else {
+          if (res.status === 204) return null
+          return await res.json()
+        }
+      } catch (err) {
+        if (combinedSignal.aborted || err instanceof ApiError) throw err
+        if (err instanceof SyntaxError) throw new ApiError('The server returned an unreadable response.', { code: 'invalid_response' })
+        if (attempt === maxAttempts - 1) throw err
       }
-    } finally {
-      clearTimeout(timeoutId)
+      await sleep(250 * 2 ** attempt + Math.random() * 100, combinedSignal)
     }
-    await sleep(250 * 2 ** attempt)
+  } catch (err) {
+    if (signal?.aborted) throw Object.assign(new Error('Aborted'), { name: 'AbortError' })
+    if (timeoutController.signal.aborted) throw new ApiError('The server took too long to respond.', { code: 'timeout' })
+    if (err instanceof ApiError) throw err
+    throw new ApiError('Can’t reach the server.', { code: 'network_error', hint: 'Check your connection and try again.' })
+  } finally {
+    clearTimeout(timeoutId)
   }
-  if (!res.ok) throw await toError(res)
-  if (res.status === 204) return null
-  return res.json()
 }
 
 async function upload(path, formData, { signal } = {}) {
@@ -137,7 +159,12 @@ async function upload(path, formData, { signal } = {}) {
   let res
   try {
     res = await fetch(`${API_BASE}${path}`, { method: 'POST', body: formData, signal: combinedSignal, credentials: 'include' })
+    if (!res.ok) throw await toError(res)
+    return await res.json()
   } catch (err) {
+    if (signal?.aborted) throw Object.assign(new Error('Aborted'), { name: 'AbortError' })
+    if (timeoutController.signal.aborted) throw new ApiError('The upload took too long.', { code: 'timeout' })
+    if (err instanceof ApiError) throw err
     if (err.name === 'AbortError') {
       if (signal?.aborted) throw err
       throw new ApiError('The upload took too long.', { code: 'timeout' })
@@ -146,8 +173,6 @@ async function upload(path, formData, { signal } = {}) {
   } finally {
     clearTimeout(timeoutId)
   }
-  if (!res.ok) throw await toError(res)
-  return res.json()
 }
 
 function filenameFromDisposition(header, fallback) {
@@ -327,7 +352,7 @@ export const api = {
         ...(mode ? { mode } : {}),
       },
     }),
-  getChat: (id) => request(`/api/chats/${id}`),
+  getChat: (id, { signal } = {}) => request(`/api/chats/${id}`, { signal }),
   renameChat: (id, title) => request(`/api/chats/${id}`, { method: 'PATCH', body: { title } }),
   togglePin: (id, isPinned) => request(`/api/chats/${id}/pin`, { method: 'PATCH', body: { is_pinned: isPinned } }),
   /** Re-point an existing conversation at a different week — the composer's
@@ -367,8 +392,8 @@ export const api = {
   // separate endpoint rather than a flag on listPlans: the grouping needs to
   // pull every revision for the class server-side to fold them together,
   // which isn't the same query shape as listPlans' paginated flat list.
-  listPlanWeeks: (classId) => request(`/api/plans/weeks?class_id=${encodeURIComponent(classId)}`),
-  getPlan: (id) => request(`/api/plans/${id}`),
+  listPlanWeeks: (classId, { signal } = {}) => request(`/api/plans/weeks?class_id=${encodeURIComponent(classId)}`, { signal }),
+  getPlan: (id, { signal } = {}) => request(`/api/plans/${id}`, { signal }),
   getDocumentStatus: (id) => request(`/api/plans/${id}/document-status`),
   rebuildPlan: (id) => request(`/api/plans/${id}/rebuild`, { method: 'POST' }),
   // Restore a previously captured plan snapshot. The server validates the
@@ -683,8 +708,8 @@ export const api = {
     if (state) qs.set('state', state)
     return request(`/api/standards/batch?${qs}`, { signal })
   },
-  getStandardsCoverage: (classId, { signal } = {}) =>
-    request(`/api/standards/coverage?class_id=${encodeURIComponent(classId)}`, { signal }),
+  getStandardsCoverage: (classId, { signal, summary = false } = {}) =>
+    request(`/api/standards/coverage?class_id=${encodeURIComponent(classId)}${summary ? '&summary=true' : ''}`, { signal }),
 
   /* ── sharing a plan by link ───────────────────────────────────────────────
    *

@@ -8,9 +8,11 @@ import {
   useParams,
 } from 'react-router-dom'
 import { GoogleOAuthProvider } from '@react-oauth/google'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import { motion, MotionConfig, useReducedMotion } from 'framer-motion'
 import { onboardingDeferred } from './lib/onboardingWizardBus'
+import { hasCompletedOnboarding } from './lib/authState'
+import { qk } from './lib/queryKeys'
 import { ToastProvider } from './components/ToastProvider'
 import { ConfirmProvider } from './components/ConfirmProvider'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -134,6 +136,7 @@ function RememberClass() {
  *  popover or an overlay. */
 function ClassRoutes() {
   const { user } = useAuth()
+  const queryClient = useQueryClient()
   const { classId } = useParams()
   // The chat is the authenticated default destination. Starting its request
   // while the route shell resolves removes a network round trip from the first
@@ -154,7 +157,11 @@ function ClassRoutes() {
   // the redirect fires again immediately and there is no way into the app —
   // see deferOnboarding() in lib/onboardingWizardBus.js. Session-scoped, so
   // the wizard still returns next login; it is not a way to opt out.
-  if (user && !user.onboarding_seen_at && !onboardingDeferred(user.id)) {
+  // Completion writes the account cache before navigating, but React Query
+  // batches AuthProvider's observer notification. Check the same account's
+  // latest cache value so that one stale render cannot bounce the handoff
+  // through setup and discard the topic/week navigation state.
+  if (user && !hasCompletedOnboarding(user, queryClient.getQueryData(qk.me)) && !onboardingDeferred(user.id)) {
     return <Navigate to={`/c/${classId}/onboarding`} replace />
   }
   return (
@@ -236,7 +243,7 @@ function RouteTransition({ children }) {
  *  /c/x/week/12 with an expired cookie should land back on that week, not at the
  *  top of the app. */
 function Gate() {
-  const { status } = useAuth()
+  const { status, refresh } = useAuth()
   const location = useLocation()
   /* Cleared in an effect keyed on `status`, not read-and-cleared inline: a
      removeItem during render would make the render depend on its own prior
@@ -254,6 +261,19 @@ function Gate() {
       /* not available */
     }
   }, [status])
+
+  if (status === 'unavailable') {
+    return (
+      <main className="flex min-h-app w-full items-center justify-center bg-paper p-gutter">
+        <div className="flex max-w-measure-form flex-col gap-3 text-center" role="alert">
+          <h1 className="text-lg font-semibold text-ink">We couldn’t connect to your workspace</h1>
+          <p className="note">Your session hasn’t been signed out. Check your connection and try again.</p>
+          <button type="button" className="btn mx-auto" onClick={() => { void refresh().catch(() => {}) }}>Try again</button>
+          <a href="mailto:support@flexedacademy.com" className="text-sm text-accent-text">Contact support</a>
+        </div>
+      </main>
+    )
+  }
 
   if (status === 'loading') {
     let knownAuthed = false
@@ -453,7 +473,7 @@ const queryClient = new QueryClient({
     queries: {
       // A 401 is handled globally by api.js dispatching flexed:unauthorized;
       // retrying it three times first just delays the login screen.
-      retry: (count, err) => err?.status !== 401 && err?.status !== 404 && count < 2,
+      retry: false,
       refetchOnWindowFocus: false,
       /* Was unset, i.e. staleTime: 0 — every query refetched on EVERY mount.
          Measured on one page navigation: /api/auth/me six times, /api/classes

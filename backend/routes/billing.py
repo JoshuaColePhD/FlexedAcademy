@@ -332,6 +332,15 @@ async def webhook(request: Request):
 
 def _handle_webhook_event(payload: bytes, signature: str) -> dict:
     event = stripe_api.verify_webhook(payload, signature, settings.stripe_webhook_secret)
+    obj = (event.get("data") or {}).get("object") or {}
+    object_id = obj.get("subscription") if event.get("type") == "checkout.session.completed" else obj.get("id")
+    # A transaction-scoped database lock works across processes and rolls back
+    # both the account change and receipt if any later step fails.
+    with db.stripe_webhook_transaction(str(object_id or event.get("id") or "unknown")):
+        return _apply_webhook_event(event)
+
+
+def _apply_webhook_event(event: dict) -> dict:
     kind = event.get("type")
     obj = (event.get("data") or {}).get("object") or {}
     event_id = event.get("id")
@@ -405,6 +414,14 @@ def _handle_webhook_event(payload: bytes, signature: str) -> dict:
         log.info("subscription started user=%s status=%s", user_id, status)
 
     elif kind in _SUB_EVENTS:
+        # Provider event timestamps have second precision. Distinct events in
+        # the same second cannot be ordered from that timestamp; read the live
+        # subscription while holding the object's processing lock instead.
+        if (
+            isinstance(object_id, str) and event_created_at is not None
+            and db.stripe_object_event_has_timestamp(object_id, event_created_at)
+        ):
+            obj = stripe_api.get_subscription(object_id)
         user_id = _resolve_user(obj)
         if not user_id:
             log.warning("%s could not be matched to a user", kind)

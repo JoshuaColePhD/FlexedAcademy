@@ -3,10 +3,17 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { installMockApi } from './mockApi'
 import App from '../App.jsx'
+import { VoiceTransportContext } from '../lib/voiceContext'
+import { createPreviewVoiceTransport } from '../lib/voicePreviewTransport'
 
 installMockApi()
 
 const params = new URLSearchParams(window.location.search)
+// This injection lives only in the excluded preview entry. It cannot request
+// a microphone or a provider token; live voice continues to use WebRTC.
+if (params.has('voice')) sessionStorage.setItem('preview:voice', params.get('voice') === '1' ? '1' : '0')
+const previewVoice = sessionStorage.getItem('preview:voice') === '1'
+  && ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)
 /* ?anon=1 boots signed out, which is the only way to see the landing page —
    /api/auth/me must 401 for Gate to take the anon branch. */
 if (params.has('anon')) {
@@ -46,14 +53,27 @@ const FRESH_KEY = 'preview:fresh'
 if (params.get('fresh') === '0') sessionStorage.removeItem(FRESH_KEY)
 else if (params.has('fresh')) sessionStorage.setItem(FRESH_KEY, '1')
 
-if (sessionStorage.getItem(FRESH_KEY) === '1') {
+if (sessionStorage.getItem(FRESH_KEY) === '1' && !window.__mock.restored) {
   const st = window.__mock.state
   st.classes.length = 0
+  st.chats = []
+  st.messages = {}
+  st.plans = {}
+  st.planChat = {}
+  st.ownedPlanIds = []
+  st.documents = []
+  st.delivery = {}
+  st.versions = {}
   st.me.onboarding_seen_at = null
   st.me.onboarding_state = 'not_started'
   st.me.onboarding_step = null
   st.me.avatar = null
   st.me.school = 'generic'
+  if (!params.has('trial')) Object.assign(st.entitlement, {
+    may_generate: true, subscribed: false, status: null, plans_used: 0,
+    tokens_used: 0, token_cap: 150_000, tokens_remaining: 150_000,
+    trial_expired: false, trial_days_remaining: 7,
+  })
   // and no state, so the school step actually asks for one
   st.classes.forEach((c) => { c.state = null })
 }
@@ -86,6 +106,8 @@ if (at || !current || current === '/') {
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
+    <VoiceTransportContext.Provider value={previewVoice ? createPreviewVoiceTransport : null}>
+      <App />
+    </VoiceTransportContext.Provider>
   </StrictMode>
 )

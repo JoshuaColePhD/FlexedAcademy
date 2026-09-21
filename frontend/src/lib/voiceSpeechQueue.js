@@ -1,75 +1,82 @@
-/* Serialize Realtime response.create events. The transport can stay open
- * while the queue waits; only response.done releases the next item.
- *
- * Deliberately serial, not a missed pipelining opportunity: the Realtime API
- * models one active response per conversation at a time, so a second
- * response.create sent before the first's response.done is a protocol error,
- * not a free speedup. The actual fix for "sentences have dead air between
- * them" lives one layer up, in useChatStream's emitSentences — it now cuts
- * only the turn's opener as its own early response.create and coalesces
- * everything after it into one final flush, so a reply costs exactly two
- * serialized round trips through this queue instead of one per sentence. */
-export function createSpeechQueue({ send, isOpen }) {
+/* Keep one response in flight, including cancellation acknowledgement.
+ * WebRTC playback drains after response.done; the provider waits for both
+ * before advancing so captions and barge-in follow audible speech. */
+export function createSpeechQueue({ send, isOpen, waitForPlayback = false }) {
   const items = []
   let current = null
-  let inFlight = false
+  let sequence = 0
 
   const pump = () => {
-    if (inFlight || !isOpen()) return
+    if (current || !isOpen()) return
     const item = items.shift()
     if (!item) return
     current = item
-    inFlight = true
     if (!send({
       type: 'response.create',
       response: {
+        conversation: 'none',
+        input: [],
+        metadata: { speech_id: item.speechId },
         output_modalities: ['audio'],
         instructions:
           'Read the following text aloud, verbatim, in a natural speaking voice. ' +
           'Do not summarise it, react to it, add to it, or omit any of it.\n\n' + item.text,
       },
     })) {
-      inFlight = false
       current = null
       items.unshift(item)
     }
   }
+  const matches = (id) => Boolean(current && (!id || (current.responseId && id === current.responseId)))
+  const release = () => { current = null; pump() }
 
   return {
     enqueue(text, options = {}) {
       const line = typeof text === 'string' ? text.trim() : ''
       if (!line) return
-      items.push({ text: line, ...options })
+      items.push({ ...options, text: line, speechId: `speech-${++sequence}` })
       pump()
     },
-    responseCreated(id) {
-      if (current && id) current.responseId = id
+    responseCreated(id, speechId) {
+      if (!current || (speechId && current.speechId !== speechId)) return false
+      if (current.responseId && id !== current.responseId) return false
+      if (id) current.responseId = id
+      if (current.cancelled && id) {
+        // Out-of-band responses require their ID to cancel. A teacher can
+        // interrupt before response.created supplies that ID.
+        send({ type: 'response.cancel', response_id: id })
+        send({ type: 'output_audio_buffer.clear' })
+      }
+      return !current.cancelled
     },
-    responseDone(id) {
-      if (!current) return false
-      if (current.responseId && id && current.responseId !== id) return false
-      current = null
-      inFlight = false
-      pump()
+    accepts(id) { return matches(id) && !current.cancelled },
+    responseDone(id, { status = 'completed', hasAudio = true } = {}) {
+      if (!matches(id)) return false
+      current.generated = true
+      if (current.cancelled || status !== 'completed' || !hasAudio || !waitForPlayback || current.playbackDone) release()
+      return true
+    },
+    playbackDone(id) {
+      if (!matches(id)) return false
+      current.playbackDone = true
+      if (current.generated) release()
       return true
     },
     cancel() {
-      if (current || items.length) send({ type: 'response.cancel' })
-      current = null
-      inFlight = false
       items.length = 0
+      if (!current || current.cancelled) return
+      const active = current
+      active.cancelled = true
+      if (!active.generated && active.responseId) {
+        send({ type: 'response.cancel', response_id: active.responseId })
+      }
+      send({ type: 'output_audio_buffer.clear' })
+      // Until response.done, a new create risks racing the old response.
+      if (current === active && active.generated) release()
     },
-    clear() {
-      current = null
-      inFlight = false
-      items.length = 0
-    },
-    current() {
-      return current
-    },
-    pending() {
-      return items.length
-    },
+    clear() { current = null; items.length = 0 },
+    current() { return current?.cancelled ? null : current },
+    pending() { return items.length },
     pump,
   }
 }

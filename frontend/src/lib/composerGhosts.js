@@ -35,17 +35,20 @@ const joinLabels = (labels) => {
 
 const candidate = (id, prompt, priority) => ({ id, prompt, priority })
 
-export function composerGhostCandidates({ week, documents = [], attachments = [], hasPlan = false, modelSuggestion = '' } = {}) {
+export function composerGhostCandidates({ week, documents = [], attachments = [], hasPlan = false, hasArtifact = false, planOpen = false, days = [], modelSuggestion = '' } = {}) {
   const weekLabel = readableWeek(week)
   const materials = materialLabels(documents)
   const freshMaterial = attachments.find((attachment) => attachment?.filename)?.filename
   const candidates = []
+  const revising = hasPlan || hasArtifact || planOpen
 
   // This arrives asynchronously after the class context changes (never while
   // a teacher is typing). It is generated from the current week plus retrieved
   // class sources and fresh attachment text, so it can name a real unit, text,
   // or skill instead of merely naming a document type.
-  if (modelSuggestion) {
+  // The suggestion endpoint describes a week to build, not an edit to the
+  // document currently open. Keep that older prompt out of the editing surface.
+  if (modelSuggestion && !planOpen) {
     candidates.push(candidate('grounded-context', modelSuggestion, 0))
   }
 
@@ -55,26 +58,37 @@ export function composerGhostCandidates({ week, documents = [], attachments = []
   if (freshMaterial) {
     candidates.push(candidate(
       `attachment:${freshMaterial}`,
-      `Use ${freshMaterial} to plan ${weekLabel}.`,
+      `Use ${freshMaterial} to ${planOpen ? 'revise' : 'plan'} ${weekLabel}.`,
       1
     ))
+  }
+
+  if (planOpen) {
+    const teachingDays = (Array.isArray(days) ? days : []).filter((day) =>
+      !day?.no_school && !day?.pending && !day?.incomplete && ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].includes(day?.name)
+    )
+    const day = teachingDays.find((item) => item.name === 'Wednesday') || teachingDays[0]
+    candidates.push(candidate('edit-support', day ? `Add support for ${day.name}'s lesson.` : 'Add support to this lesson.', 2))
+    candidates.push(candidate('edit-check', 'Add a quick check for understanding.', 2))
   }
 
   if (materials.length) {
     candidates.push(candidate(
       `materials:${materials.join('|')}`,
-      `${hasPlan ? 'Revise' : 'Plan'} ${weekLabel} using the ${joinLabels(materials)}.`,
+      `${revising ? 'Revise' : 'Plan'} ${weekLabel} using the ${joinLabels(materials)}.`,
       2
     ))
   }
 
   candidates.push(candidate(
-    hasPlan ? `revise:${weekLabel}` : `plan:${weekLabel}`,
-    hasPlan ? `Revise the lesson plan for ${weekLabel}.` : `Plan ${weekLabel}.`,
+    revising ? `revise:${weekLabel}` : `plan:${weekLabel}`,
+    revising ? `Revise the lesson plan for ${weekLabel}.` : `Plan ${weekLabel}.`,
     3
   ))
 
-  candidates.push(candidate('write-week', 'Write a lesson for this week.', 4))
+  candidates.push(planOpen
+    ? candidate('edit-activity', 'Make the activity more engaging.', 4)
+    : candidate('write-week', 'Write a lesson for this week.', 4))
 
   return candidates
 }

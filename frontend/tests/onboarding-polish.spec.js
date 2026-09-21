@@ -1,91 +1,95 @@
 import { expect, test } from '@playwright/test'
 
-/* The onboarding preview is a real, local first-run flow backed by mockApi;
- * it needs no account and gives layout checks a stable fixture. These assert
- * geometry rather than a screenshot so a palette or font-rendering change
- * cannot hide the regressions this pass fixed: a detached rail, an action row
- * stranded in a separate location, or a final state with no destination in the path. */
-test.describe('onboarding progress journey', () => {
-  test('aligns the desktop rail, keeps the action footer stationary, reserves a terminal destination, and hands focus to the next question', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 })
-    await page.goto('/preview.html?fresh=1')
-    await page.evaluate(() => document.fonts.ready)
+async function chooseClass(page) {
+  await page.getByLabel('State', { exact: true }).selectOption('AL')
+  await page.getByLabel('Grade', { exact: true }).selectOption('11')
+  await page.getByRole('searchbox', { name: 'Search courses' }).fill('AP English Language')
+  await page.getByRole('radio', { name: /AP English Language/ }).check()
+}
 
-    await expect(page.locator('.onboarding-rail-step[data-terminal="true"]')).toHaveCount(1)
-    await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Welcome to your next chapter.' })).toBeVisible()
+async function countChatRequests(page) {
+  // The stream transport may capture fetch before this step. Count at the
+  // installed mock boundary so module-load order cannot bypass the assertion.
+  await page.evaluate(() => window.__mock.reset())
+}
 
-    await expect.poll(async () => page.evaluate(() => {
-      const rail = document.querySelector('.onboarding-rail-slot')?.getBoundingClientRect()
-      const question = document.querySelector('.onboarding-question')?.getBoundingClientRect()
-      return Math.abs((rail?.top ?? 0) - (question?.top ?? 0))
-    })).toBeLessThanOrEqual(4)
+async function chatRequestCount(page) {
+  return page.evaluate(() => window.__mock.calls.filter((call) => call.path === '/api/chat_stream').length)
+}
 
-    const geometry = await page.evaluate(() => {
-      const footer = document.querySelector('.onboarding-footer')?.getBoundingClientRect()
-      return { footerBottom: footer?.bottom, viewportBottom: window.innerHeight }
-    })
-    expect(geometry.footerBottom).toBeLessThanOrEqual(geometry.viewportBottom)
-    const profileFooterBottom = geometry.footerBottom
+test('two-step setup preserves the actual topic and starts one first-plan request', async ({ page }) => {
+  const errors = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/preview.html?fresh=1')
+  await expect(page.getByRole('heading', { name: 'Which class are we planning for?' })).toBeVisible()
+  await expect(page.getByRole('option', { name: 'All grades', exact: true })).toHaveCount(0)
+  await chooseClass(page)
+  await page.getByRole('button', { name: 'Continue to my first week' }).click()
+  await expect(page.getByRole('heading', { name: 'What are you teaching next?' })).toBeVisible()
+  await expect(page.locator('.onboarding-avatar-wide')).toHaveCount(0)
+  await expect(page.getByText('A source from your course')).toBeVisible()
+  await page.getByLabel('Topic, text, or skill').fill('Compare the arguments in two speeches and write a response on Friday.')
+  await countChatRequests(page)
+  await page.getByRole('button', { name: 'Build my first plan' }).click()
+  await expect.poll(() => chatRequestCount(page)).toBe(1)
+  await expect.poll(() => page.evaluate(() => window.__mock.state.lastPrompt || '')).toContain('Compare the arguments in two speeches')
+  await expect(page).toHaveURL(/\/c\/[^/]+\/chat\//)
+  await expect(page.locator('.plan-table')).toBeVisible({ timeout: 15_000 })
+  expect(await page.evaluate(() => window.__mock.state.ownedPlanIds.length)).toBe(1)
+  expect(await chatRequestCount(page)).toBe(1)
+  expect(errors).toEqual([])
+})
 
-    await page.getByRole('button', { name: 'Continue' }).click()
-    await expect(page.getByRole('heading', { name: 'Where do you teach?' })).toBeVisible()
-    await expect.poll(() => page.evaluate(() => ({
-      active: document.activeElement?.id,
-      scrollTop: document.querySelector('.onboarding-scroll')?.scrollTop,
-      titles: document.querySelectorAll('#onboarding-title').length,
-    }))).toEqual({ active: 'onboarding-title', scrollTop: 0, titles: 1 })
+test('unfinished class choices resume after refresh without a profile step', async ({ page }) => {
+  await page.goto('/preview.html?fresh=1')
+  await chooseClass(page)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'Which class are we planning for?' })).toBeVisible()
+  await expect(page.getByLabel('State', { exact: true })).toHaveValue('AL')
+  await expect(page.getByLabel('Grade', { exact: true })).toHaveValue('11')
+  await expect(page.getByRole('radio', { name: /AP English Language/ })).toBeChecked()
+  await expect(page.getByRole('button', { name: 'Continue to my first week' })).toBeEnabled()
+})
 
-    const footerBottom = () => page.evaluate(() => document.querySelector('.onboarding-footer')?.getBoundingClientRect().bottom)
-    expect(Math.abs(await footerBottom() - profileFooterBottom)).toBeLessThanOrEqual(1)
+test('a saved class and unfinished first-week topic resume without a duplicate class', async ({ page }) => {
+  await page.goto('/preview.html?fresh=1&persist=1')
+  await chooseClass(page)
+  await page.getByRole('button', { name: 'Continue to my first week' }).click()
+  await page.getByLabel('Topic, text, or skill').fill('Resume this close reading lesson')
+  const classId = await page.evaluate(() => window.__mock.state.classes[0].id)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: 'What are you teaching next?' })).toBeVisible()
+  await expect(page.getByLabel('Topic, text, or skill')).toHaveValue('Resume this close reading lesson')
+  expect(await page.evaluate(() => window.__mock.state.classes.map((row) => row.id))).toEqual([classId])
+})
 
-    await page.locator('#onboarding-state').selectOption('AL')
-    await page.getByRole('button', { name: /Skip the school/ }).click()
-    await expect(page.getByRole('heading', { name: 'What grade do you teach?' })).toBeVisible()
-    await page.getByRole('option', { name: '11th', exact: true }).click()
-    await expect(page.getByRole('heading', { name: 'Which subject area?' })).toBeVisible()
-    await page.getByRole('option', { name: /English \/ Language Arts/ }).click()
-    await expect(page.getByRole('heading', { name: 'Which course, exactly?' })).toBeVisible()
-    expect(Math.abs(await footerBottom() - profileFooterBottom)).toBeLessThanOrEqual(1)
+test('unsupported state keeps grade explicit and saves context without promising generation', async ({ page }) => {
+  await page.goto('/preview.html?fresh=1')
+  await page.getByLabel('State', { exact: true }).selectOption('TX')
+  await page.getByLabel('Grade', { exact: true }).selectOption('3')
+  await page.getByLabel('Course name', { exact: true }).fill('English Language Arts')
+  await page.getByRole('button', { name: 'Continue to my first week' }).click()
+  await page.getByLabel('Topic, text, or skill').fill('Compare two stories')
+  await countChatRequests(page)
+  await expect(page.getByRole('button', { name: 'Build my first plan' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Save my teaching context' }).click()
+  await expect(page).toHaveURL(/\/c\/[^/]+$/)
+  await expect(page.locator('#composer-input')).toHaveValue('Compare two stories')
+  expect(await chatRequestCount(page)).toBe(0)
+})
 
-    await page.getByRole('option', { name: /AP English Language/ }).click()
-    await expect(page.getByRole('heading', { name: 'Is this your school year?' })).toBeVisible()
-    await expect.poll(() => page.locator('#onboarding-title').evaluate((el) => el === document.activeElement)).toBe(true)
-    expect(Math.abs(await footerBottom() - profileFooterBottom)).toBeLessThanOrEqual(1)
-
-    await page.getByRole('button', { name: 'Continue', exact: true }).click()
-    await page.getByRole('button', { name: 'Skip — use a neutral layout for now' }).click()
-    await expect(page.getByRole('heading', { name: "You're ready to make great things." })).toBeVisible()
-    await expect(page.locator('.onboarding-confetti')).toHaveCount(32)
-    await page.getByRole('button', { name: 'Open my workspace', exact: true }).click()
-    await expect(page).toHaveURL(/\/c\/[^/]+$/)
-  })
-
-  test('keeps the compact track and fixed action footer inside a phone viewport, including reduced motion', async ({ page }) => {
-    await page.emulateMedia({ reducedMotion: 'reduce' })
-    await page.setViewportSize({ width: 375, height: 812 })
-    await page.goto('/preview.html?fresh=1')
-
-    await expect(page.getByRole('button', { name: 'Continue' })).toBeVisible()
-    // Reduced-motion still used to run .fa-rise-panel for 0.01ms with
-    // fill-mode both, which can leave the shell translated by 2px when this
-    // geometry is read. Wait until that animation is gone before measuring.
-    await page.locator('.onboarding-card').evaluate(async (el) => {
-      if (typeof el.getAnimations !== 'function') return
-      await Promise.all(el.getAnimations().map((animation) => animation.finished.catch(() => {})))
-    })
-    const layout = await page.evaluate(() => ({
-      horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
-      markerDuration: getComputedStyle(document.querySelector('.onboarding-rail-marker')).transitionDuration,
-      footerBottom: document.querySelector('.onboarding-footer')?.getBoundingClientRect().bottom,
-      viewportBottom: window.innerHeight,
-    }))
-    await expect(page.locator('.onboarding-confetti')).toHaveCount(0)
-    expect(await page.locator('.onboarding-celebration-emblem').evaluate((el) => getComputedStyle(el).animationName)).toBe('none')
-    expect(layout.horizontalOverflow).toBe(false)
-    // Chromium serializes the same reduced-motion duration as either 0.01ms
-    // or 1e-05s, depending on the engine build.
-    expect(['0.01ms', '1e-05s']).toContain(layout.markerDuration)
-    expect(layout.footerBottom).toBeLessThanOrEqual(layout.viewportBottom)
-  })
+test('setup remains usable on a phone with reduced motion', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.goto('/preview.html?fresh=1')
+  await chooseClass(page)
+  await page.getByRole('button', { name: 'Continue to my first week' }).click()
+  await expect(page.getByRole('heading', { name: 'What are you teaching next?' })).toBeVisible()
+  await expect(page.getByLabel('Topic, text, or skill')).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+  const target = page.getByRole('button', { name: 'Build my first plan' })
+  await target.scrollIntoViewIfNeeded()
+  const box = await target.boundingBox()
+  expect(box.height).toBeGreaterThanOrEqual(44)
+  expect(box.x + box.width).toBeLessThanOrEqual(375)
 })

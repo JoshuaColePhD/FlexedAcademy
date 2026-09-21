@@ -10,6 +10,8 @@ suites that need neither.
 from __future__ import annotations
 
 import argparse
+import ast
+import os
 import subprocess
 import sys
 import time
@@ -27,6 +29,8 @@ SUITES: list[tuple[str, bool]] = [
     ("test_golden_corpus_alignment.py", True),
     ("test_current_golden_recall.py", True),
     ("test_embedding_cache.py", False),
+    ("test_costs.py", False),
+    ("test_generation_queue.py", False),
     ("test_retrieval_reranker.py", False),
     ("test_feedback_contract.py", False),
     ("test_grounding_audit.py", False),
@@ -85,7 +89,22 @@ def main() -> int:
     for name in suites:
         print(f"\n{'=' * 78}\n{name}\n{'=' * 78}")
         started = time.monotonic()
-        proc = subprocess.run([PY, str(HERE / name)], cwd=HERE.parent, check=False)
+        env = dict(os.environ)
+        env["PYTHONPATH"] = str(HERE.parent) + os.pathsep + env.get("PYTHONPATH", "")
+        if args.fast:
+            # Environment variables override a developer's .env. Fast tests
+            # must never silently use a saved production database or API key.
+            env.update(DATABASE_URL="", OPENAI_API_KEY="", SUPABASE_URL="", SUPABASE_SERVICE_ROLE_KEY="")
+        path = HERE / name
+        # Pytest-style suites without a main entry point otherwise "pass" by
+        # merely defining their test functions and never executing assertions.
+        source = path.read_text()
+        pytest_suite = "__main__" not in source and any(
+            isinstance(node, ast.FunctionDef) and node.name.startswith("test_")
+            for node in ast.parse(source).body
+        )
+        command = [PY, "-m", "pytest", "-q", str(path)] if pytest_suite else [PY, str(path)]
+        proc = subprocess.run(command, cwd=HERE.parent, env=env, check=False)
         results.append((name, proc.returncode == 0, time.monotonic() - started))
 
     print(f"\n{'=' * 78}\nSUMMARY\n{'=' * 78}")

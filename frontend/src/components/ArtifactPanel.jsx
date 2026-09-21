@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import * as Sentry from '@sentry/react'
+import * as Sentry from '../lib/monitoringClient'
 import { useLocation } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { qk } from '../lib/queryKeys'
@@ -16,6 +16,7 @@ import { WeedenLessonPlanTable } from './WeedenLessonPlanTable'
 import { WeedenPlanDayCards } from './WeedenPlanDayCards'
 import { ShareDialog } from './ShareDialog'
 import { DocxDownloadButton } from './DocxDownloadButton'
+import { LessonChangeReceipt } from './LessonChangeReceipt'
 import { Skeleton, SkeletonText, SkeletonRows } from './Skeleton'
 
 /* The artifact, expanded into a working document.
@@ -70,6 +71,7 @@ export function ArtifactPanel({
   onEditDay,
   onPickStandard,
   onPlanRevised,
+  voiceFeedback,
   onFullscreenChange,
   busy,
   preparing,
@@ -301,6 +303,7 @@ const location = useLocation()
         </div>
       </div>
 
+      <LessonChangeReceipt feedback={voiceFeedback} busy={busy} />
       {/* tabIndex + role + label are not polish: a scroll region that only
           responds to pointer drag is a keyboard-access failure (WCAG 2.1.1). */}
       <div className="doc-body" tabIndex={0} role="region" aria-label="The lesson plan document">

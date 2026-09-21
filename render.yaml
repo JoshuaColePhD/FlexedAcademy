@@ -35,16 +35,14 @@ services:
     # Blueprint slug for a 2GB box (matches the live 1c-2g FlexedAcademy
     # service). `free` / `starter` are 512MB and will OOM this image.
     plan: standard
-    # Push to master -> Render rebuilds and redeploys, no dashboard visit. This
-    # is Render's default, but it is stated here so the deploy loop is a fact of
-    # the repo rather than a setting someone has to remember checking.
+    # A master commit deploys only after its CI checks pass.
     #
     # The build runs the FULL pipeline: npm ci, vite build, pip install, PLUS
     # apt-get install of the three system binaries above — slower than the
     # old native buildCommand, and the service is down while it swaps. Batch
     # changes rather than pushing ten times in a row.
     branch: master
-    autoDeploy: true
+    autoDeployTrigger: checksPass
     healthCheckPath: /api/health/ready
     envVars:
       # ── set these in the dashboard ────────────────────────────────────────
@@ -181,6 +179,8 @@ services:
       # until a teacher reports something broken. Get the DSN from
       # Sentry → Settings → Client Keys (DSN) for the project.
       - key: SENTRY_DSN
+        sync: false
+      - key: VITE_SENTRY_DSN
         sync: false
       - key: SENTRY_ENVIRONMENT
         value: "production"

@@ -6,7 +6,9 @@
  */
 
 :root {
-  --sidebar-w: clamp(280px, 24vw, 340px);
+  --sidebar-w: clamp(220px, 20vw, 240px);
+  --materials-w: clamp(240px, 22vw, 280px);
+  --reader-chat-w: clamp(280px, 28vw, 340px);
   --r-xs: 4px;
   --r-sm: 6px;
   --r-md: 8px;
@@ -741,21 +743,16 @@
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--ink-muted-rgb) / 0.38) transparent;
 }
-/* The dock is the bottom edge of the conversation. Its height transition
-   therefore grows upward into the transcript, matching the mental model of
-   writing a longer thought without moving the send controls away. */
+/* Draft growth is measured before paint. Keep geometry out of transitions so
+   a view switch cannot restart an unfinished composer or textarea resize. */
 .composer-shell {
   transition:
-    height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
     border-color var(--t-fast) var(--ease),
     box-shadow 180ms var(--ease-out),
     background-color 180ms var(--ease-out) !important;
-  will-change: height;
 }
 .composer-input {
-  transition:
-    height 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
-    color 160ms var(--ease-out) !important;
+  transition: color 160ms var(--ease-out) !important;
 }
 /* The shell grows from the dock upward. Anchor both control clusters to its
    lower edge, while the textarea is the only piece that claims the added
@@ -914,9 +911,9 @@
   }
   html.is-document-reading .chat-workspace-main,
   .workspace-panes:has(.document-stage) .chat-workspace-main {
-    flex: 0 0 var(--sidebar-w);
-    width: var(--sidebar-w);
-    max-width: var(--sidebar-w);
+    flex: 0 0 var(--reader-chat-w);
+    width: var(--reader-chat-w);
+    max-width: var(--reader-chat-w);
     will-change: flex-basis, width, max-width;
   }
   .workspace-panes:has(.document-stage) {
@@ -1374,7 +1371,7 @@
     bottom: auto;
     height: 100%;
     z-index: 2;
-    width: clamp(292px, 26vw, 360px);
+    width: var(--materials-w);
     border: 0 !important;
     border-left: 1px solid var(--edge) !important;
     border-radius: 0 !important;
@@ -2104,35 +2101,11 @@
        composer slightly inside that lane so its edges share the transcript's
        breathing room without making the command bar spill underneath
        Outputs. This is a static inset, never a response to a panel move. */
-    width: calc(100% - 32px) !important;
+    width: 100% !important;
     max-width: 54rem !important;
+    padding-inline: 18px !important;
   }
 
-  /* The composer has a fixed rectangle, but it need not feel inert. This
-     micro-response is purely visual: no left, width, or layout properties
-     participate, so opening a panel cannot restart the old drift animation. */
-  .composer-dock-host.is-workspace-settling .composer-shell {
-    animation: composer-workspace-settle 180ms var(--ease-workspace) both;
-  }
-}
-
-@keyframes composer-workspace-settle {
-  0%, 100% {
-    transform: translateY(0);
-    border-color: var(--edge);
-    box-shadow: none;
-  }
-  45% {
-    transform: translateY(-3px);
-    border-color: rgb(var(--accent-rgb) / 0.52);
-    box-shadow: 0 8px 20px rgb(0 0 0 / 0.12);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .composer-dock-host.is-workspace-settling .composer-shell {
-    animation: none !important;
-  }
 }
 /* A modal owns the screen while it is open. Keep the persistent composer from
    showing through the dimmed layer as a distracting dark rectangle beneath the
@@ -2155,8 +2128,8 @@ body:has(.dialog-scrim) .composer-dock-surface {
   .workspace-panes > .artifact-drawer {
     display: flex;
     flex-direction: column;
-    flex: 0 0 clamp(280px, 25vw, 340px);
-    width: clamp(280px, 25vw, 340px);
+    flex: 0 0 var(--materials-w);
+    width: var(--materials-w);
     min-width: 0;
   }
   .workspace-panes > .artifact-drawer.is-open .artifact-drawer-body { width: 100%; }
@@ -2308,8 +2281,8 @@ body:has(.dialog-scrim) .composer-dock-surface {
     position: relative !important;
     inset: auto !important;
     z-index: 2;
-    flex: 0 0 clamp(280px, 25vw, 340px) !important;
-    width: clamp(280px, 25vw, 340px) !important;
+    flex: 0 0 var(--materials-w) !important;
+    width: var(--materials-w) !important;
     min-width: 0 !important;
     height: auto !important;
     margin: 10px 10px 10px 0 !important;
@@ -2318,7 +2291,7 @@ body:has(.dialog-scrim) .composer-dock-surface {
        right, and bottom frame provide the distinct inspector silhouette. */
     border-left-color: transparent !important;
     border-radius: 22px !important;
-    background: rgb(28 27 23) !important;
+    background: var(--paper-raised) !important;
     box-shadow: none !important;
   }
   /* The drawer owns the panel surface. Its header and body stay transparent
@@ -4793,6 +4766,13 @@ body:has(.dialog-scrim) .composer-dock-surface {
     display: none;
   }
 
+  /* The open lesson needs a full input row as well as a readable document.
+     A compact navigation rail returns 50px to the conversation at 1000px. */
+  .app-shell-frame.is-tablet-landscape:has(.tablet-plan-pane) > .app-rail {
+    width: clamp(220px, 22vw, 240px) !important;
+    flex-basis: clamp(220px, 22vw, 240px);
+  }
+
   .app-shell-frame.is-tablet-landscape .tablet-plan-pane {
     width: clamp(340px, 36vw, 420px);
     flex-basis: clamp(340px, 36vw, 420px);
@@ -4807,6 +4787,20 @@ body:has(.dialog-scrim) .composer-dock-surface {
      bottom tab bar should never appear alongside it. */
   .app-shell-frame.is-tablet-landscape .mobile-tab-bar {
     display: none !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1199.98px) {
+  /* Preserve the complete wordmark alongside search and new-chat controls
+     when the navigation rail is at its compact 220px width. */
+  .app-shell-frame .app-rail:not(.rail-drawer) .rail-brand-row:not(.is-collapsed) {
+    gap: 4px;
+    padding-inline: 6px !important;
+  }
+
+  .app-rail:not(.rail-drawer) .rail-brand-row > svg {
+    width: 20px;
+    height: 20px;
   }
 }
 
@@ -5151,3 +5145,21 @@ body:has(.dialog-scrim) .composer-dock-surface {
     padding-left: 0 !important;
   }
 }
+
+/* Materials follows the teacher's explicit collapse control. */
+@media (min-width: 768px) {
+  .workspace-panes:not(:has(.document-stage)) > .artifact-drawer.is-closing {
+    flex-basis: 0 !important;
+    width: 0 !important;
+    margin-inline: 0 !important;
+    border-width: 0 !important;
+  }
+}
+.workspace-materials-toggle { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 6px 10px; border-radius: 9px; font-size: 12px; color: var(--ink-muted); }
+.workspace-materials-toggle:hover, .workspace-materials-toggle[aria-expanded='true'] { color: var(--ink); background: var(--paper-sunken); }
+.workspace-materials-toggle:focus-visible, .chat-latest-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-transcript-region { position: relative; display: flex; flex: 1; min-height: 0; flex-direction: column; }
+.workspace-chat { --chat-composer-clearance: 0px; }
+.chat-transcript-scroll.scroll-y { scroll-padding-bottom: calc(24px + var(--chat-composer-clearance)); }
+.chat-latest-button { position: absolute; right: 20px; bottom: var(--latest-bottom, 16px); z-index: 3; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 7px 12px; border: 1px solid var(--edge); border-radius: 18px; background: var(--paper-raised); color: var(--ink-soft); font-size: 12px; box-shadow: var(--shadow-sm); }
+@media (max-width: 767.98px) { .chat-latest-button { right: 14px; min-height: 44px; } }

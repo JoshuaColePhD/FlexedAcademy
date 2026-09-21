@@ -1,21 +1,16 @@
 import { expect, test } from '@playwright/test'
 
-async function openTemplateStep(page, { school = true } = {}) {
-  await page.goto('/preview.html?fresh=1')
-  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+async function openTemplateStep(page) {
+  // Template customization is optional, reached after the first-plan flow.
+  await page.goto('/preview.html?fresh=0&at=/c/c1/settings')
+  await page.getByRole('button', { name: 'Preferences', exact: true }).click()
+  await page.getByRole('button', { name: 'Take the tour again' }).click()
+  await expect(page.getByRole('heading', { name: 'Where do you teach?' })).toBeVisible()
   await page.locator('#onboarding-state').selectOption('AL')
-  if (school) {
-    await page.getByRole('combobox', { name: 'School', exact: true }).click()
-    await page.getByRole('option', { name: /Florence High/ }).click()
-    await page.getByRole('button', { name: 'Continue', exact: true }).click()
-  } else {
-    await page.getByRole('button', { name: /Skip the school/ }).click()
-  }
-  await page.getByRole('option', { name: '11th', exact: true }).click()
-  await page.getByRole('option', { name: /English \/ Language Arts/ }).click()
-  await page.getByRole('option', { name: /AP English Language/ }).click()
-  await page.getByRole('heading', { name: 'Is this your school year?' }).waitFor()
-  await expect.poll(() => page.locator('#onboarding-title').evaluate((el) => el === document.activeElement)).toBe(true)
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Which course, exactly?' })).toBeVisible()
+  await page.getByRole('button', { name: 'Continue', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Is this your school year?' })).toBeVisible()
   await page.getByRole('button', { name: 'Continue', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Make every plan feel like yours.' })).toBeVisible()
 }
@@ -86,9 +81,13 @@ test('Google Doc warnings remain reviewable with reduced motion', async ({ page 
   await expect(page.locator('.onboarding-confetti')).toHaveCount(0)
 })
 
-test('skipping the school gives a clear route back before template upload', async ({ page }) => {
-  await openTemplateStep(page, { school: false })
-  await expect(page.getByRole('button', { name: 'Analyze my template', exact: true })).toBeDisabled()
-  await page.getByRole('button', { name: 'Choose a school', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Where do you teach?' })).toBeVisible()
+test('a first plan does not require a school template upload', async ({ page }) => {
+  await page.goto('/preview.html?fresh=1')
+  await page.getByLabel('State', { exact: true }).selectOption('AL')
+  await page.getByLabel('Grade', { exact: true }).selectOption('11')
+  await page.getByRole('radio', { name: /AP English Language/ }).check()
+  await page.getByRole('button', { name: 'Continue to my first week' }).click()
+  await expect(page.getByRole('heading', { name: 'What are you teaching next?' })).toBeVisible()
+  await expect(page.locator('input[type="file"]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Build my first plan' })).toBeVisible()
 })

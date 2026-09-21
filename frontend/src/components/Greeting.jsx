@@ -99,7 +99,7 @@ export function Greeting({ onOpenVoice, className: courseName, week, hint, onOpe
             className="neo-world neo-raised bg-paper-raised mx-auto mt-8 flex min-h-touch w-2/3 max-w-[240px] items-center justify-center gap-2.5 rounded-full px-8 py-3 text-sm font-medium text-ink md:hidden"
           >
             <AudioLines size={18} aria-hidden="true" />
-            Voice Mode
+            Plan with voice
             <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-2xs font-semibold uppercase tracking-wide text-accent-text">
               Beta
             </span>

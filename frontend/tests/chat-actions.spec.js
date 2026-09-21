@@ -48,6 +48,56 @@ async function send(page, text) {
 const planAction = (action, extra = {}) => ({ tool_call: 'generate_lesson_plan', action, target_plan_id: action === 'create' ? null : 'plan1', instruction: 'Keep paper materials and the 45-minute period.', days: [], field: null, week_number: 3, ...extra })
 const done = { done: true }
 
+test('a temporary gateway outage recovers without duplicate messages or plans', async ({ page }) => {
+  await openChat(page)
+  const before = await page.evaluate(() => structuredClone(window.__mock.state.plans.plan1))
+  const ownedBefore = await page.evaluate(() => window.__mock.state.ownedPlanIds.length)
+  await events(page, [planAction('create'), done])
+  await page.evaluate(() => {
+    const original = window.fetch
+    window.gatewayAttempts = []
+    window.fetch = async (input, init) => {
+      if (String(input).includes('/api/chat_stream')) {
+        window.gatewayAttempts.push(JSON.parse(init.body))
+        if (window.gatewayAttempts.length === 1) return new Response('<html>Bad gateway</html>', { status: 502 })
+      }
+      return original(input, init)
+    }
+  })
+  const prompt = 'Create a separate plan on argument with paper materials.'
+  await send(page, prompt)
+  await expect.poll(() => page.evaluate(() => window.__mock.state.ownedPlanIds.length)).toBe(ownedBefore + 1)
+  const attempts = await page.evaluate(() => window.gatewayAttempts)
+  expect(attempts).toHaveLength(2)
+  expect(attempts[0].request_id).toBe(attempts[1].request_id)
+  expect(await page.evaluate(() => window.chatCalls.filter((call) => call.path === 'create').length)).toBe(1)
+  await expect(page.getByText(prompt, { exact: true })).toHaveCount(1)
+  await expect(page.getByText('Try again', { exact: true })).toHaveCount(0)
+  expect(await page.evaluate(() => window.__mock.state.plans.plan1)).toEqual(before)
+})
+
+test('a saved lesson finishes when the gateway leaves the stream open', async ({ page }) => {
+  await openChat(page)
+  await events(page, [planAction('revise_week'), done])
+  await page.evaluate(() => {
+    const original = window.fetch
+    window.lessonConnectionClosed = false
+    window.fetch = async (input, init) => {
+      const response = await original(input, init)
+      if (!String(input).includes('/api/generate_stream')) return response
+      const events = await response.text()
+      return new Response(new ReadableStream({
+        start(controller) { controller.enqueue(new TextEncoder().encode(events)) },
+        cancel() { window.lessonConnectionClosed = true },
+      }), { headers: { 'Content-Type': 'text/event-stream' } })
+    }
+  })
+  await send(page, 'Revise the whole week to include more independent practice.')
+  await expect(page.getByText(/Done — .* is updated/)).toBeVisible()
+  await expect.poll(() => page.evaluate(() => window.lessonConnectionClosed)).toBe(true)
+  expect(await page.evaluate(() => window.chatCalls.filter((call) => call.path === 'week').length)).toBe(1)
+})
+
 for (const prompt of ['Why use this approach?', 'Could a debate help students explain their evidence?']) {
   test(`advice with an open plan does not mutate: ${prompt}`, async ({ page }) => {
     await openChat(page)

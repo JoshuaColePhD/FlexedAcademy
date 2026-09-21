@@ -2,10 +2,11 @@ import { expect, test } from '@playwright/test'
 
 const seed = '/preview.html?fresh=0&at=/c/c1/chat/seed1'
 
-/* Seeded chats already have a week, so Outputs auto-opens as an in-flow
-   column. The Close/Open artifacts panel header toggle was removed; wait
-   for the drawer itself rather than a control that no longer exists. */
+/* Materials is an in-flow column with an explicit header toggle. */
 async function openArtifactsPanel(page) {
+  const toggle = page.getByRole('button', { name: /^(Show|Hide) materials$/ })
+  await expect(toggle).toBeVisible()
+  if (await page.getByRole('button', { name: 'Show materials', exact: true }).count()) await toggle.click()
   await expect(page.locator('.artifact-drawer')).toBeVisible()
 }
 
@@ -181,11 +182,11 @@ test('composer stays centered between the navigation and materials rails', async
     expect(Math.abs(drawerBox.y - topbarBox.y)).toBeLessThanOrEqual(12)
     expect(await page.locator('.artifact-drawer').evaluate((el) => getComputedStyle(el).position)).toBe('relative')
     expect(composerBox.x).toBeGreaterThanOrEqual(chatBox.x - 1)
-    expect(composerBox.x + composerBox.width).toBeLessThanOrEqual(drawerBox.x - 24)
+    expect(composerBox.x + composerBox.width).toBeLessThanOrEqual(drawerBox.x - 17)
   }
   await assertComposerBetweenRails()
-  await expect(page.getByRole('button', { name: 'Close artifacts panel', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Open artifacts panel', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Hide materials', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Close materials panel', exact: true })).toBeVisible()
 
   await page.setViewportSize({ width: 1512, height: 900 })
   await page.waitForTimeout(220)

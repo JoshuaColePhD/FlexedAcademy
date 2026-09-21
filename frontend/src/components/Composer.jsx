@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 // Upload is used by the drag-and-drop overlay below and was missing from this
 // list — the overlay only renders while a file is actually being dragged over
 // the composer, so the ReferenceError sat there unnoticed by anything but a
 // linter until someone dragged a file.
-import { ArrowUp, BookOpen, FileText, Loader2, Mic, Paperclip, Pause, Plus, Square, Upload, X } from 'lucide-react'
+import { ArrowUp, AudioLines, BookOpen, FileText, Loader2, Mic, Paperclip, Pause, Plus, Square, Upload, X } from 'lucide-react'
 import { api } from '../lib/api'
 import { haptic } from '../lib/haptics'
 import { useToast } from '../lib/toastContext'
 import { useExitTransition } from '../hooks/useExitTransition'
 import { suggestionCompletion } from '../lib/contextualSuggestions'
 import { pickComposerGhost } from '../lib/composerGhosts'
+import '../styles/composer-context.css'
 
 // A guardrail, not a technical ceiling — bounds how many extractText calls
 // one drop/pick can fire at once. See attachFiles' own comment for why the
@@ -165,12 +166,16 @@ export function Composer({
      microphone and the same attention. Dictate disables outright; voice
      conversation controls stay in the dedicated voice panel. */
   voiceModeActive = false,
+  sendDisabled = false,
+  inputLabel,
+  contextLabel = '',
+  onOpenVoice,
   voicePanel = null,
   // The text-mode twin of voicePanel — a clarification round docked above
   // the input instead of stuck mid-transcript (see ChatPage's
   // questionsExit/lastQuestions and LessonQuestions). It lives above the
-  // persistent input shell; the two never show at once, since voice mode
-  // surfaces its own questions through voicePanel.
+  // persistent input shell; voice mode surfaces its questions in the left
+  // conversation panel while voicePanel contains only the live controls.
   questionsPanel = null,
   mode = 'brainstorm',
   onModeChange,
@@ -383,7 +388,7 @@ export function Composer({
   // Empty field still shows the first boilerplate as ghost text. Hiding it
   // until the typed prefix matched the canned sentence meant Tab completion
   // never appeared unless the teacher already knew the prompt.
-  const completion = !isRecording && !isTranscribing && activeSuggestion && !isDismissed
+  const completion = !voiceModeActive && !isRecording && !isTranscribing && activeSuggestion && !isDismissed
     ? suggestionCompletion(value, activeSuggestion)
     : ''
 
@@ -416,14 +421,14 @@ export function Composer({
   // Enter sends, but Shift+Enter promises a real new line. The previous
   // fixed-height textarea silently clipped those extra lines. Let a draft
   // grow to five lines; after that it scrolls inside the field.
-  useEffect(() => {
+  useLayoutEffect(() => {
     const input = textareaRef.current
     if (!input) return
     input.style.height = 'auto'
-    const nextHeight = Math.min(144, Math.max(48, input.scrollHeight))
+    const nextHeight = Math.min(contextLabel ? 128 : 144, Math.max(contextLabel ? 32 : 48, input.scrollHeight))
     input.style.height = `${nextHeight}px`
     setTextareaHeight(nextHeight)
-  }, [value])
+  }, [value, contextLabel])
 
   const startRecording = async () => {
     if (isRecording || isTranscribing) return
@@ -629,16 +634,20 @@ export function Composer({
       e.preventDefault()
       e.stopPropagation()
       setIsDragging(false)
+      if (voiceModeActive) {
+        toast.info('End voice to attach files', 'Your existing attachments will still be here.')
+        return
+      }
       void attachFiles(e.dataTransfer?.files)
     },
-    [attachFiles]
+    [attachFiles, voiceModeActive, toast]
   )
 
   useEffect(() => {
     const handleDragOver = (e) => {
       e.preventDefault()
       e.stopPropagation()
-      setIsDragging(true)
+      if (!voiceModeActive) setIsDragging(true)
     }
     const handleDragLeave = (e) => {
       e.preventDefault()
@@ -655,9 +664,9 @@ export function Composer({
       window.removeEventListener('dragleave', handleDragLeave)
       window.removeEventListener('drop', handleGlobalDrop)
     }
-  }, [handleGlobalDrop])
+  }, [handleGlobalDrop, voiceModeActive])
 
-  const hasContent = value.trim().length > 0 || attachments.length > 0
+  const hasContent = value.trim().length > 0 || (!voiceModeActive && attachments.length > 0)
   // isStreaming no longer gates this: a teacher thinking of a follow-up
   // while the current reply is still generating can now type it and hit
   // Enter — ChatPage's onSubmit (queueOrSubmit) holds it and sends it the
@@ -665,11 +674,11 @@ export function Composer({
   // The button slot below still shows Stop/a spinner while isStreaming
   // (aborting is a separate, still-available action), so this only changes
   // what Enter itself does — see onKeyDown below.
-  const canSend = hasContent && !isRecording && !isTranscribing
+  const canSend = hasContent && !isRecording && !isTranscribing && !sendDisabled
   // The right-side action is one control: an empty composer starts dictation,
   // while a draft (or an attachment) sends. Keeping the decision here means
   // the icon, label, disabled state, and click handler cannot drift apart.
-  const showSendAction = hasContent
+  const showSendAction = voiceModeActive || hasContent
   /* While a reply is streaming, a typed follow-up should keep the primary
      control as Send (queue). Stop only owns the slot when the box is empty —
      otherwise teachers mistap Pause instead of queueing the next turn. */
@@ -734,6 +743,7 @@ export function Composer({
   }
 
   const onKeyDown = (e) => {
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return
     if (e.key === 'Tab' && completion) {
       e.preventDefault()
       acceptSuggestion()
@@ -766,11 +776,10 @@ export function Composer({
   // Accessories and file chips live above the input. The field itself gets a
   // little room for a multi-line thought, then scrolls internally.
   return (
-    <div className="relative w-full">
-      {voicePanel}
+    <div className={`composer-experience relative w-full${voiceModeActive ? ' has-voice-stage' : ''}`}>
       {questionsPanel}
 
-      {selectedStandard ? (
+      {selectedStandard && !voiceModeActive ? (
         <div className="mb-2 flex items-center gap-2 rounded-xl border border-accent/20 bg-accent-tint px-3 py-2 text-xs text-ink" role="status">
           <BookOpen size={14} className="shrink-0 text-accent" aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate">
@@ -783,7 +792,7 @@ export function Composer({
         </div>
       ) : null}
 
-      {attachments.length > 0 ? (
+      {attachments.length > 0 && !voiceModeActive ? (
         <div className="composer-attachments flex flex-nowrap gap-2 overflow-x-auto px-3 pb-2" role="list" aria-label="Attached files">
           {attachments.map((f) => (
             <Chip
@@ -802,9 +811,10 @@ export function Composer({
         </div>
       ) : null}
 
+      {voicePanel}
       <div
-        className={`composer-shell relative flex min-h-14 w-full flex-col border border-edge bg-paper-raised ${textareaHeight > 48 ? 'is-expanded' : ''} ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'is-listening' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
-        style={{ height: `${Math.max(56, textareaHeight + 8)}px`, maxHeight: '152px' }}
+        className={`composer-shell relative flex min-h-14 w-full flex-col border border-edge bg-paper-raised ${contextLabel ? 'has-context-label' : ''} ${textareaHeight > 48 ? 'is-expanded' : ''} ${isDragging ? 'ring-2 ring-accent' : ''} ${isRecording ? 'is-listening' : ''} ${shake ? 'animate-error-shake' : ''} ${motionState === 'accept' ? 'fa-composer-accept' : ''}`}
+        style={{ '--composer-content-height': `${Math.max(56, textareaHeight + 8 + (contextLabel ? 16 : 0))}px`, height: 'var(--composer-content-height)', maxHeight: '152px' }}
       >
         {isDragging ? createPortal(
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-paper/60 backdrop-blur-md">
@@ -820,6 +830,7 @@ export function Composer({
           </div>,
           document.body
         ) : null}
+        {contextLabel ? <p id="composer-context" className="composer-context-line" title={contextLabel}><BookOpen size={12} aria-hidden="true" /><span>{contextLabel}</span></p> : null}
         <div
           className={`composer-control-row relative flex min-h-14 ${textareaHeight > 48 ? 'is-expanded items-end' : 'items-center'} px-3 py-1 transition-colors`}
         >
@@ -830,7 +841,7 @@ export function Composer({
               heard this exact chat-only sentence regardless of what
               `placeholder` actually said. */}
           <label className="sr-only" htmlFor="composer-input">
-            {placeholder}
+            {inputLabel || placeholder}
           </label>
 
           {/* h-11/w-11 (44px, Apple/Android's own touch-target minimum)
@@ -985,7 +996,7 @@ export function Composer({
               placeholder={completion || isRecording || isTranscribing ? '' : placeholder}
               title="Enter to send · Shift+Enter for a new line"
               aria-keyshortcuts="Tab, Escape, Enter"
-              aria-describedby="composer-keyboard-hint"
+              aria-describedby={`${contextLabel ? 'composer-context ' : ''}composer-keyboard-hint`}
               /* COMPOSER_TEXT_METRICS (module scope, top of file), not each
                  side hardcoding its own copy — that's what let the real
                  textarea (py-2.5/text-sm) and the ghost-completion overlay
@@ -1011,10 +1022,15 @@ export function Composer({
               send. Recording, transcription, and streaming still take over
               the same control without shifting the composer layout. */}
           <div className="composer-action-cluster relative flex shrink-0 flex-row items-center gap-1.5">
+            {onOpenVoice && !voiceModeActive ? (
+              <button type="button" className="composer-voice-trigger fa-press" onClick={onOpenVoice} disabled={isRecording || isTranscribing} aria-label="Plan with voice" title="Plan with voice — have a live teaching conversation">
+                <AudioLines size={18} aria-hidden="true" /><span>Voice</span>
+              </button>
+            ) : null}
             {showQueuedSend ? (
               <button
                 type="button"
-                className="fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full bg-paper-raised text-ink-soft transition-all duration-300 hover:shadow-sm md:h-9 md:w-9"
+                className="composer-pause-control fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full bg-paper-raised text-ink-soft transition-all duration-300 hover:shadow-sm md:h-9 md:w-9"
                 onClick={() => {
                   haptic('medium')
                   onStop()
@@ -1027,7 +1043,7 @@ export function Composer({
             ) : null}
             <button
               type="button"
-              className={`fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 md:h-9 md:w-9 ${
+              className={`composer-primary-action fa-press tap-target relative flex h-11 w-11 items-center justify-center rounded-full transition-all duration-300 md:h-9 md:w-9 ${
                 isRecording
                   ? 'fa-listening bg-mark text-white hover:bg-mark/90'
                   : showStopAction
@@ -1036,8 +1052,9 @@ export function Composer({
                       ? 'bg-transparent text-ink-muted'
                       : showSendAction
                         ? 'bg-accent text-accent-on hover:bg-accent-hover'
-                        : 'bg-mark text-white hover:bg-mark/90 disabled:opacity-50'
+                        : 'bg-paper-sunken text-ink-muted hover:text-ink disabled:opacity-50'
               } ${motionState === 'submit' ? 'fa-settle' : motionState === 'ready' ? 'fa-ready-pop' : ''}`}
+              data-composer-action={isRecording ? 'recording' : showStopAction ? 'stop' : isTranscribing ? 'transcribing' : isStreaming && !showSendAction ? 'working' : showSendAction ? 'send' : 'dictate'}
               onClick={
                 showStopAction
                   ? () => {
@@ -1081,7 +1098,7 @@ export function Composer({
                   ? 'Send queues until this reply finishes'
                   : !isRecording && !isTranscribing && !showSendAction && voiceModeActive
                     ? "Already listening — it's transcribing straight into the chat"
-                    : undefined
+                    : !showSendAction && !isRecording && !isTranscribing ? 'Dictate into this message' : undefined
               }
             >
               <Mic
@@ -1125,7 +1142,6 @@ export function Composer({
           </div>
         </div>
       </div>
-
     </div>
   )
 }
