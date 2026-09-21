@@ -236,6 +236,22 @@ export function PlanDayCards({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Opening/resizing the document changes card widths during its transition.
+  // Keep the selected day aligned after that layout settles, rather than
+  // leaving the scroll target calculated from the panel's earlier width.
+  useEffect(() => {
+    const el = scrollerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    let width = el.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return
+      width = el.clientWidth
+      el.scrollTo({ left: offsetOf(el, active), behavior: 'instant' })
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [active])
+
   const onScroll = () => {
     if (syncing.current) return
     const el = scrollerRef.current

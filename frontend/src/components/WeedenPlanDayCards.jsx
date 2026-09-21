@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SHORT_DAY, dayState, initialDayIndex, orderedDays } from '../lib/planShape'
 import { SkeletonText } from './Skeleton'
 import { cellKit } from './cellTweakKit'
+import { useLessonCellDraft } from '../hooks/useLessonCellDraft'
 
 
 const FIELDS = [
@@ -76,7 +77,7 @@ export function WeedenPlanDayCards({
   setOpenTweak,
 }) {
   const days = orderedDays(plan, missingDays)
-  const [draft, setDraft] = useState('')
+  const [draft, setDraft] = useLessonCellDraft(plan, missingDays, openTweak)
   const canTweak = Boolean(onEditDay || onReviseDay)
   const openCell = (dayIndex, field) => {
     if (!canTweak) return
@@ -114,6 +115,18 @@ export function WeedenPlanDayCards({
     el.scrollTo({ left: offsetOf(el, i), behavior: 'smooth' })
     setTimeout(() => { syncing.current = false }, 400)
   }, [])
+  useEffect(() => {
+    const el = scrollerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return undefined
+    let width = el.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return
+      width = el.clientWidth
+      el.scrollTo({ left: offsetOf(el, active), behavior: 'instant' })
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [active])
   useEffect(() => {
     const el = scrollerRef.current
     if (el) el.scrollLeft = offsetOf(el, active)

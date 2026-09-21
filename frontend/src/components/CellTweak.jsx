@@ -1,5 +1,5 @@
 import { FIELD_LABELS } from '../lib/planShape'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 
 /* The cell is a document editing surface, not a second AI composer. Global AI
  * revisions belong in the page composer, where the teacher can see the whole
@@ -14,6 +14,7 @@ export function CellTweak({
   const label = FIELD_LABELS[field] || field
   const context = dayName ? `${dayName} · ${label}` : label
   const draftRef = useRef(draft)
+  useEffect(() => { draftRef.current = draft }, [draft])
 
   return (
     <div

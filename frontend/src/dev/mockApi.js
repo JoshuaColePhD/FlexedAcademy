@@ -1280,6 +1280,19 @@ export function installMockApi() {
     }
 
     /* ── plans ───────────────────────────────────────────────────────────── */
+    const planDayMatch = path.match(/^\/api\/plans\/([^/]+)\/days\/(\d+)$/)
+    if (planDayMatch && method === 'PUT') {
+      const [, id, index] = planDayMatch
+      const plan = state.plans[id]
+      if (!plan?.days[Number(index)]) return json({ error: { message: 'No such day.' } }, 404)
+      plan.days[Number(index)] = {
+        ...plan.days[Number(index)],
+        [body.field]: body.field === 'engagement_strategy'
+          ? body.content.split(/[\n,]+/).map((part) => part.trim()).filter(Boolean)
+          : body.content.trim(),
+      }
+      return json({ id, plan_json: plan, warnings: WARNINGS, retrieved_ids: RETRIEVED, week_label: plan.week_of })
+    }
     const planMatch = path.match(/^\/api\/plans\/([^/]+)$/)
     if (planMatch && method === 'GET') {
       await wait(latency.getPlan)
