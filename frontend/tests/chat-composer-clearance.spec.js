@@ -7,7 +7,7 @@ const multilineDraft = 'Keep the lesson goal.\nAdd partner rehearsal.\nCheck und
 async function openLongConversation(page, viewport) {
   await page.setViewportSize(viewport)
   await page.emulateMedia({ reducedMotion: 'reduce' })
-  await page.goto('/preview.html?fresh=0&voice=1&trial=7&at=/c/c1')
+  await page.goto('/preview.html?fresh=0&voice=1&beta=1&trial=7&at=/c/c1')
   await expect(page.locator('#composer-input')).toBeVisible()
   // Populate the disposable preview before this chat is requested. A real
   // loaded history has no new-turn pin spacer to accidentally hide this bug.

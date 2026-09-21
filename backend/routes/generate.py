@@ -45,7 +45,7 @@ from ..config import settings
 from ..deps import get_current_user
 from ..entitlement import require_entitlement
 from ..errors import AppError
-from ..features import beta_features_for
+from ..features import beta_features_for, require_voice_beta
 from ..generation_jobs import CancellationToken, cancel_job, get_job, start_or_attach
 from ..generation_queue import GenerationQueue, generation_queue
 from ..ratelimit import limiter
@@ -1289,6 +1289,7 @@ def voice_session(req: VoiceSessionRequest, request: Request, user_id: str = Dep
     outbound request to OpenAI before a teacher has said a word.
     """
     require_entitlement(user_id)
+    require_voice_beta(user_id)
     import requests
 
     # POST /v1/realtime/sessions was the pre-GA (2024 beta) endpoint and no
@@ -1397,6 +1398,7 @@ def voice_usage(req: VoiceUsageRequest, request: Request, user_id: str = Depends
     already feed (db.tokens_used_since sums across every `kind`) — before
     this, the audio-transport half of a voice session was invisible to the
     app's own cost accounting entirely."""
+    require_voice_beta(user_id)
     db.record_usage(
         user_id,
         "realtime_voice",
@@ -1421,6 +1423,7 @@ class VoiceMetricRequest(BaseModel):
 @router.post("/voice/metrics")
 @limiter.limit("60/minute")
 def voice_metric(req: VoiceMetricRequest, request: Request, user_id: str = Depends(get_current_user)):
+    require_voice_beta(user_id)
     chat_metrics.record(user_id, kind="voice", channel="voice", client_reported=True, **req.model_dump())
     return {"ok": True}
 
@@ -1440,6 +1443,8 @@ def chat_stream(req: ChatStreamRequest, request: Request, bg_tasks: BackgroundTa
     # over-cap and all. entitlement.py's own module docstring already claimed
     # chat_stream was covered; it wasn't, until now.
     require_entitlement(user_id)
+    if req.voice:
+        require_voice_beta(user_id)
 
     cancellation = CancellationToken()
 

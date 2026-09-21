@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test'
 
-const existing = '/preview.html?fresh=0&voice=1&trial=7&at=/c/c1/chat/seed1%3Fplan=plan1'
-const freshChat = '/preview.html?fresh=0&voice=1&trial=7&at=/c/c1'
+const existing = '/preview.html?fresh=0&voice=1&beta=1&trial=7&at=/c/c1/chat/seed1%3Fplan=plan1'
+const freshChat = '/preview.html?fresh=0&voice=1&beta=1&trial=7&at=/c/c1'
 const composer = (page) => page.locator('#composer-input')
 const details = (page) => page.getByRole('complementary', { name: 'Voice session details', exact: true })
 async function say(page, text, { enter = false } = {}) {
@@ -34,6 +34,15 @@ async function expectNoVoiceProvider(page) {
   expect(await page.evaluate(() => window.__micRequests)).toBe(0)
   expect(await page.evaluate(() => window.__mock.calls.some((call) => call.path === '/api/voice/session'))).toBe(false)
 }
+
+test('voice conversations stay unavailable until beta features are enabled', async ({ page }) => {
+  await page.goto('/preview.html?fresh=0&voice=1&trial=7&at=/c/c1/chat/seed1')
+  await expect(page.getByRole('button', { name: 'Plan with voice', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Dictate', exact: true })).toBeVisible()
+  await page.keyboard.press('Control+Shift+V')
+  await expect(page.locator('.voice-consultation')).toHaveCount(0)
+  expect(await page.evaluate(() => window.__mock.calls.some((call) => call.path === '/api/voice/session'))).toBe(false)
+})
 
 test('voice preview builds a first lesson and keeps the session across chat creation', async ({ page }) => {
   const errors = []

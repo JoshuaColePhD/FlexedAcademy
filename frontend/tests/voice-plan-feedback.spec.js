@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const url = '/preview.html?fresh=0&voice=1&trial=7&at=/c/c1/chat/seed1%3Fplan=plan1'
+const url = '/preview.html?fresh=0&voice=1&beta=1&trial=7&at=/c/c1/chat/seed1%3Fplan=plan1'
 async function open(page) {
   await page.addInitScript(() => {
     navigator.mediaDevices.getUserMedia = async () => { throw new Error('This is a microphone-free preview test') }

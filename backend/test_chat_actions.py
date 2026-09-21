@@ -659,6 +659,7 @@ def chat_client(monkeypatch):
     monkeypatch.setattr(generate.db, "get_plan", lambda user, id: plan if id == "p1" else None)
     monkeypatch.setattr(generate.db, "list_quizzes_for_plan", lambda *a: [])
     monkeypatch.setattr(generate, "beta_features_for", lambda uid: False)
+    monkeypatch.setattr(generate, "require_voice_beta", lambda _: None)
     monkeypatch.setattr(generate, "voice_consultation_queue", generate.GenerationQueue(
         max_concurrent=1, max_per_user=1, max_queue=10, max_queue_per_user=2, min_start_interval=0,
     ))

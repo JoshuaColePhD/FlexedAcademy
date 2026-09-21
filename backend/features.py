@@ -1,7 +1,8 @@
 """Gates that reuse the teacher's existing Settings beta-features opt-in.
 
-Quizzes stay in the repo; they are offered, created, revised, and shown only
-when `users.beta_features` is true (Settings → Enable Beta Features).
+Quizzes and live voice consultation stay in the repo; they are offered and
+served only when `users.beta_features` is true (Settings → Enable Beta
+Features).
 """
 
 from . import db
@@ -9,6 +10,9 @@ from .errors import AppError
 
 QUIZ_BETA_DISABLED = (
     "Quizzes are a beta feature. Turn on Enable Beta Features in Settings to use them."
+)
+VOICE_BETA_DISABLED = (
+    "Voice conversations are a beta feature. Turn on Enable Beta Features in Settings to use them."
 )
 
 
@@ -20,3 +24,8 @@ def beta_features_for(user_id: str) -> bool:
 def require_quiz_beta(user_id: str) -> None:
     if not beta_features_for(user_id):
         raise AppError("quizzes_disabled", QUIZ_BETA_DISABLED, status=403)
+
+
+def require_voice_beta(user_id: str) -> None:
+    if not beta_features_for(user_id):
+        raise AppError("voice_disabled", VOICE_BETA_DISABLED, status=403)
