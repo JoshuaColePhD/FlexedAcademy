@@ -1821,7 +1821,10 @@ def validate_act_alignment(
 
 
         # ACT is a companion assessment lens, not a substitute framework. The
-        # full prompt requires a per-day `Supports primary [CODE]` rationale.
+        # full prompt requests a per-day `Supports primary [CODE]` rationale.
+        # Brackets are presentation, not evidence: the same explicit link
+        # without them must pass too. Normalize whitespace/case and bound bare
+        # codes so Category 7 cannot match Category 70 or CLE-1.B match CLE-1.B.1.
         # Enforce that explicit dependency for generated/retrieved plans while
         # preserving compatibility for older plans and direct legacy edits,
         # which do not carry a RetrievalResult.
@@ -1831,11 +1834,12 @@ def validate_act_alignment(
             if not _ACT_CODE_RE.fullmatch(raw)
         ]
         if result is not None and primary_codes:
+            normalized_alignment = _norm_code(alignment)
             linked = any(
                 re.search(
-                    rf"supports\s+primary\s*\[\s*{re.escape(primary_code)}\s*\]",
-                    alignment,
-                    re.IGNORECASE,
+                    rf"\bSUPPORTS PRIMARY(?:\s*\[\s*{re.escape(primary_code)}\s*\]"
+                    rf"|\s+{re.escape(primary_code)}(?![\w-]|\.\w))",
+                    normalized_alignment,
                 )
                 for primary_code in primary_codes
             )
@@ -1844,7 +1848,7 @@ def validate_act_alignment(
                     "act_skill_primary_link_missing",
                     f"{day_name}'s ACT alignment does not name the primary standard it supports.",
                     path=f"days.{day_name}.act_alignment",
-                    hint="Add `Supports primary [CODE]:` and state the shared assessed skill.",
+                    hint="Retry the lesson to rebuild its standards alignment.",
                 )
 
         # This guard catches the unambiguous math-topic mismatch that led to
