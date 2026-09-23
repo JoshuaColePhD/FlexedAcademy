@@ -203,6 +203,10 @@ function draftHarness(initial = {}) {
       const i = cursor++, old = slots[i]
       if (!old || deps.some((item, index) => !Object.is(item, old.deps[index]))) pendingEffects.push({ i, effect, deps })
     },
+    useLayoutEffect(effect, deps) {
+      const i = cursor++, old = slots[i]
+      if (!old || deps.some((item, index) => !Object.is(item, old.deps[index]))) pendingEffects.push({ i, effect, deps })
+    },
   }
   const modules = {
     react,

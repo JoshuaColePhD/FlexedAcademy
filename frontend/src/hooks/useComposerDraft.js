@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { accountStorageKey } from '../lib/accountStorage'
 
 const PREFIX = 'composer-draft'
@@ -56,7 +56,7 @@ export function useComposerDraft(key, value, setValue, accountId) {
   const restoreValue = useRef(setValue)
   restoreValue.current = setValue
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!storageKey) {
       currentDraft.current = null
       return undefined
@@ -96,7 +96,12 @@ export function useComposerDraft(key, value, setValue, accountId) {
     }
   }, [storageKey])
 
-  useEffect(() => {
+  // Capture controlled-input changes before another user event can navigate
+  // away. A passive effect can still be pending when a fast click changes
+  // the route; then the key-change cleanup flushes the previous value and
+  // loses the last keystroke. Layout effects run after the committed input
+  // value is rendered but before the browser can dispatch that next click.
+  useLayoutEffect(() => {
     const draft = currentDraft.current
     if (!draft || draft.key !== storageKey) return undefined
     if (draft.skipObservation) {
