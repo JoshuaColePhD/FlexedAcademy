@@ -14,7 +14,7 @@ from openai import OpenAI
 import importlib.util
 
 # Keep this standalone generator on the same text model as the application.
-MODEL_NAME = "gpt-5.6-luna"
+MODEL_NAME = "gpt-6-luna"
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 

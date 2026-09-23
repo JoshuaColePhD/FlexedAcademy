@@ -10,13 +10,13 @@ def test_luna_cost_estimate_splits_cached_input():
         prompt_tokens_details=SimpleNamespace(cached_tokens=400_000),
     )
     assert cached_tokens_from_usage(usage) == 400_000
-    # 600k * $.20/M + 400k * $.02/M + 2M * $1.20/M = $2.528
+    # 600k * $.10/M + 400k * $.01/M + 2M * $.50/M = $1.006
     assert estimate_text_cost(
-        "gpt-5.6-luna",
+        "gpt-6-luna",
         usage.prompt_tokens,
         usage.completion_tokens,
         cached_tokens=cached_tokens_from_usage(usage),
-    ) == 2.528
+    ) == 1.006
 
 
 def test_unknown_model_is_not_reported_as_free():

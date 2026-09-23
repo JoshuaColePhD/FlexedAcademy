@@ -43,11 +43,11 @@ CHECKPOINT_PATH = PROJECT_ROOT / "data" / "processed" / "ap_chunks.partial.json"
 
 log = logging.getLogger("ap_ceds")
 
-# gpt-5.6-luna standard-tier, short-context pricing (developers.openai.com/api/docs/pricing,
-# checked 2026-08-22). Our ~30k-char (~8k-token) batches never approach a
+# gpt-6-luna standard-tier pricing (developers.openai.com/api/docs/models/gpt-6-luna,
+# checked 2026-09-23). Our ~30k-char (~8k-token) batches never approach a
 # long-context threshold, so short-context is the right tier throughout.
-_LUNA_INPUT_PER_TOKEN = 0.20 / 1_000_000
-_LUNA_OUTPUT_PER_TOKEN = 1.20 / 1_000_000
+_LUNA_INPUT_PER_TOKEN = 0.10 / 1_000_000
+_LUNA_OUTPUT_PER_TOKEN = 0.50 / 1_000_000
 
 
 class _Usage:
@@ -276,7 +276,7 @@ def run_batch(course_name: str, pdf_name: str, batch_idx: int, total_batches: in
                     {"role": "user", "content": prompt},
                 ],
                 response_format=_response_format("ap_ced_extraction", AP_CED_EXTRACTION_SCHEMA),
-                # gpt-5.6-luna only supports the default temperature (1) —
+                # gpt-6-luna only supports the default temperature (1) —
                 # passing 0 (what every other batch-extraction script here
                 # uses) 400s on every call. Determinism instead comes from
                 # the strict JSON schema plus the zero-fabrication check below.

@@ -43,12 +43,12 @@ class Settings(BaseSettings):
     )
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-5.6-luna"
+    openai_model: str = "gpt-6-luna"
     # Cheap auxiliary calls (query expansion, chat titles, coaching-memory
     # extraction) don't need the main generation model's full weight. Default
     # matches openai_model, so this is a no-op until an operator overrides it
     # via .env — flipping it later is a config change, not a code deploy.
-    openai_fast_model: str = "gpt-5.6-luna"
+    openai_fast_model: str = "gpt-6-luna"
     # Responses supports reasoning together with function tools. The legacy
     # transport remains an explicit rollback setting, never a silent fallback.
     chat_api: Literal["responses", "chat_completions"] = "responses"

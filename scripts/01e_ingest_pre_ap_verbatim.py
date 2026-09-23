@@ -87,9 +87,9 @@ CHECKPOINT_PATH = PROJECT_ROOT / "data" / "processed" / "pre_ap_chunks.partial.j
 log = logging.getLogger("pre_ap_verbatim")
 
 # Same pricing basis as 01c_ingest_ap_ceds.py's own comment — checked
-# 2026-08-22, developers.openai.com/api/docs/pricing.
-_LUNA_INPUT_PER_TOKEN = 0.20 / 1_000_000
-_LUNA_OUTPUT_PER_TOKEN = 1.20 / 1_000_000
+# 2026-09-23, developers.openai.com/api/docs/models/gpt-6-luna.
+_LUNA_INPUT_PER_TOKEN = 0.10 / 1_000_000
+_LUNA_OUTPUT_PER_TOKEN = 0.50 / 1_000_000
 
 # course slug -> (display name, grade). Matches the "Pre-AP X" identity
 # already live in the corpus (chunks.metadata.course) so the ids this run

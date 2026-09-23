@@ -99,7 +99,7 @@ def test_responses_tools_reasoning_stream_and_usage():
     ])
     calls = []
     client = NS(responses=NS(create=lambda **kwargs: calls.append(kwargs) or events))
-    stream = ResponsesChatStream(client, model="gpt-5.6-luna", messages=[{"role": "user", "content": "Update Friday"}], effort="medium", max_tokens=4000, tools=[{"function": {"name": "update_lesson_day", "parameters": {"type": "object"}}}])
+    stream = ResponsesChatStream(client, model="gpt-6-luna", messages=[{"role": "user", "content": "Update Friday"}], effort="medium", max_tokens=4000, tools=[{"function": {"name": "update_lesson_day", "parameters": {"type": "object"}}}])
     chunks = list(stream)
     assert calls[0]["reasoning"] == {"effort": "medium"}
     assert calls[0]["store"] is False and calls[0]["tools"][0]["strict"] is False

@@ -60,7 +60,7 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
-        value: "gpt-5.6-luna"
+        value: "gpt-6-luna"
       # Public HTTPS origin used by ChatGPT/Claude OAuth discovery and DOCX
       # capability links. Set this to the deployed API origin, including no
       # trailing slash (for example https://flexed-academy-backend.onrender.com).

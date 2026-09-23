@@ -18,6 +18,9 @@ class TextModelPricing:
 
 # USD per one million tokens.  Update this table when OPENAI_MODEL changes.
 TEXT_MODEL_PRICING: dict[str, TextModelPricing] = {
+    "gpt-6-luna": TextModelPricing(0.10, 0.01, 0.50),
+    # Retain historical/override accounting for deployments still configured
+    # to use GPT-5.6 Luna.
     "gpt-5.6-luna": TextModelPricing(0.20, 0.02, 1.20),
 }
 
