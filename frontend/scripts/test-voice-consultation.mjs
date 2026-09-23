@@ -196,17 +196,22 @@ const { code: draftCode } = await transform(draftSource, { loader: 'js', format:
 function draftHarness(initial = {}) {
   let cursor = 0, timerId = 0, pendingValue
   let key = 'voice:chat-a', accountId = 'teacher-a', value = ''
-  const slots = [], pendingEffects = [], timers = new Map(), storage = new Map(Object.entries(initial)), pagehide = new Set(), restored = []
+  const slots = [], layoutEffects = [], passiveEffects = [], timers = new Map(), storage = new Map(Object.entries(initial)), pagehide = new Set(), restored = []
+  const queueEffect = (list, effect, deps) => {
+    const i = cursor++, old = slots[i]
+    if (!old || deps.some((item, index) => !Object.is(item, old.deps[index]))) {
+      const entry = { i, effect, deps }
+      const queuedAt = list.findIndex((item) => item.i === i)
+      if (queuedAt >= 0) list[queuedAt] = entry
+      else list.push(entry)
+    }
+  }
   const react = {
     useRef(initialValue) { const i = cursor++; return slots[i] ||= { current: initialValue } },
-    useEffect(effect, deps) {
-      const i = cursor++, old = slots[i]
-      if (!old || deps.some((item, index) => !Object.is(item, old.deps[index]))) pendingEffects.push({ i, effect, deps })
-    },
-    useLayoutEffect(effect, deps) {
-      const i = cursor++, old = slots[i]
-      if (!old || deps.some((item, index) => !Object.is(item, old.deps[index]))) pendingEffects.push({ i, effect, deps })
-    },
+    useEffect(effect, deps) { queueEffect(passiveEffects, effect, deps) },
+    // Layout effects run after the committed render and before the next click.
+    // Passive effects can still be waiting when that click navigates away.
+    useLayoutEffect(effect, deps) { queueEffect(layoutEffects, effect, deps) },
   }
   const modules = {
     react,
@@ -219,15 +224,16 @@ function draftHarness(initial = {}) {
     setTimeout: (fn) => { const id = ++timerId; timers.set(id, fn); return id }, clearTimeout: (id) => timers.delete(id),
     window: { addEventListener: (event, fn) => { if (event === 'pagehide') pagehide.add(fn) }, removeEventListener: (event, fn) => pagehide.delete(fn) },
   })
-  const commit = () => {
-    const effects = pendingEffects.splice(0)
+  const commitList = (list) => {
+    const effects = list.splice(0)
     for (const item of effects) slots[item.i]?.cleanup?.()
     for (const { i, effect, deps } of effects) slots[i] = { effect, deps, cleanup: effect() }
   }
-  const render = () => {
+  const render = ({ commitEffects = true } = {}) => {
     cursor = 0
     module.exports.useComposerDraft(key, value, (text) => { pendingValue = text; restored.push(text) }, accountId)
-    commit()
+    commitList(layoutEffects)
+    if (commitEffects) commitList(passiveEffects)
   }
   const settle = () => {
     for (let i = 0; i < 10 && pendingValue !== undefined; i++) {
@@ -238,7 +244,7 @@ function draftHarness(initial = {}) {
   render()
   return {
     storage, restored, settle, get value() { return value },
-    type(text) { value = text; render() },
+    type(text, options = {}) { value = text; render(options) },
     navigate(nextKey, nextAccount = accountId) { key = nextKey; accountId = nextAccount; render(); settle() },
     clear() { module.exports.clearComposerDraft(key, accountId) },
     tick() { for (const [id, fn] of [...timers]) { timers.delete(id); fn() } },
@@ -248,6 +254,21 @@ function draftHarness(initial = {}) {
   }
 }
 const storageKey = (chat = 'voice:chat-a', account = 'teacher-a') => `composer-draft:${account}:${chat}`
+
+test('navigation before passive effects commit still keeps the unsent idea on its own chat', () => {
+  const h = draftHarness()
+  h.settle()
+  // The composer render already has the typed text. A passive effect can
+  // still be pending when the next click changes chats; layout effects have
+  // already recorded it, so cleanup flushes the right chat.
+  h.type('An unfinished thought for this rhetorical-devices lesson only.', { commitEffects: false })
+  h.navigate('voice:chat-b')
+  assert.equal(h.storage.get(storageKey()), 'An unfinished thought for this rhetorical-devices lesson only.')
+  assert.equal(h.value, '')
+  h.navigate('voice:chat-a')
+  assert.equal(h.value, 'An unfinished thought for this rhetorical-devices lesson only.')
+  h.unmount()
+})
 
 test('draft navigation flushes the previous key immediately and restores the destination unchanged', () => {
   const h = draftHarness({ [storageKey('voice:chat-b')]: 'The other lesson.' })
