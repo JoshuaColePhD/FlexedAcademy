@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { accountStorageKey } from '../lib/accountStorage'
 
 const PREFIX = 'composer-draft'
@@ -49,28 +49,14 @@ function repairLegacyGhostDraft(value) {
  *
  * Writes debounce while typing, but the old key's latest draft is flushed
  * before restoring a new key or unmounting. Explicit sends also invalidate
- * the pending writer before the cleared value reaches React.
- *
- * The latest text is recorded during render, not only in the value effect.
- * A chat switch can commit before that effect runs — filling the composer
- * and navigating on the next tick is enough — and the key cleanup would
- * otherwise flush the previous chat's empty draft and drop the unsent idea. */
+ * the pending writer before the cleared value reaches React. */
 export function useComposerDraft(key, value, setValue, accountId) {
   const storageKey = accountStorageKey(PREFIX, accountId, key)
   const currentDraft = useRef(null)
   const restoreValue = useRef(setValue)
   restoreValue.current = setValue
 
-  const mounted = currentDraft.current
-  if (mounted && mounted.value !== value) {
-    // This render still belongs to the draft currently mounted, including
-    // the render that switches chats: voice/text state updates after the
-    // key effect restores the destination. Capture it before that flush.
-    mounted.value = value
-    mounted.dirty = true
-  }
-
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!storageKey) {
       currentDraft.current = null
       return undefined
@@ -110,21 +96,21 @@ export function useComposerDraft(key, value, setValue, accountId) {
     }
   }, [storageKey])
 
-  useEffect(() => {
+  // Capture controlled-input changes before another user event can navigate
+  // away. A passive effect can still be pending when a fast click changes
+  // the route; then the key-change cleanup flushes the previous value and
+  // loses the last keystroke. Layout effects run after the committed input
+  // value is rendered but before the browser can dispatch that next click.
+  useLayoutEffect(() => {
     const draft = currentDraft.current
     if (!draft || draft.key !== storageKey) return undefined
     if (draft.skipObservation) {
       draft.skipObservation = false
       return undefined
     }
-    if (draft.value !== value) {
-      draft.value = value
-      draft.dirty = true
-    }
-    // Render may already have copied this text onto the draft. Still arm the
-    // debounced write; returning early here would leave it only in the ref
-    // until the next navigation.
-    if (!draft.dirty) return undefined
+    if (draft.value === value) return undefined
+    draft.value = value
+    draft.dirty = true
     if (!value) {
       persistDraft(draft)
       return undefined
