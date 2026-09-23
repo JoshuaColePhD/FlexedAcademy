@@ -49,9 +49,10 @@ export default defineConfig({
     rollupOptions: {
       output: {
         codeSplitting: {
-          // Explicit module membership avoids pulling shared React utilities
-          // into a lazy markdown chunk and eagerly preloading the entire math stack.
-          includeDependenciesRecursively: false,
+          // Include each dependency chain with its owning vendor group. Disabling
+          // this let markdown helpers fall back into MarkdownRenderer's chunk,
+          // creating a cycle that called an uninitialized module factory at runtime.
+          includeDependenciesRecursively: true,
           groups: [{ name(id) {
           if (!id.includes('node_modules')) return undefined
           // KaTeX FIRST: `rehype-katex` contains the substring "katex", and the

@@ -10,6 +10,7 @@ import uuid
 from typing import Literal
 
 import anyio
+import httpx
 import openai
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import StreamingResponse
@@ -544,6 +545,18 @@ def _openai_error_event(e: Exception) -> dict:
             "code": "upstream_connection_error",
             "message": "Could not reach the model provider.",
             "hint": "Check your connection and try again.",
+            "retryable": True,
+        }
+    # The OpenAI SDK wraps connection failures while opening a request, but
+    # errors raised later while iterating a streaming response can escape as
+    # raw httpx transport exceptions. Treat those the same way: a dropped
+    # socket is transient, and chat_stream's client can safely retry before
+    # any plan action has been dispatched.
+    if isinstance(e, httpx.TransportError):
+        return {
+            "code": "upstream_connection_error",
+            "message": "The model connection dropped while replying.",
+            "hint": "Trying again may help.",
             "retryable": True,
         }
     if isinstance(e, openai.APIStatusError):
