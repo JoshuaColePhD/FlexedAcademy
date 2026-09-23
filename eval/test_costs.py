@@ -10,13 +10,15 @@ def test_luna_cost_estimate_splits_cached_input():
         prompt_tokens_details=SimpleNamespace(cached_tokens=400_000),
     )
     assert cached_tokens_from_usage(usage) == 400_000
-    # 600k * $.10/M + 400k * $.01/M + 2M * $.50/M = $1.006
+    # 600k * $.10/M + 400k * $.01/M + 2M * $.50/M = $1.064
+    # (0.06 + 0.004 + 1.00). Short-context standard rates from
+    # developers.openai.com/api/docs/models/gpt-6-luna.
     assert estimate_text_cost(
         "gpt-6-luna",
         usage.prompt_tokens,
         usage.completion_tokens,
         cached_tokens=cached_tokens_from_usage(usage),
-    ) == 1.006
+    ) == 1.064
 
 
 def test_unknown_model_is_not_reported_as_free():
